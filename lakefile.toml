@@ -8,6 +8,9 @@ relaxedAutoImplicit = false
 
 [[lean_lib]]
 name = "Grip"
+# Build every module under Grip/, not just what the root re-exports, so no
+# submodule can hide unbuilt (and untested) behind a missing import.
+globs = ["Grip", "Grip.+"]
 
 [[lean_lib]]
 name = "Test"
