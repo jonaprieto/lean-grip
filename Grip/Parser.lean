@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 -/
 
 import Grip.Graded
+import Grip.Error
 
 /-!
 # Grip.Parser — ungraded face for graded parsers
@@ -71,6 +72,47 @@ instance {g : Grade} {α : Type} : CoeOut (GParser g α) (Parser α) := ⟨GPars
 @[inline] def GParser.gcast {g g' : Grade} {α : Type} (h : g = g') (p : GParser g α) :
     GParser g' α :=
   h ▸ p
+
+/-! ### Top-level entry point -/
+
+/-- Run a parser from offset 0, returning a positioned `ParseError` on failure.
+Line and column are 1-based byte positions derived by scanning `arr` for newlines. -/
+def GParser.parse {g : Grade} {α : Type} (p : GParser g α) (arr : ByteArray) :
+    Except ParseError α :=
+  match p.run arr 0 with
+  | .ok (a, _) => .ok a
+  | .error e   => .error (mkParseError arr e)
+
+/-! ### MonadExcept instance -/
+
+/-- `throw` at `fallible` grade: immediately fail at the current offset with
+the supplied error payload. -/
+def GParser.throwErr {α : Type} (e : Err) : Parser α where
+  run := fun _ p => .error { e with pos := p }
+  cwit := by intro arr q a q' h; exact absurd h (by simp)
+  ewit := by intro _ arr q; exact ⟨{ e with pos := q }, rfl⟩
+  swit := by intro he; exact absurd he (by decide)
+
+/-- `tryCatch` at `fallible` grade: run `p`; on success pass through; on failure
+call the handler `h` and run its result from the same offset. -/
+def GParser.tryCatch {α : Type} (p : Parser α) (h : Err → Parser α) : Parser α where
+  run := fun arr q =>
+    match p.run arr q with
+    | .ok r  => .ok r
+    | .error e => (h e).run arr q
+  cwit := by
+    intro arr q a q' heq
+    split at heq
+    · rename_i r hp
+      exact p.cwit (Except.ok.inj heq ▸ hp)
+    · rename_i e hp
+      exact (h e).cwit heq
+  ewit := by intro he; exact absurd he (by decide)
+  swit := by intro he; exact absurd he (by decide)
+
+instance : MonadExcept Err Parser where
+  throw e  := GParser.throwErr e
+  tryCatch := GParser.tryCatch
 
 end Grip
 
@@ -176,14 +218,14 @@ private def twoDigits : Parser (UInt8 × UInt8) := do
   let b ← digitP
   return (a, b)
 
-#guard (GParser.parse twoDigits "57".toUTF8) == some (53, 55)
+#guard (GParser.run? twoDigits "57".toUTF8) == some (53, 55)
 
 -- `Alternative`: `<|>` and `failure` work at `Parser`.
 private def digitOrFail : Parser UInt8 :=
   digitP <|> failure
 
-#guard (GParser.parse digitOrFail "5".toUTF8) == some 53
-#guard (GParser.parse digitOrFail "/".toUTF8) == none
+#guard (GParser.run? digitOrFail "5".toUTF8) == some 53
+#guard (GParser.run? digitOrFail "/".toUTF8) == none
 
 -- `GParser.many` requires `consumes = always`; `conditional` qualifies.
 -- Uncommenting the line below would produce a TYPE ERROR (pure has `consumes = never`):
@@ -199,7 +241,32 @@ private def twoBytes : GParser conditional (UInt8 × UInt8) :=
     let b ← GParser.satisfy (fun _ => true)
     return (a, b)
 
-#guard (GParser.parse twoBytes "AB".toUTF8) == some (65, 66)
-#guard (GParser.parse twoBytes "".toUTF8) == none
+#guard (GParser.run? twoBytes "AB".toUTF8) == some (65, 66)
+#guard (GParser.run? twoBytes "".toUTF8) == none
+
+-- BEq for Except ParseError, needed by the #guard comparisons below.
+private instance instBEqExceptPE {β : Type} [BEq β] : BEq (Except ParseError β) where
+  beq
+    | .error e1, .error e2 => e1 == e2
+    | .ok a,     .ok b     => a == b
+    | _,         _         => false
+
+-- `GParser.parse` surfaces a `ParseError` with positioned information.
+private def digitOrErr : Parser Nat :=
+  GParser.weakenFallible (GParser.nat <?> "number")
+
+#guard (digitOrErr.parse "abc".toUTF8
+        == (.error { pos := 0, line := 1, col := 1, expected := ["number"] } :
+            Except ParseError Nat))
+#guard (digitOrErr.parse "42".toUTF8 == (.ok 42 : Except ParseError Nat))
+
+-- `pretty` renders `line:col: message`, the source line, and a caret.
+-- Construct a ParseError at (line=3, col=2) manually to test the renderer.
+-- Source "a\nb\n1": pos=5 (one past end) is line 3, col 2.
+private def prettyTest : String :=
+  let e : ParseError := { pos := 5, line := 3, col := 2, expected := ["!"] }
+  e.pretty "a\nb\n1".toUTF8
+
+#guard prettyTest == "3:2: expected !\n1\n ^"
 
 end Guards
