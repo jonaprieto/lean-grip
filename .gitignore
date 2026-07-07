@@ -1,0 +1,4 @@
+/.lake
+/grip-props/.lake
+*.olean
+.DS_Store

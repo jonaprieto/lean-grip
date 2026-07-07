@@ -1,0 +1,24 @@
+name = "grip"
+version = "0.1.0"
+defaultTargets = ["Grip"]
+
+[leanOptions]
+autoImplicit = false
+relaxedAutoImplicit = false
+
+[[lean_lib]]
+name = "Grip"
+
+[[lean_lib]]
+name = "Test"
+srcDir = "test"
+
+[[lean_exe]]
+name = "bench"
+root = "Bench"
+srcDir = "bench"
+
+[[require]]
+name = "batteries"
+git = "https://github.com/leanprover-community/batteries"
+rev = "v4.28.0"
