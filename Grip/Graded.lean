@@ -9,7 +9,7 @@ import Grip.Grade
 # Grip.Graded — a compiled, byte-level graded parser backend
 
 Shallow (combinators are `@[inline]` functions the Lean compiler fuses into the grammar),
-over a raw `ByteArray` with `Nat` positions, results as `Option (α × Nat)` — no
+over a raw `ByteArray` with `Nat` positions, results as `Except Nat (α × Nat)` — no
 reified tree, no boxed `Char`, no witness-carrying outcome at runtime.
 
 The `Grade` index (error × consumption `Necessity`) is threaded through the
@@ -17,10 +17,13 @@ combinator types exactly as in a graded monad, so the same static discipline hol
 
 `GParser` carries three *erased* `Prop` witnesses tying the grade to runtime:
 - `cwit` (a success advances the offset exactly as `consumes` claims),
-- `ewit` (`always`-error never succeeds),
-- `swit` (`never`-error always succeeds).
+- `ewit` (`always`-error never succeeds — every input yields an `.error k` at some
+  furthest offset `k`),
+- `swit` (`never`-error always succeeds — every input yields `.ok (a, q')`).
 
-The witnesses erase, so `run` stays the bare `Option` fast path.
+The witnesses erase, so `run` stays the bare `Except` fast path.  The offset in
+`.error k` records the furthest byte position any attempted branch reached, enabling
+precise error reporting without a second pass.
 
 Ported from `prim-parser/PrimParser/Byte.lean` (lines 39-482). No mathlib.
 -/
@@ -30,24 +33,26 @@ open Grade
 
 namespace Grip
 
-/-- A byte-level parser with static grade `g`, producing `α`. `run` returns the
-value and the new byte offset, or `none` on failure.
+/-- A byte-level parser with static grade `g`, producing `α`. `run` returns
+`.ok (value, new_offset)` on success, or `.error k` on failure where `k` is the
+furthest byte offset any attempted branch reached.
 
 The three `Prop` fields are the *grade soundness* witnesses; they are erased at
 runtime (proof-irrelevant, carrying no data), so `run` is the whole runtime cost. -/
 structure GParser (g : Grade) (α : Type) where
-  /-- Run the parser at an offset, returning the value and new offset, or `none`. -/
-  run : ByteArray → Nat → Option (α × Nat)
+  /-- Run the parser at an offset, returning `.ok (value, new_offset)` on success
+  or `.error k` on failure where `k` is the furthest byte offset reached. -/
+  run : ByteArray → Nat → Except Nat (α × Nat)
   /-- Consumption soundness: a successful parse advances the offset exactly as the
   grade's `consumes` component claims (`always ⇒ q<q'`, `possibly ⇒ q≤q'`,
   `never ⇒ q=q'`). -/
-  cwit : ∀ {arr q a q'}, run arr q = some (a, q') → consumptionWitness q q' g.consumes
+  cwit : ∀ {arr q a q'}, run arr q = .ok (a, q') → consumptionWitness q q' g.consumes
   /-- Error soundness, must-fail direction: a grade claiming `always`-error never
-  succeeds. -/
-  ewit : g.errors = always → ∀ arr q, run arr q = none
+  succeeds — for every input there exists a furthest failure offset `k`. -/
+  ewit : g.errors = always → ∀ arr q, ∃ k, run arr q = .error k
   /-- Error soundness, must-succeed direction: a grade claiming `never`-error always
-  succeeds. -/
-  swit : g.errors = never → ∀ arr q, (run arr q).isSome = true
+  succeeds — for every input there exist a value `a` and next offset `q'`. -/
+  swit : g.errors = never → ∀ arr q, ∃ a q', run arr q = .ok (a, q')
 
 variable {g g' : Grade} {ge ge' gc gc' : Necessity} {α β : Type}
 
@@ -62,51 +67,64 @@ private theorem cw_seq {c0 c1 : Necessity} {q r s : Nat}
 
 /-- A success rules out the `always`-error grade (via `ewit`). -/
 theorem GParser.errors_ne_always {g : Grade} {α} (p : GParser g α) {arr q a q'}
-    (h : p.run arr q = some (a, q')) : g.errors ≠ always := fun he => by
-  rw [p.ewit he arr q] at h; exact absurd h (by simp)
+    (h : p.run arr q = .ok (a, q')) : g.errors ≠ always := fun he => by
+  obtain ⟨k, hk⟩ := p.ewit he arr q
+  rw [hk] at h; exact absurd h (by simp)
 
 /-- A failure rules out the `never`-error grade (via `swit`). -/
-theorem GParser.errors_ne_never {g : Grade} {α} (p : GParser g α) {arr q}
-    (h : p.run arr q = none) : g.errors ≠ never := fun he => by
-  have := p.swit he arr q; rw [h] at this; exact absurd this (by simp)
+theorem GParser.errors_ne_never {g : Grade} {α} (p : GParser g α) {arr q k}
+    (h : p.run arr q = .error k) : g.errors ≠ never := fun he => by
+  obtain ⟨a, q', ha⟩ := p.swit he arr q
+  rw [ha] at h; exact absurd h (by simp)
 
 /-! ### Primitive combinators -/
 
 /-- Consume nothing, never fail. -/
 @[inline] def GParser.pure (a : α) : GParser 1 α where
-  run := fun _ p => some (a, p)
-  cwit := by intro arr q b q' h; simp only [Option.some.injEq, Prod.mk.injEq] at h; exact h.2
+  run := fun _ p => .ok (a, p)
+  cwit := by
+    intro arr q b q' h
+    simp only [Except.ok.injEq, Prod.mk.injEq] at h
+    exact h.2
   ewit := by intro he; exact absurd he (by decide)
-  swit := by intro _ _ _; rfl
+  swit := by intro _ arr q; exact ⟨a, q, rfl⟩
 
-/-- Always fail. -/
+/-- Always fail, recording the current position as the furthest offset reached. -/
 @[inline] def GParser.fail : GParser empty α where
-  run := fun _ _ => none
+  run := fun _ p => .error p
   cwit := by intro arr q a q' h; exact absurd h (by simp)
-  ewit := by intro _ _ _; rfl
+  ewit := by intro _ arr q; exact ⟨q, rfl⟩
   swit := by intro he; exact absurd he (by decide)
 
-/-- Consume one byte satisfying `f`, or fail without consuming. -/
+/-- Consume one byte satisfying `f`, or fail without consuming.
+On failure the furthest offset is the current position `p`. -/
 @[inline] def GParser.satisfy (f : UInt8 → Bool) : GParser conditional UInt8 where
-  run := fun arr p => if h : p < arr.size then (if f arr[p] then some (arr[p], p + 1) else none) else none
+  run := fun arr p =>
+    if h : p < arr.size then
+      (if f arr[p] then .ok (arr[p], p + 1) else .error p)
+    else .error p
   cwit := by
     intro arr q a q' heq
     split at heq
     · split at heq
-      · injection heq with hpair; injection hpair with _ hq; omega
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at heq; omega
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
 
-/-- Match a specific byte. -/
+/-- Match a specific byte.
+On failure the furthest offset is the current position `p`. -/
 @[inline] def GParser.byte (c : UInt8) : GParser conditional Unit where
-  run := fun arr p => if h : p < arr.size then (if arr[p] == c then some ((), p + 1) else none) else none
+  run := fun arr p =>
+    if h : p < arr.size then
+      (if arr[p] == c then .ok ((), p + 1) else .error p)
+    else .error p
   cwit := by
     intro arr q a q' heq
     split at heq
     · split at heq
-      · injection heq with hpair; injection hpair with _ hq; omega
+      · simp only [Except.ok.injEq, Prod.mk.injEq] at heq; omega
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
   ewit := by intro he; exact absurd he (by decide)
@@ -114,110 +132,173 @@ theorem GParser.errors_ne_never {g : Grade} {α} (p : GParser g α) {arr q}
 
 /-- Map over the result (grade preserved). -/
 @[inline] def GParser.map (h : α → β) (x : GParser g α) : GParser g β where
-  run := fun arr p => (x.run arr p).map fun (a, p') => (h a, p')
+  run := fun arr p =>
+    match x.run arr p with
+    | .ok (a, p') => .ok (h a, p')
+    | .error k    => .error k
   cwit := by
     intro arr q b q' heq
-    rw [Option.map_eq_some_iff] at heq
-    obtain ⟨⟨xa, p'⟩, hx, hb⟩ := heq
-    obtain ⟨_, rfl⟩ : h xa = b ∧ p' = q' := by simpa using hb
-    exact x.cwit hx
-  ewit := by intro he arr q; simp [x.ewit he arr q]
+    split at heq
+    next a p' hx =>
+      simp only [Except.ok.injEq, Prod.mk.injEq] at heq
+      obtain ⟨_, rfl⟩ := heq
+      exact x.cwit hx
+    next k hx => exact absurd heq (by simp)
+  ewit := by
+    intro he arr q
+    obtain ⟨k, hk⟩ := x.ewit he arr q
+    exact ⟨k, by simp only [hk]⟩
   swit := by
     intro he arr q
-    have hs := x.swit he arr q
-    cases hx : x.run arr q with
-    | none => rw [hx] at hs; simp at hs
-    | some r => simp
+    obtain ⟨a, q', ha⟩ := x.swit he arr q
+    exact ⟨h a, q', by simp only [ha]⟩
 
-/-- Sequence, keeping the right value; grades multiply. -/
+/-- Sequence, keeping the right value; grades multiply.
+Furthest offset from either `x` or `y` propagates on failure. -/
 @[inline] def GParser.seqR (x : GParser g α) (y : GParser g' β) : GParser (g * g') β where
-  run := fun arr p => match x.run arr p with | some (_, p') => y.run arr p' | none => none
+  run := fun arr p =>
+    match x.run arr p with
+    | .ok (_, p') => y.run arr p'
+    | .error k    => .error k
   cwit := by
     intro arr q a q' heq
     split at heq
-    next fst p' hx => simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) (y.cwit heq)
-    next hx => exact absurd heq (by simp)
+    next fst p' hx =>
+      simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) (y.cwit heq)
+    next k hx => exact absurd heq (by simp)
   ewit := by
     intro he arr q
     simp only [grade_mul_errors, Necessity.max_always] at he
-    split
-    next fst p' hx =>
-      rcases he with he | he
-      · rw [x.ewit he arr q] at hx; exact absurd hx (by simp)
-      · exact y.ewit he arr p'
-    next hx => rfl
+    rcases he with he | he
+    · obtain ⟨k, hk⟩ := x.ewit he arr q
+      exact ⟨k, by simp only [hk]⟩
+    · cases hx : x.run arr q with
+      | ok r =>
+        obtain ⟨_, p'⟩ := r
+        obtain ⟨k, hk⟩ := y.ewit he arr p'
+        exact ⟨k, hk⟩
+      | error k => exact ⟨k, rfl⟩
   swit := by
     intro he arr q
     simp only [grade_mul_errors, Necessity.max_never] at he
     obtain ⟨he1, he2⟩ := he
-    split
-    next fst p' hx => exact y.swit he2 arr p'
-    next hx => have := x.swit he1 arr q; rw [hx] at this; simp at this
+    cases hx : x.run arr q with
+    | ok r =>
+      obtain ⟨c, p'⟩ := r
+      obtain ⟨a, q', ha⟩ := y.swit he2 arr p'
+      exact ⟨a, q', ha⟩
+    | error k =>
+      obtain ⟨a, q', ha⟩ := x.swit he1 arr q
+      rw [ha] at hx; exact absurd hx (by simp)
 
-/-- Sequence, keeping the left value; grades multiply. -/
+/-- Sequence, keeping the left value; grades multiply.
+Furthest offset propagates on failure. -/
 @[inline] def GParser.seqL (x : GParser g α) (y : GParser g' β) : GParser (g * g') α where
-  run := fun arr p => match x.run arr p with
-    | some (a, p') => match y.run arr p' with | some (_, p'') => some (a, p'') | none => none
-    | none => none
+  run := fun arr p =>
+    match x.run arr p with
+    | .ok (a, p') =>
+      match y.run arr p' with
+      | .ok (_, p'') => .ok (a, p'')
+      | .error k     => .error k
+    | .error k => .error k
   cwit := by
     intro arr q a q' heq
     split at heq
     next fst p' hx =>
       split at heq
       next snd p'' hy =>
-        simp only [Option.some.injEq, Prod.mk.injEq] at heq
+        simp only [Except.ok.injEq, Prod.mk.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) (y.cwit hy)
-      next hy => exact absurd heq (by simp)
-    next hx => exact absurd heq (by simp)
+      next k hy => exact absurd heq (by simp)
+    next k hx => exact absurd heq (by simp)
   ewit := by
     intro he arr q
     simp only [grade_mul_errors, Necessity.max_always] at he
-    split
-    next fst p' hx =>
-      rcases he with he | he
-      · rw [x.ewit he arr q] at hx; exact absurd hx (by simp)
-      · rw [y.ewit he arr p']
-    next hx => rfl
+    rcases he with he | he
+    · obtain ⟨k, hk⟩ := x.ewit he arr q
+      exact ⟨k, by simp only [hk]⟩
+    · cases hx : x.run arr q with
+      | ok r =>
+        obtain ⟨_, p'⟩ := r
+        obtain ⟨k, hk⟩ := y.ewit he arr p'
+        exact ⟨k, by simp only [hk]⟩
+      | error k => exact ⟨k, rfl⟩
   swit := by
     intro he arr q
     simp only [grade_mul_errors, Necessity.max_never] at he
     obtain ⟨he1, he2⟩ := he
-    split
-    next fst p' hx =>
-      split
-      next snd p'' hy => rfl
-      next hy => have := y.swit he2 arr p'; rw [hy] at this; simp at this
-    next hx => have := x.swit he1 arr q; rw [hx] at this; simp at this
+    cases hx : x.run arr q with
+    | ok r =>
+      obtain ⟨a, p'⟩ := r
+      cases hy : y.run arr p' with
+      | ok s =>
+        obtain ⟨_, p''⟩ := s
+        exact ⟨a, p'', by simp only [hy]⟩
+      | error k =>
+        obtain ⟨b, q'', hb⟩ := y.swit he2 arr p'
+        rw [hb] at hy; exact absurd hy (by simp)
+    | error k =>
+      obtain ⟨a, q', ha⟩ := x.swit he1 arr q
+      rw [ha] at hx; exact absurd hx (by simp)
 
-/-- Ordered choice; grade follows `Grade.choice`. -/
+/-- Ordered choice; grade follows `Grade.choice`.
+On failure, `.error (max kx ky)` records the furthest offset either branch reached
+(megaparsec-style furthest-failure merge). -/
 @[inline] def GParser.alt (x : GParser ⟨ge, gc⟩ α) (y : GParser ⟨ge', gc'⟩ α) :
     GParser ⟨min ge ge', ge.ite gc' gc⟩ α where
-  run := fun arr p => match x.run arr p with | some r => some r | none => y.run arr p
+  run := fun arr p =>
+    match x.run arr p with
+    | .ok r  => .ok r
+    | .error kx =>
+      match y.run arr p with
+      | .ok r  => .ok r
+      | .error ky => .error (max kx ky)
   cwit := by
     intro arr q a q' heq
     split at heq
-    next r hx =>
-      obtain rfl := Option.some.inj heq
-      exact consumptionWitness.ite_left (le_possibly_of_ne_always (x.errors_ne_always hx)) (x.cwit hx)
-    next hx =>
-      exact consumptionWitness.ite_right (possibly_le_of_ne_never (x.errors_ne_never hx)) (y.cwit heq)
+    · -- x succeeded
+      rename_i r hx
+      obtain rfl : r = (a, q') := Except.ok.inj heq
+      exact consumptionWitness.ite_left
+        (le_possibly_of_ne_always (x.errors_ne_always hx)) (x.cwit hx)
+    · -- x failed; try y
+      rename_i kx hx
+      split at heq
+      · rename_i r hy
+        obtain rfl : r = (a, q') := Except.ok.inj heq
+        exact consumptionWitness.ite_right
+          (possibly_le_of_ne_never (x.errors_ne_never hx)) (y.cwit hy)
+      · exact absurd heq (by simp)
   ewit := by
     intro he arr q
     simp only [Necessity.min_always] at he
     obtain ⟨he1, he2⟩ := he
-    split
-    next r hx => rw [x.ewit he1 arr q] at hx; exact absurd hx (by simp)
-    next hx => exact y.ewit he2 arr q
+    cases hx : x.run arr q with
+    | ok r =>
+      obtain ⟨k, hk⟩ := x.ewit he1 arr q
+      rw [hk] at hx; exact absurd hx (by simp)
+    | error kx =>
+      obtain ⟨k, hk⟩ := y.ewit he2 arr q
+      exact ⟨max kx k, by simp only [hk]⟩
   swit := by
     intro he arr q
     simp only [Necessity.min_never] at he
-    split
-    next r hx => rfl
-    next hx =>
-      rcases he with hg | hg
-      · have := x.swit hg arr q; rw [hx] at this; simp at this
-      · exact y.swit hg arr q
+    cases hx : x.run arr q with
+    | ok r =>
+      obtain ⟨a, q'⟩ := r
+      exact ⟨a, q', rfl⟩
+    | error kx =>
+      cases hy : y.run arr q with
+      | ok r =>
+        obtain ⟨a, q'⟩ := r
+        exact ⟨a, q', rfl⟩
+      | error ky =>
+        rcases he with hg | hg
+        · obtain ⟨a, q', ha⟩ := x.swit hg arr q
+          rw [ha] at hx; exact absurd hx (by simp)
+        · obtain ⟨a, q', ha⟩ := y.swit hg arr q
+          rw [ha] at hy; exact absurd hy (by simp)
 
 /-! ### Scanners and repetition -/
 
@@ -245,30 +326,32 @@ theorem scanFwd_gt (arr : ByteArray) (f : UInt8 → Bool) (q : Nat)
   rw [scanFwd, dif_pos h, if_pos hf]
   exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q) (scanFwd_ge arr f (q + 1))
 
-/-- Scan while `f` holds, returning the number of bytes consumed. -/
+/-- Scan while `f` holds, returning the number of bytes consumed.
+Always succeeds (result is `.ok`). -/
 @[inline] def GParser.takeWhile (f : UInt8 → Bool) : GParser flexible Nat where
-  run := fun arr p => let q := scanFwd arr f p; some (q - p, q)
+  run := fun arr p => let q := scanFwd arr f p; .ok (q - p, q)
   cwit := by
     intro arr q a q' heq
-    simp only [Option.some.injEq, Prod.mk.injEq] at heq
+    simp only [Except.ok.injEq, Prod.mk.injEq] at heq
     obtain ⟨_, rfl⟩ := heq
     exact scanFwd_ge arr f q
   ewit := by intro he; exact absurd he (by decide)
-  swit := by intro _ _ _; rfl
+  swit := by intro _ arr q; exact ⟨_, _, rfl⟩
 
-/-- One-or-more bytes satisfying `f`. -/
+/-- One-or-more bytes satisfying `f`.
+On failure the furthest offset is the current position. -/
 @[inline] def GParser.takeWhile1 (f : UInt8 → Bool) : GParser conditional Nat where
   run := fun arr p =>
     if h : p < arr.size then
-      if f arr[p] then (GParser.takeWhile f).run arr p else none
-    else none
+      if f arr[p] then (GParser.takeWhile f).run arr p else .error p
+    else .error p
   cwit := by
     intro arr q a q' heq
     split at heq
     · rename_i hbound
       split at heq
       · rename_i hf
-        simp only [GParser.takeWhile, Option.some.injEq, Prod.mk.injEq] at heq
+        simp only [GParser.takeWhile, Except.ok.injEq, Prod.mk.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         exact scanFwd_gt arr f q hbound hf
       · exact absurd heq (by simp)
@@ -282,9 +365,9 @@ guard `q < q' ≤ arr.size` guarantees the measure drops. -/
 def foldFwd {ge : Necessity} {α β : Type} (step : β → α → β) (p : GParser ⟨ge, always⟩ α)
     (arr : ByteArray) (a : β) (q : Nat) : β × Nat :=
   match p.run arr q with
-  | some (x, q') =>
+  | .ok (x, q') =>
     if _hq : q < q' ∧ q' ≤ arr.size then foldFwd step p arr (step a x) q' else (step a x, q')
-  | none => (a, q)
+  | .error _ => (a, q)
 termination_by arr.size - q
 decreasing_by (obtain ⟨h1, h2⟩ := _hq; omega)
 
@@ -298,83 +381,113 @@ theorem foldFwd_ge {ge : Necessity} {α β : Type} (step : β → α → β) (p 
     split
     · exact Nat.le_trans (Nat.le_of_lt hlt) (foldFwd_ge step p arr (step a x) q')
     · exact Nat.le_of_lt hlt
-  next hp => exact Nat.le_refl q
+  next => exact Nat.le_refl q
 termination_by arr.size - q
 decreasing_by omega
 
-/-- Fold `p` zero-or-more times into `acc` (no list). Total (see `foldFwd`). -/
+/-- Fold `p` zero-or-more times into `acc` (no list). Total (see `foldFwd`).
+Always succeeds (result is `.ok`). -/
 @[inline] def GParser.foldMany (h : β → α → β) (acc : β) (p : GParser ⟨ge, always⟩ α) :
     GParser flexible β where
-  run := fun arr pos => some (foldFwd h p arr acc pos)
+  run := fun arr pos => .ok (foldFwd h p arr acc pos)
   cwit := by
     intro arr pos b q' heq
+    simp only [Except.ok.injEq] at heq
     have hge := foldFwd_ge h p arr acc pos
-    rw [Option.some.inj heq] at hge
+    rw [heq] at hge
     exact hge
   ewit := by intro he; exact absurd he (by decide)
-  swit := by intro _ _ _; rfl
+  swit := by intro _ arr pos; exact ⟨_, _, rfl⟩
 
-/-- Monadic bind; grades multiply. -/
+/-- Monadic bind; grades multiply.
+Furthest offset propagates on failure. -/
 @[inline] def GParser.bind (x : GParser g α) (f : α → GParser g' β) : GParser (g * g') β where
-  run := fun arr p => match x.run arr p with | some (a, p') => (f a).run arr p' | none => none
+  run := fun arr p =>
+    match x.run arr p with
+    | .ok (a, p') => (f a).run arr p'
+    | .error k    => .error k
   cwit := by
     intro arr q a q' heq
     split at heq
-    next fst p' hx => simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) ((f fst).cwit heq)
-    next hx => exact absurd heq (by simp)
+    next fst p' hx =>
+      simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) ((f fst).cwit heq)
+    next k hx => exact absurd heq (by simp)
   ewit := by
     intro he arr q
     simp only [grade_mul_errors, Necessity.max_always] at he
-    split
-    next fst p' hx =>
-      rcases he with he | he
-      · rw [x.ewit he arr q] at hx; exact absurd hx (by simp)
-      · exact (f fst).ewit he arr p'
-    next hx => rfl
+    rcases he with he | he
+    · obtain ⟨k, hk⟩ := x.ewit he arr q
+      exact ⟨k, by simp only [hk]⟩
+    · cases hx : x.run arr q with
+      | ok r =>
+        obtain ⟨fst, p'⟩ := r
+        obtain ⟨k, hk⟩ := (f fst).ewit he arr p'
+        exact ⟨k, hk⟩
+      | error k => exact ⟨k, rfl⟩
   swit := by
     intro he arr q
     simp only [grade_mul_errors, Necessity.max_never] at he
     obtain ⟨he1, he2⟩ := he
-    split
-    next fst p' hx => exact (f fst).swit he2 arr p'
-    next hx => have := x.swit he1 arr q; rw [hx] at this; simp at this
+    cases hx : x.run arr q with
+    | ok r =>
+      obtain ⟨fst, p'⟩ := r
+      obtain ⟨a, q', ha⟩ := (f fst).swit he2 arr p'
+      exact ⟨a, q', ha⟩
+    | error k =>
+      obtain ⟨a, q', ha⟩ := x.swit he1 arr q
+      rw [ha] at hx; exact absurd hx (by simp)
 
-/-- Apply a binary function across two parses; grades multiply. -/
+/-- Apply a binary function across two parses; grades multiply.
+Furthest offset propagates on failure. -/
 @[inline] def GParser.map2 {γ : Type} (f : α → β → γ) (x : GParser g α) (y : GParser g' β) :
     GParser (g * g') γ where
-  run := fun arr p => match x.run arr p with
-    | some (a, p') => match y.run arr p' with | some (b, p'') => some (f a b, p'') | none => none
-    | none => none
+  run := fun arr p =>
+    match x.run arr p with
+    | .ok (a, p') =>
+      match y.run arr p' with
+      | .ok (b, p'') => .ok (f a b, p'')
+      | .error k     => .error k
+    | .error k => .error k
   cwit := by
     intro arr q a q' heq
     split at heq
     next fst p' hx =>
       split at heq
       next snd p'' hy =>
-        simp only [Option.some.injEq, Prod.mk.injEq] at heq
+        simp only [Except.ok.injEq, Prod.mk.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) (y.cwit hy)
-      next hy => exact absurd heq (by simp)
-    next hx => exact absurd heq (by simp)
+      next k hy => exact absurd heq (by simp)
+    next k hx => exact absurd heq (by simp)
   ewit := by
     intro he arr q
     simp only [grade_mul_errors, Necessity.max_always] at he
-    split
-    next fst p' hx =>
-      rcases he with he | he
-      · rw [x.ewit he arr q] at hx; exact absurd hx (by simp)
-      · rw [y.ewit he arr p']
-    next hx => rfl
+    rcases he with he | he
+    · obtain ⟨k, hk⟩ := x.ewit he arr q
+      exact ⟨k, by simp only [hk]⟩
+    · cases hx : x.run arr q with
+      | ok r =>
+        obtain ⟨_, p'⟩ := r
+        obtain ⟨k, hk⟩ := y.ewit he arr p'
+        exact ⟨k, by simp only [hk]⟩
+      | error k => exact ⟨k, rfl⟩
   swit := by
     intro he arr q
     simp only [grade_mul_errors, Necessity.max_never] at he
     obtain ⟨he1, he2⟩ := he
-    split
-    next fst p' hx =>
-      split
-      next snd p'' hy => rfl
-      next hy => have := y.swit he2 arr p'; rw [hy] at this; simp at this
-    next hx => have := x.swit he1 arr q; rw [hx] at this; simp at this
+    cases hx : x.run arr q with
+    | ok r =>
+      obtain ⟨a, p'⟩ := r
+      cases hy : y.run arr p' with
+      | ok s =>
+        obtain ⟨b, p''⟩ := s
+        exact ⟨f a b, p'', by simp only [hy]⟩
+      | error k =>
+        obtain ⟨b, q'', hb⟩ := y.swit he2 arr p'
+        rw [hb] at hy; exact absurd hy (by simp)
+    | error k =>
+      obtain ⟨a, q', ha⟩ := x.swit he1 arr q
+      rw [ha] at hx; exact absurd hx (by simp)
 
 /-- Fold decimal digits into `acc`. **Total** — structural on `arr.size - q`. -/
 def natFwd (arr : ByteArray) (acc q : Nat) : Nat × Nat :=
@@ -412,19 +525,20 @@ theorem natFwd_gt (arr : ByteArray) (acc q : Nat) (h : q < arr.size)
   rw [natFwd_eq, dif_pos h, if_pos hd]
   exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q) (natFwd_ge arr (acc * 10 + (arr[q].toNat - 48)) (q + 1))
 
-/-- Parse a decimal natural number (one or more digits). Always consumes on success. -/
+/-- Parse a decimal natural number (one or more digits). Always consumes on success.
+On failure the furthest offset is the current position. -/
 @[inline] def GParser.nat : GParser conditional Nat where
   run := fun arr p0 =>
     if h : p0 < arr.size then
-      let b := arr[p0]; if 48 ≤ b && b ≤ 57 then some (natFwd arr 0 p0) else none
-    else none
+      let b := arr[p0]; if 48 ≤ b && b ≤ 57 then .ok (natFwd arr 0 p0) else .error p0
+    else .error p0
   cwit := by
     intro arr q a q' heq
     split at heq
     · rename_i hbound
       by_cases hd : (48 ≤ arr[q] && arr[q] ≤ 57) = true
       · have hgt := natFwd_gt arr 0 q hbound hd
-        simp only [hd, if_true, Option.some.injEq] at heq
+        simp only [hd, if_true, Except.ok.injEq] at heq
         rw [heq] at hgt
         exact hgt
       · simp only [Bool.not_eq_true] at hd
@@ -433,34 +547,46 @@ theorem natFwd_gt (arr : ByteArray) (acc q : Nat) (h : q < arr.size)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
 
-/-- Consume exactly `n` bytes if available. -/
+/-- Consume exactly `n` bytes if available.
+On failure the furthest offset is the current position. -/
 @[inline] def GParser.takeN (n : Nat) : GParser fallible Unit where
-  run := fun arr p => if p + n ≤ arr.size then some ((), p + n) else none
+  run := fun arr p => if p + n ≤ arr.size then .ok ((), p + n) else .error p
   cwit := by
     intro arr q a q' heq
     split at heq
-    · injection heq with hpair; injection hpair with _ hq; omega
+    · simp only [Except.ok.injEq, Prod.mk.injEq] at heq; omega
     · exact absurd heq (by simp)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
 
-/-- Zero-or-more `p` (always-consuming) into a list. Total (via `foldFwd`). -/
+/-- Zero-or-more `p` (always-consuming) into a list. Total (via `foldFwd`).
+Always succeeds (result is `.ok`). -/
 @[inline] def GParser.many (p : GParser ⟨ge, always⟩ α) : GParser flexible (List α) where
-  run := fun arr pos => let (xs, q) := foldFwd (fun acc x => x :: acc) p arr [] pos; some (xs.reverse, q)
+  run := fun arr pos =>
+    match foldFwd (fun acc x => x :: acc) p arr [] pos with
+    | (xs, q) => .ok (xs.reverse, q)
   cwit := by
     intro arr pos b q' heq
     have hge := foldFwd_ge (fun acc x => x :: acc) p arr ([] : List α) pos
-    cases hfold : foldFwd (fun acc x => x :: acc) p arr ([] : List α) pos with
-    | mk xs q =>
-      simp only [Option.some.injEq, Prod.mk.injEq] at heq
+    split at heq
+    next xs q hfold =>
+      simp only [Except.ok.injEq, Prod.mk.injEq] at heq
       obtain ⟨_, rfl⟩ := heq
+      rw [hfold] at hge
       exact hge
   ewit := by intro he; exact absurd he (by decide)
-  swit := by intro _ _ _; rfl
+  swit := by
+    intro _ arr pos
+    split
+    next xs q _ => exact ⟨xs.reverse, q, rfl⟩
 
-/-- Parse a `ByteArray` from offset 0, returning only the value (no position). -/
+/-- Parse a `ByteArray` from offset 0, returning only the value (no position).
+Maps `.ok (a, _)` to `some a` and `.error _` to `none` so existing callers are
+unchanged. -/
 @[inline] def GParser.parse (p : GParser g α) (arr : ByteArray) : Option α :=
-  (p.run arr 0).map (·.1)
+  match p.run arr 0 with
+  | .ok (a, _) => some a
+  | .error _   => none
 
 /-! ### Grade weakening -/
 
