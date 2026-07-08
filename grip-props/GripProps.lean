@@ -4,11 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 -/
 import GripProps.GradedMonad
 import GripProps.Lawful
+import GripProps.GradeSound
+import GripProps.Productivity
+import GripProps.ChoiceGrade
 
 /-!
 # grip-props
 
 Machine-checked metatheory for grip: the lawful graded-monad instances for `GParser`,
-and (as they land) grade soundness, the totality-not-productivity gap, and the
-choice-grade result. Depends on grip + mathlib.
+grade soundness, the totality-not-productivity gap, and the impossible-grade result.
+Depends on grip + mathlib.
 -/
