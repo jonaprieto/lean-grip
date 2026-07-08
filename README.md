@@ -116,9 +116,13 @@ self-timed, all on the same file and machine. grip's parser is
 Apples-to-apples, both validating, grip is about **6.8x faster than lean4-parser**
 (grip ~40ms, lean4-parser ~273ms). Lean's built-in `Lean.Json.parse` takes ~68ms but
 builds a full DOM -- strictly more work than grip's validator, so treat that as context,
-not a like-for-like win. Haskell's attoparsec (~19.5ms, DOM build) is a published
-cross-language reference, not run here. grip's open tuning target is `Except`-per-step
-boxing; first-byte `dispatch` already cut ~18% off the parse. See
+not a like-for-like win.
+
+For scale, Rust's `nom` does the same leaf-count parse in ~2ms and a hand-written Lean
+scanner in ~13ms. `bench/RESULTS.md` attributes grip's gap: result boxing is only ~15% of
+it (a single-constructor result would recover that), the larger share is combinator
+`run`-closure indirection that Lean does not monomorphize the way Rust does, and the rest
+is the Lean runtime floor. First-byte `dispatch` already cut ~18% off the parse. See
 [bench/RESULTS.md](bench/RESULTS.md); regenerate with `lake exe bench` and
 `sh bench/mkchart.sh`.
 

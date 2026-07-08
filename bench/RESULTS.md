@@ -52,14 +52,39 @@ best time.
 others; `lambda` reports a success flag). These stress the shared combinators (`fix`,
 `dispatch`, `capture`, `many`) across recursive, line-oriented, and nested grammars.
 
-## Cross-language reference (not run here)
+## Where grip's time goes
 
-Haskell's attoparsec parses canada.json in ~19.5ms in nativejson-benchmark (DOM build,
-different language and runtime; a published number, not measured on this machine). It is
-context for where a fast native parser sits, not a like-for-like grip comparison.
+To attribute the gap to a fast native combinator library, the same leaf-count parse was
+run four ways on canada.json, best-of-20, same machine (all counted 111130):
 
-grip's open tuning target is `Except (α × Nat)`-per-step boxing in the combinator layer:
-every combinator allocates a boxed result. An unboxed result encoding is the path to
-closing that gap; the byte primitives themselves are already fast.
+| approach                                   | parse_ms | difference explained                         |
+|--------------------------------------------|---------:|----------------------------------------------|
+| Rust `nom` (byte-level, `fold_many0`)      |    ~2.0  | monomorphized, borrowed slices, no boxing    |
+| hand-written Lean scanner (no combinators) |   ~13.2  | the Lean runtime floor                       |
+| grip with a single-constructor result      |   ~33.8  | grip's model, one heap object per step       |
+| grip today (`Except Err (α × Nat)`)        |   ~40.0  | two heap objects per step (`Except` + `Prod`) |
+
+Reading the steps:
+
+- **Result boxing (~40 to ~34):** merging `Except Err (α × Nat)` into a single
+  `ok a pos | err` constructor removes one allocation per step, worth about 15%. Real,
+  but not where most of the time is, and it would touch every combinator and every
+  soundness proof.
+- **Combinator indirection (~34 to ~13):** the largest share. Each combinator is a
+  `GParser` struct whose `run` is a closure; Lean calls through those closures instead
+  of inlining the grammar into one flat function the way Rust monomorphizes `nom`.
+  Closing this needs a monomorphizing or CPS redesign, not a result-type tweak.
+- **Language floor (~13 to ~2):** reference counting, bounds-checked `ByteArray`
+  indexing, and no monomorphization. Even a hand-written Lean scanner stays ~6.5x off
+  `nom`; that part is the runtime, not grip.
+
+So grip is the fast *combinator* option in Lean, and a hand-written scanner or a
+systems-language library like `nom` will beat it -- see the README's "When to reach for
+grip". Haskell's attoparsec (~19.5ms, DOM build, nativejson-benchmark) is a published
+cross-language point, not run here.
+
+The `nom` parser used here is a byte-level leaf-counter matching grip's semantics
+(validate, count leaves, keys not counted, `fold_many0` so no per-element `Vec`); it is
+not shipped in this repo (no Rust in CI).
 
 Update this file by running `lake exe bench` and `sh bench/mkchart.sh`.
