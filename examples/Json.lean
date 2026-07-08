@@ -3,7 +3,7 @@ Copyright 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 -/
 
-import Grip.Parser
+import Grip
 
 /-!
 # Grip.Examples.Json -- byte-level JSON parser built on grip combinators
@@ -37,36 +37,27 @@ open Grip
 
 -- Byte predicates -------------------------------------------------------
 
-/-- JSON insignificant whitespace. -/
-@[inline] private def isWs (b : UInt8) : Bool :=
-  b == 32 || b == 10 || b == 9 || b == 13
-
 /-- Characters that may appear in a JSON number token (digits, sign, dot, exponent). -/
 @[inline] private def isNumCh (b : UInt8) : Bool :=
-  (48 ≤ b && b ≤ 57) || b == 46 || b == 45 || b == 43 || b == 101 || b == 69
-
-/-- ASCII letters, for the keywords `true`, `false`, `null`. -/
-@[inline] private def isAlpha (b : UInt8) : Bool :=
-  (97 ≤ b && b ≤ 122) || (65 ≤ b && b ≤ 90)
+  Ascii.isDigit b || b == Ascii.dot || b == Ascii.dash || b == Ascii.plus
+    || b == Ascii.code 'e' || b == Ascii.code 'E'
 
 -- Grip combinator leaf parsers -------------------------------------------
 
 /-- Skip insignificant whitespace. Grade `flexible` (never errors, possibly consumes). -/
-@[inline] private def ws : GParser flexible Nat := GParser.takeWhile isWs
+@[inline] private def ws : GParser flexible Nat := GParser.ws
 
 /-- A keyword (`true`/`false`/`null`) as an ASCII-letter run. Leaf count 1. `conditional`. -/
 @[inline] private def keyword : GParser conditional Nat :=
-  GParser.map (fun _ => 1) (GParser.takeWhile1 isAlpha)
+  (fun _ => 1) <$> GParser.takeWhile1 Ascii.isAlpha
 
 /-- A number token (a run of number characters). Leaf count 1. `conditional`. -/
 @[inline] private def number : GParser conditional Nat :=
-  GParser.map (fun _ => 1) (GParser.takeWhile1 isNumCh)
+  (fun _ => 1) <$> GParser.takeWhile1 isNumCh
 
 /-- A string `"..."` (escape-transparent scan to the closing quote). Leaf count 1. `conditional`. -/
 @[inline] private def jstring : GParser conditional Nat :=
-  GParser.seqR (GParser.byte 34)                      -- opening '"'
-    (GParser.seqR (GParser.takeWhile (· != 34))        -- content bytes
-      (GParser.map (fun _ => 1) (GParser.byte 34)))    -- closing '"', count 1
+  GParser.byteC '"' *> GParser.takeWhile (· != Ascii.quote) *> ((fun _ => 1) <$> GParser.byteC '"')
 
 -- Recursive value via `fix` ---------------------------------------------
 
@@ -76,42 +67,42 @@ private def value : GParser conditional Nat :=
   GParser.fix fun value =>
     -- ", value" element for arrays: the comma makes it always-consuming.
     let commaValue : GParser conditional Nat :=
-      GParser.seqR ws (GParser.seqR (GParser.byte 44) (GParser.seqR ws value))
+      GParser.seqR ws (GParser.seqR (GParser.byteC ',') (GParser.seqR ws value))
     let arrayBody : GParser flexible Nat :=
       GParser.alt
         (GParser.map2 (· + ·) value (GParser.foldMany (· + ·) 0 commaValue))
         (GParser.pure 0)
     let array : GParser conditional Nat :=
-      GParser.seqR (GParser.byte 91)                    -- '['
+      GParser.seqR (GParser.byteC '[')
         (GParser.seqR ws
-          (GParser.seqL arrayBody (GParser.seqR ws (GParser.byte 93))))  -- ']'
+          (GParser.seqL arrayBody (GParser.seqR ws (GParser.byteC ']'))))
     -- "key" : value member, returning the value's leaf count.
     let pair : GParser conditional Nat :=
       GParser.seqR jstring
-        (GParser.seqR ws (GParser.seqR (GParser.byte 58) (GParser.seqR ws value)))
+        (GParser.seqR ws (GParser.seqR (GParser.byteC ':') (GParser.seqR ws value)))
     let commaPair : GParser conditional Nat :=
-      GParser.seqR ws (GParser.seqR (GParser.byte 44) (GParser.seqR ws pair))
+      GParser.seqR ws (GParser.seqR (GParser.byteC ',') (GParser.seqR ws pair))
     let objectBody : GParser flexible Nat :=
       GParser.alt
         (GParser.map2 (· + ·) pair (GParser.foldMany (· + ·) 0 commaPair))
         (GParser.pure 0)
     let object : GParser conditional Nat :=
-      GParser.seqR (GParser.byte 123)                   -- '{'
+      GParser.seqR (GParser.byteC '{')
         (GParser.seqR ws
-          (GParser.seqL objectBody (GParser.seqR ws (GParser.byte 125))))  -- '}'
+          (GParser.seqL objectBody (GParser.seqR ws (GParser.byteC '}'))))
     -- Malformed leading byte: fail at the current position (conditional grade).
     let invalid : GParser conditional Nat :=
-      GParser.map (fun _ => 0) (GParser.satisfy (fun _ => false))
+      (fun _ => 0) <$> GParser.satisfy (fun _ => false)
     -- First-byte dispatch: peek the leading byte (after whitespace) and jump straight
     -- to the matching parser, instead of trying keyword/number/string/array/object in
     -- an `alt` chain and paying a failed attempt (plus an error allocation) per miss.
     GParser.seqR ws
       (GParser.dispatch fun b =>
-        if b == 123 then object                                  -- '{'
-        else if b == 91 then array                               -- '['
-        else if b == 34 then jstring                             -- '"'
-        else if b == 116 || b == 102 || b == 110 then keyword    -- 't'rue / 'f'alse / 'n'ull
-        else if (48 ≤ b && b ≤ 57) || b == 45 then number        -- digit or '-'
+        if b == Ascii.lbrace then object                        -- '{'
+        else if b == Ascii.lbracket then array                  -- '['
+        else if b == Ascii.quote then jstring                   -- '"'
+        else if b == Ascii.code 't' || b == Ascii.code 'f' || b == Ascii.code 'n' then keyword
+        else if Ascii.isDigit b || b == Ascii.dash then number  -- digit or '-'
         else invalid)
 
 /-- Parse one complete JSON value from `arr`; return the total leaf count.
