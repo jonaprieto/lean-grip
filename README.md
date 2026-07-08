@@ -139,11 +139,13 @@ Rust's `nom` ~2ms. See [bench/RESULTS.md](bench/RESULTS.md); regenerate with `la
 
 ## Acknowledgements
 
-grip took its inspiration and its initial byte core from
-[prim-parser](https://github.com/janmasrovira/prim-parser) by Jan Mas Rovira, the
-size-indexed, kernel-total graded parser grip descends from. The graded approach and the
-original combinator shapes are its; grip's byte-level core, `ParseResult`, first-byte
-`dispatch`, and the `@[specialize]` scan loops are where it diverged.
+grip took its central idea from
+[prim-parser](https://github.com/janmasrovira/prim-parser) by Jan Mas Rovira: a
+**`Necessity`-graded monad**, where each parser's type records whether it may error and
+whether it consumes input, and sequencing/choice combine those grades. That graded
+discipline (and the many-gate it enables) is prim-parser's contribution. grip carries it
+onto its own byte-level `ByteArray` core with erased soundness witnesses, and adds the
+`ParseResult` result, first-byte `dispatch`, and the `@[specialize]` scan loops.
 
 ## License
 
