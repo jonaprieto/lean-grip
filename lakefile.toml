@@ -13,6 +13,11 @@ name = "Grip"
 globs = ["Grip", "Grip.+"]
 
 [[lean_lib]]
+name = "Examples"
+srcDir = "examples"
+globs = ["Json"]
+
+[[lean_lib]]
 name = "Test"
 srcDir = "test"
 
