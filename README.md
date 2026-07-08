@@ -8,7 +8,7 @@ parsec/attoparsec infinite-loop footgun, is a **compile error**.
 [![CI](https://github.com/jonaprieto/grip/actions/workflows/ci.yml/badge.svg)](https://github.com/jonaprieto/grip/actions/workflows/ci.yml)
 [![Lean](https://img.shields.io/badge/Lean-v4.28.0-blue)](lean-toolchain)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
-[![canada.json](https://img.shields.io/badge/canada.json-~40ms%20(6.8x%20vs%20lean4--parser)-blue)](bench/RESULTS.md)
+[![canada.json](https://img.shields.io/badge/canada.json-~34ms%20(8x%20vs%20lean4--parser)-blue)](bench/RESULTS.md)
 
 ## Status
 
@@ -113,17 +113,17 @@ self-timed, all on the same file and machine. grip's parser is
 
 ![canada.json parse time](bench/results.svg)
 
-Apples-to-apples, both validating, grip is about **6.8x faster than lean4-parser**
-(grip ~40ms, lean4-parser ~273ms). Lean's built-in `Lean.Json.parse` takes ~68ms but
+Apples-to-apples, both validating, grip is about **8x faster than lean4-parser**
+(grip ~34ms, lean4-parser ~273ms). Lean's built-in `Lean.Json.parse` takes ~68ms but
 builds a full DOM -- strictly more work than grip's validator, so treat that as context,
 not a like-for-like win.
 
 For scale, Rust's `nom` does the same leaf-count parse in ~2ms and a hand-written Lean
-scanner in ~13ms. `bench/RESULTS.md` attributes grip's gap: result boxing is only ~15% of
-it (a single-constructor result would recover that), the larger share is combinator
-`run`-closure indirection that Lean does not monomorphize the way Rust does, and the rest
-is the Lean runtime floor. First-byte `dispatch` already cut ~18% off the parse. See
-[bench/RESULTS.md](bench/RESULTS.md); regenerate with `lake exe bench` and
+scanner in ~13ms. `bench/RESULTS.md` attributes grip's gap: result boxing (now merged
+into the single-constructor `ParseResult`, ~40ms to ~34ms) is done; the larger remaining
+share is combinator `run`-closure indirection that Lean does not monomorphize the way
+Rust does, and the rest is the Lean runtime floor. First-byte `dispatch` cut another ~18%
+earlier. See [bench/RESULTS.md](bench/RESULTS.md); regenerate with `lake exe bench` and
 `sh bench/mkchart.sh`.
 
 ## Packages
