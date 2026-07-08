@@ -132,6 +132,46 @@ On failure the furthest offset is the current position `p`. -/
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
 
+/-- Return the input slice a parser consumed, decoded as text (grade preserved). Lets
+combinator parsers build real syntax trees -- atom names, identifiers, header fields --
+instead of only structural counts. Invalid UTF-8 in the slice decodes to `""`. -/
+@[inline] def GParser.capture (p : GParser g α) : GParser g String where
+  run := fun arr q =>
+    match p.run arr q with
+    | .ok (_, q') => .ok ((String.fromUTF8? (arr.extract q q')).getD "", q')
+    | .error e    => .error e
+  cwit := by
+    intro arr q b q' heq
+    split at heq
+    next a p' hx =>
+      simp only [Except.ok.injEq, Prod.mk.injEq] at heq
+      obtain ⟨_, rfl⟩ := heq
+      exact p.cwit hx
+    next e hx => exact absurd heq (by simp)
+  ewit := by
+    intro he arr q
+    obtain ⟨e, he'⟩ := p.ewit he arr q
+    exact ⟨e, by simp only [he']⟩
+  swit := by
+    intro he arr q
+    obtain ⟨a, q', ha⟩ := p.swit he arr q
+    exact ⟨(String.fromUTF8? (arr.extract q q')).getD "", q', by simp only [ha]⟩
+
+/-- First-byte dispatch: read the current byte and run the parser `select` chooses for
+it, without an intermediate allocation. Fails without consuming at end-of-input. This is
+`peek`-then-branch fused into one step, so a keyword/number/string/array/object choice
+costs a single byte read and a jump rather than an `alt` chain of failed attempts. -/
+@[inline] def GParser.dispatch (select : UInt8 → GParser conditional α) :
+    GParser conditional α where
+  run := fun arr p => if h : p < arr.size then (select arr[p]).run arr p else .error ⟨p, []⟩
+  cwit := by
+    intro arr q a q' heq
+    split at heq
+    · exact (select _).cwit heq
+    · exact absurd heq (by simp)
+  ewit := by intro he; exact absurd he (by decide)
+  swit := by intro he; exact absurd he (by decide)
+
 /-- Map over the result (grade preserved). -/
 @[inline] def GParser.map (h : α → β) (x : GParser g α) : GParser g β where
   run := fun arr p =>
