@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="198" font-family="sans-serif">
 <text x="20" y="26" font-size="18" font-weight="bold">grip: canada.json parse time (ms, lower is better)</text>
 <text x="20" y="66" font-size="13">grip (combinators)</text>
-<rect x="230" y="52" width="49.8" height="24" rx="3" fill="#4c78a8"/>
-<text x="287.8" y="69" font-size="13">34.0</text>
+<rect x="230" y="52" width="29.3" height="24" rx="3" fill="#4c78a8"/>
+<text x="267.3" y="69" font-size="13">20.0</text>
 <text x="20" y="112" font-size="13">Lean.Json (core, built-in)</text>
 <rect x="230" y="98" width="99.6" height="24" rx="3" fill="#4c78a8"/>
 <text x="337.6" y="115" font-size="13">68.0</text>
