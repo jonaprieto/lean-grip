@@ -352,8 +352,10 @@ This is the megaparsec-style furthest-failure merge. -/
 /-! ### Scanners and repetition -/
 
 /-- Scan forward while `f` holds. **Total** -- structural on the measure
-`arr.size - q` (each step advances one byte, bounded by `arr.size`). -/
-def scanFwd (arr : ByteArray) (f : UInt8 → Bool) (q : Nat) : Nat :=
+`arr.size - q` (each step advances one byte, bounded by `arr.size`). `@[specialize]` so
+a known predicate (e.g. `Ascii.isWs`) is monomorphized into the loop rather than called
+indirectly per byte. -/
+@[specialize] def scanFwd (arr : ByteArray) (f : UInt8 → Bool) (q : Nat) : Nat :=
   if h : q < arr.size then (if f arr[q] then scanFwd arr f (q + 1) else q) else q
 termination_by arr.size - q
 decreasing_by omega
@@ -410,8 +412,9 @@ On failure the furthest offset is the current position. -/
 
 /-- Total repetition core: fold `p`'s results into `a`, advancing while `p` succeeds
 and strictly consumes (in bounds). **Total** -- structural on `arr.size - q`; the
-guard `q < q' ≤ arr.size` guarantees the measure drops. -/
-def foldFwd {ge : Necessity} {α β : Type} (step : β → α → β) (p : GParser ⟨ge, always⟩ α)
+guard `q < q' ≤ arr.size` guarantees the measure drops. `@[specialize]` so the `step`
+and the element parser fuse into the loop when they are statically known. -/
+@[specialize] def foldFwd {ge : Necessity} {α β : Type} (step : β → α → β) (p : GParser ⟨ge, always⟩ α)
     (arr : ByteArray) (a : β) (q : Nat) : β × Nat :=
   match p.run arr q with
   | .ok x q' =>
@@ -534,7 +537,7 @@ Furthest offset propagates on failure. -/
       rw [ha] at hx; exact absurd hx (by simp)
 
 /-- Fold decimal digits into `acc`. **Total** -- structural on `arr.size - q`. -/
-def natFwd (arr : ByteArray) (acc q : Nat) : Nat × Nat :=
+@[specialize] def natFwd (arr : ByteArray) (acc q : Nat) : Nat × Nat :=
   if h : q < arr.size then
     let b := arr[q]
     if 48 ≤ b && b ≤ 57 then natFwd arr (acc * 10 + (b.toNat - 48)) (q + 1) else (acc, q)
@@ -670,7 +673,7 @@ Proofs required:
 - `hc`: a success that satisfies `g.consumes` also satisfies `g'.consumes`
 - `hew`: `g'.errors = always` implies `g.errors = always` (preserves must-fail)
 - `hsw`: `g'.errors = never` implies `g.errors = never` (preserves must-succeed) -/
-def GParser.weaken {g g' : Grade} (p : GParser g α)
+@[inline] def GParser.weaken {g g' : Grade} (p : GParser g α)
     (hc : ∀ {n m : Nat}, consumptionWitness n m g.consumes → consumptionWitness n m g'.consumes)
     (hew : g'.errors = always → g.errors = always)
     (hsw : g'.errors = never → g.errors = never) : GParser g' α where
@@ -681,7 +684,7 @@ def GParser.weaken {g g' : Grade} (p : GParser g α)
 
 /-- Weaken any parser to `fallible` (errors = possibly, consumes = possibly),
 losing all grade precision. Used by the ungraded `Parser` layer. -/
-def GParser.weakenFallible {g : Grade} (p : GParser g α) : GParser fallible α :=
+@[inline] def GParser.weakenFallible {g : Grade} (p : GParser g α) : GParser fallible α :=
   p.weaken
     -- Term-mode match so that in each branch `w`'s type is specialised to the
     -- concrete `consumptionWitness` variant before being handed to the proof term.
