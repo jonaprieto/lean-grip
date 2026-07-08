@@ -94,22 +94,33 @@ def sexp : GParser conditional Sexp :=
     GParser.seqR ws (GParser.dispatch fun b => if b == 40 then list else atom)
 ```
 
+## When to reach for grip
+
+If you want the fastest possible parser in Lean and will hand-write a byte scanner to get
+it, do that; a bespoke parser beats any combinator library, grip included. grip is for
+the other case: you want parser-combinator ergonomics -- composable, readable grammars
+with a compile-time consumption guarantee (the [gate](#the-gate)) -- and you can trade a
+little speed for it. Among combinator options grip is the fast one; against a hand-written
+parser it will not win on raw throughput, and it does not try to. Reach for it when the
+grammar's clarity and the many-gate safety matter more than the last few milliseconds.
+
 ## Benchmarks
 
 Parsing canada.json (~2.1 MB, standard nativejson-benchmark GeoJSON), best-of-20,
-self-timed. grip's combinator JSON parser runs about **6.8x faster than lean4-parser's
-shipped JSON validator** on the same file and machine (grip ~40ms, lean4-parser ~273ms).
-Both do a full structural parse; grip is byte-level where lean4-parser decodes to `Char`.
-See [bench/RESULTS.md](bench/RESULTS.md).
+self-timed, all on the same file and machine. grip's parser is
+[`examples/Json.lean`](examples/Json.lean), built entirely from grip combinators (`fix`,
+`dispatch`, `seqR`, `alt`, `foldMany`, `takeWhile1`), not a hand-rolled scanner.
 
 ![canada.json parse time](bench/results.svg)
 
-Against Haskell's attoparsec (~19.5ms, DOM build) grip's combinator path is ~2x slower;
-the gap is `Except`-per-step boxing in the combinator layer, not the byte core (a
-hand-rolled scan over grip's primitives reaches ~12.5ms). Reducing that boxing is the
-open tuning target. First-byte `dispatch` -- jumping to a branch on the leading byte
-instead of trying an `alt` chain -- already cut ~18% off the JSON parse. Regenerate with
-`lake exe bench` and `sh bench/mkchart.sh`.
+Apples-to-apples, both validating, grip is about **6.8x faster than lean4-parser**
+(grip ~40ms, lean4-parser ~273ms). Lean's built-in `Lean.Json.parse` takes ~68ms but
+builds a full DOM -- strictly more work than grip's validator, so treat that as context,
+not a like-for-like win. Haskell's attoparsec (~19.5ms, DOM build) is a published
+cross-language reference, not run here. grip's open tuning target is `Except`-per-step
+boxing; first-byte `dispatch` already cut ~18% off the parse. See
+[bench/RESULTS.md](bench/RESULTS.md); regenerate with `lake exe bench` and
+`sh bench/mkchart.sh`.
 
 ## Packages
 
