@@ -64,7 +64,7 @@ new offset `q + width` (width 1 to 4), or `none` on truncated or invalid input. 
 @[inline] def GParser.satisfyChar (p : Char → Bool) : GParser conditional Char where
   run arr q :=
     match decodeUtf8 arr q with
-    | some (c, q') => if q < q' then (if p c then .ok (c, q') else .error ⟨q, []⟩) else .error ⟨q, []⟩
+    | some (c, q') => if q < q' then (if p c then .ok c q' else .error ⟨q, []⟩) else .error ⟨q, []⟩
     | none => .error ⟨q, []⟩
   cwit := by
     intro arr q c q' h
@@ -75,7 +75,7 @@ new offset `q + width` (width 1 to 4), or `none` on truncated or invalid input. 
       · rename_i hlt
         split at h
         · rename_i hp
-          simp only [Except.ok.injEq, Prod.mk.injEq] at h
+          simp only [ParseResult.ok.injEq] at h
           obtain ⟨_, rfl⟩ := h
           exact hlt
         · exact absurd h (by simp)
@@ -103,7 +103,7 @@ literal (grade `conditional`); the `if q < q'` clamp fails an empty match. -/
 @[inline] def GParser.string (s : String) : GParser conditional Unit where
   run arr q :=
     if matchBytes arr s.toUTF8 0 q then
-      if q < q + s.toUTF8.size then .ok ((), q + s.toUTF8.size) else .error ⟨q, []⟩
+      if q < q + s.toUTF8.size then .ok () (q + s.toUTF8.size) else .error ⟨q, []⟩
     else .error ⟨q, []⟩
   cwit := by
     intro arr q a q' h
@@ -111,7 +111,7 @@ literal (grade `conditional`); the `if q < q'` clamp fails an empty match. -/
     split at h
     · split at h
       · rename_i hlt
-        simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        simp only [ParseResult.ok.injEq] at h
         obtain ⟨_, rfl⟩ := h
         exact hlt
       · exact absurd h (by simp)

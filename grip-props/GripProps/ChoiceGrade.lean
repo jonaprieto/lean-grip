@@ -30,7 +30,7 @@ variable {α : Type}
 but a bounds-respecting parser cannot advance past empty input. -/
 theorem impossible_uninhabited (p : GParser impossible α)
     (bounded : ∀ {arr : ByteArray} {q : Nat} {a : α} {q' : Nat},
-      p.run arr q = .ok (a, q') → q' ≤ arr.size) : False := by
+      p.run arr q = .ok a q' → q' ≤ arr.size) : False := by
   obtain ⟨a, q', h⟩ := p.swit rfl ByteArray.empty 0
   have hlt : 0 < q' := p.cwit h
   have hle : q' ≤ 0 := bounded h
@@ -41,12 +41,11 @@ this liar advances past end-of-input. It is why `impossible_uninhabited` needs t
 `bounded` hypothesis; grip's real combinators (`satisfy`, `byte`, ...) all respect
 input bounds. -/
 def impossibleLiar (a : α) : GParser impossible α where
-  run := fun _ q => .ok (a, q + 1)
+  run := fun _ q => .ok a (q + 1)
   cwit := by
     intro arr q b q' h
-    injection h with h1
-    injection h1 with _ hq
-    subst hq
+    simp only [ParseResult.ok.injEq] at h
+    obtain ⟨_, rfl⟩ := h
     exact Nat.lt_succ_self q
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro _ arr q; exact ⟨a, q + 1, rfl⟩

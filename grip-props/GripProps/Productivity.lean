@@ -12,7 +12,7 @@ recursion is well-founded on the length index and a non-productive body is caugh
 premature failure rather than a loop. See `PrimParser/Productivity.lean`.
 
 grip's byte core trades size-indexing for `ByteArray` speed: `run` is
-`ByteArray → Nat → Except Err (α × Nat)`, with no length in the type. So `GParser.fix`
+`ByteArray → Nat → ParseResult α`, with no length in the type. So `GParser.fix`
 is `partial def`: a guarded body (one that consumes before reaching its recursive call,
 as every real grammar does) terminates and is productive, but a left-recursive body
 loops instead of failing. That is the honest limitation.
@@ -34,6 +34,6 @@ offset, enforced by the runtime clamp despite `fix` being `partial`. This is the
 guarantee that survives the loss of kernel totality. -/
 theorem fix_advances (f : GParser conditional α → GParser conditional α)
     {arr : ByteArray} {q : Nat} {a : α} {q' : Nat}
-    (h : (GParser.fix f).run arr q = .ok (a, q')) : q < q' := (GParser.fix f).cwit h
+    (h : (GParser.fix f).run arr q = .ok a q') : q < q' := (GParser.fix f).cwit h
 
 end Grip.Productivity
