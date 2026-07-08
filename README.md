@@ -18,6 +18,13 @@ recursion, first-byte `dispatch`, `capture` for building syntax trees, and posit
 `ParseError` with labels and caret. The machine-checked metatheory lives in `grip-props`;
 Verso docs are a later milestone.
 
+Two batteries-only helper modules sit on top: `Grip.Ascii` (named byte predicates
+`isWs`/`isDigit`/`isHexDigit`/..., delimiter constants `quote`/`comma`/`lbrace`/..., and
+`code : Char → UInt8`) and `Grip.Combinators` (the megaparsec-style vocabulary: `ws`,
+`digit`, `oneOf`, `sepBy`, `between`, `option`, `choice`, `manyTill`, `notFollowedBy`, ...
+plus the familiar operators `<$> <*> *> <* <|>` at the graded level, and `<?>` for
+labels). `import Grip` brings them all in.
+
 Worked example parsers under [`examples/`](examples/), each with `#guard` tests: JSON
 (byte-level, benchmarked), S-expressions, untyped lambda calculus, HTTP request lines +
 headers, a TOML scalar subset, and flow-style YAML.
