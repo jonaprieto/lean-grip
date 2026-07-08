@@ -1,0 +1,136 @@
+/-
+Copyright 2026 Jonathan Cubides. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+-/
+
+import Grip.Graded
+
+/-!
+# Grip.Char -- a UTF-8 / `Char` layer above the byte core
+
+Consumers that think in `Char` rather than `UInt8` use these combinators. Each
+decodes one UTF-8 scalar from the `ByteArray` and advances by its byte width, so the
+fast path stays byte-level: there is no `String` allocation and no intermediate
+decode of the whole input.
+
+`satisfyChar`/`anyChar`/`char` are `conditional` (they consume at least one byte on
+success). The `if q < q'` clamp in each `run` makes the always-consume witness hold
+without reasoning about the decoder's width, mirroring `GParser.fix`.
+-/
+
+namespace Grip
+
+open Grip
+
+/-- Is `b` a UTF-8 continuation byte (`10xxxxxx`)? -/
+@[inline] private def isCont (b : UInt8) : Bool := 0x80 ≤ b && b ≤ 0xBF
+
+/-- Decode one UTF-8 scalar starting at byte offset `q`, returning the `Char` and the
+new offset `q + width` (width 1 to 4), or `none` on truncated or invalid input. -/
+@[inline] def decodeUtf8 (arr : ByteArray) (q : Nat) : Option (Char × Nat) :=
+  if h0 : q < arr.size then
+    let b0 := arr[q]
+    if b0 < 0x80 then
+      some (Char.ofNat b0.toNat, q + 1)
+    else if b0 < 0xE0 then
+      if h1 : q + 1 < arr.size then
+        let b1 := arr[q + 1]
+        if isCont b1 then
+          some (Char.ofNat (((b0.toNat &&& 0x1F) <<< 6) ||| (b1.toNat &&& 0x3F)), q + 2)
+        else none
+      else none
+    else if b0 < 0xF0 then
+      if h2 : q + 2 < arr.size then
+        let b1 := arr[q + 1]
+        let b2 := arr[q + 2]
+        if isCont b1 && isCont b2 then
+          some (Char.ofNat (((b0.toNat &&& 0x0F) <<< 12) |||
+                            ((b1.toNat &&& 0x3F) <<< 6) ||| (b2.toNat &&& 0x3F)), q + 3)
+        else none
+      else none
+    else
+      if h3 : q + 3 < arr.size then
+        let b1 := arr[q + 1]
+        let b2 := arr[q + 2]
+        let b3 := arr[q + 3]
+        if isCont b1 && isCont b2 && isCont b3 then
+          some (Char.ofNat (((b0.toNat &&& 0x07) <<< 18) ||| ((b1.toNat &&& 0x3F) <<< 12) |||
+                            ((b2.toNat &&& 0x3F) <<< 6) ||| (b3.toNat &&& 0x3F)), q + 4)
+        else none
+      else none
+  else none
+
+/-- Consume one `Char` satisfying `p`, or fail without consuming. Grade `conditional`. -/
+@[inline] def GParser.satisfyChar (p : Char → Bool) : GParser conditional Char where
+  run arr q :=
+    match decodeUtf8 arr q with
+    | some (c, q') => if q < q' then (if p c then .ok (c, q') else .error ⟨q, []⟩) else .error ⟨q, []⟩
+    | none => .error ⟨q, []⟩
+  cwit := by
+    intro arr q c q' h
+    show q < q'
+    split at h
+    · rename_i r hd
+      split at h
+      · rename_i hlt
+        split at h
+        · rename_i hp
+          simp only [Except.ok.injEq, Prod.mk.injEq] at h
+          obtain ⟨_, rfl⟩ := h
+          exact hlt
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  ewit := by intro he; exact absurd he (by decide)
+  swit := by intro he; exact absurd he (by decide)
+
+/-- Consume any one `Char`. Grade `conditional`. -/
+@[inline] def GParser.anyChar : GParser conditional Char := GParser.satisfyChar (fun _ => true)
+
+/-- Consume the specific `Char` `c`. Grade `conditional`. -/
+@[inline] def GParser.char (c : Char) : GParser conditional Char := GParser.satisfyChar (· == c)
+
+/-- Do the bytes of `bs` from index `i` match `arr` from offset `q`? -/
+private def matchBytes (arr bs : ByteArray) (i q : Nat) : Bool :=
+  if i < bs.size then
+    if q < arr.size then (arr[q]! == bs[i]!) && matchBytes arr bs (i + 1) (q + 1) else false
+  else true
+termination_by bs.size - i
+decreasing_by omega
+
+/-- Match the UTF-8 bytes of the literal `s`, consuming them. Intended for a nonempty
+literal (grade `conditional`); the `if q < q'` clamp fails an empty match. -/
+@[inline] def GParser.string (s : String) : GParser conditional Unit where
+  run arr q :=
+    if matchBytes arr s.toUTF8 0 q then
+      if q < q + s.toUTF8.size then .ok ((), q + s.toUTF8.size) else .error ⟨q, []⟩
+    else .error ⟨q, []⟩
+  cwit := by
+    intro arr q a q' h
+    show q < q'
+    split at h
+    · split at h
+      · rename_i hlt
+        simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        obtain ⟨_, rfl⟩ := h
+        exact hlt
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  ewit := by intro he; exact absurd he (by decide)
+  swit := by intro he; exact absurd he (by decide)
+
+end Grip
+
+/-! ### Sanity: the Char layer decodes and matches. -/
+section
+open Grip
+
+#guard (GParser.run? GParser.anyChar "aπ".toUTF8) == some 'a'
+#guard (GParser.run? (GParser.char 'a') "abc".toUTF8) == some 'a'
+#guard (GParser.run? (GParser.char 'x') "abc".toUTF8) == none
+-- multibyte: 'π' is 2 UTF-8 bytes (0xCF 0x80); anyChar decodes it as one Char.
+#guard (GParser.run? GParser.anyChar "π".toUTF8) == some 'π'
+#guard (GParser.run? (GParser.string "true") "true!".toUTF8) == some ()
+#guard (GParser.run? (GParser.string "true") "trur".toUTF8) == none
+
+end
