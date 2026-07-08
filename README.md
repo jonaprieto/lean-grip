@@ -22,6 +22,36 @@ Worked example parsers under [`examples/`](examples/), each with `#guard` tests:
 (byte-level, benchmarked), S-expressions, untyped lambda calculus, HTTP request lines +
 headers, a TOML scalar subset, and flow-style YAML.
 
+## Quick start
+
+Add grip to your `lakefile.toml`:
+
+```toml
+[[require]]
+name = "grip"
+git = "https://github.com/jonaprieto/grip"
+rev = "main"
+```
+
+A parser is a `GParser g α` (graded) or the ungraded `Parser α`. Combinators run over a
+`ByteArray`; `run?` returns `Option`, `parse` returns a positioned `ParseError`:
+
+```lean
+import Grip
+open Grip
+
+-- A run of one or more digits; the result is the count of bytes consumed.
+-- `conditional` = always consumes on success, may error.
+def digits : GParser conditional Nat :=
+  GParser.takeWhile1 (fun b => 48 ≤ b && b ≤ 57)
+
+#eval GParser.run? digits "2026".toUTF8   -- some 4
+#eval GParser.run? digits "x".toUTF8      -- none
+```
+
+Grades are opt-in. Write at the ungraded `Parser` with `Monad`/`Alternative`/`do` (or
+`gdo` to keep grades precise) and still get the compile-time consumption gate below.
+
 ## The gate
 
 The one grade payoff to remember: `many`, `foldMany`, and `some` demand an
@@ -35,6 +65,34 @@ You do not opt into this safety; it is carried by the library's own combinator t
 user writes at the ungraded `Parser` and still gets it. Writing a precise grade
 (`GParser conditional α`) is how you export a machine-checked contract to downstream
 combinators.
+
+## Examples
+
+Six worked parsers under [`examples/`](examples/), each with `#guard` tests that run in
+CI:
+
+| file | grammar |
+|------|---------|
+| [Json.lean](examples/Json.lean)     | byte-level JSON (the benchmark)  |
+| [Sexp.lean](examples/Sexp.lean)     | S-expressions                    |
+| [Lambda.lean](examples/Lambda.lean) | untyped lambda calculus          |
+| [Http.lean](examples/Http.lean)     | HTTP request line + headers      |
+| [Toml.lean](examples/Toml.lean)     | a TOML scalar subset             |
+| [Yaml.lean](examples/Yaml.lean)     | flow-style YAML                  |
+
+They share a shape: `fix` for recursion, `dispatch` to pick a branch on the leading byte,
+`capture` to pull out a token, and `many`/`foldMany` for repetition. The S-expression
+core is the whole idea in five lines:
+
+```lean
+def sexp : GParser conditional Sexp :=
+  GParser.fix fun sexp =>
+    let atom := GParser.map Sexp.atom (GParser.capture (GParser.takeWhile1 isAtomByte))
+    let list := GParser.seqR (GParser.byte 40)              -- '('
+      (GParser.seqR ws (GParser.seqL (GParser.map Sexp.list
+        (GParser.many (GParser.seqL sexp ws))) (GParser.byte 41)))  -- ')'
+    GParser.seqR ws (GParser.dispatch fun b => if b == 40 then list else atom)
+```
 
 ## Benchmarks
 
