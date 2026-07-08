@@ -8,15 +8,19 @@ parsec/attoparsec infinite-loop footgun, is a **compile error**.
 [![CI](https://github.com/jonaprieto/grip/actions/workflows/ci.yml/badge.svg)](https://github.com/jonaprieto/grip/actions/workflows/ci.yml)
 [![Lean](https://img.shields.io/badge/Lean-v4.28.0-blue)](lean-toolchain)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
-[![canada.json](https://img.shields.io/badge/canada.json-~49ms%20(combinators)-blue)](bench/RESULTS.md)
+[![canada.json](https://img.shields.io/badge/canada.json-~40ms%20(6.8x%20vs%20lean4--parser)-blue)](bench/RESULTS.md)
 
 ## Status
 
-Milestone 1: the core is in. Byte primitives, the `Parser`/graded `GParser` split with
+The core is in. Byte primitives, the `Parser`/graded `GParser` split with
 `Monad`/`Alternative`/`MonadExcept`, `gdo`, the always-consume `many` gate, `fix` for
-recursion, positioned `ParseError` with labels and caret, and a combinator JSON example
-wired to the canada.json benchmark. The machine-checked metatheory (`grip-props`) and
-Verso docs are later milestones.
+recursion, first-byte `dispatch`, `capture` for building syntax trees, and positioned
+`ParseError` with labels and caret. The machine-checked metatheory lives in `grip-props`;
+Verso docs are a later milestone.
+
+Worked example parsers under [`examples/`](examples/), each with `#guard` tests: JSON
+(byte-level, benchmarked), S-expressions, untyped lambda calculus, HTTP request lines +
+headers, a TOML scalar subset, and flow-style YAML.
 
 ## The gate
 
@@ -35,17 +39,19 @@ combinators.
 ## Benchmarks
 
 Parsing canada.json (~2.1 MB, standard nativejson-benchmark GeoJSON), best-of-20,
-self-timed. The benchmark measures structural validation plus a leaf-node count, not
-construction of a materialised value tree, so it is not directly comparable to a
-DOM-building parser like attoparsec. See [bench/RESULTS.md](bench/RESULTS.md).
+self-timed. grip's combinator JSON parser runs about **6.8x faster than lean4-parser's
+shipped JSON validator** on the same file and machine (grip ~40ms, lean4-parser ~273ms).
+Both do a full structural parse; grip is byte-level where lean4-parser decodes to `Char`.
+See [bench/RESULTS.md](bench/RESULTS.md).
 
 ![canada.json parse time](bench/results.svg)
 
-The ergonomic combinator path is about 2.5x the attoparsec reference. The cost is in the
-combinator layer, not the core: `GParser.fix` rebuilds the combinator tree on each
-recursive entry and every step boxes through `Except`. A build-once fixpoint and reduced
-boxing are the open tuning targets. Regenerate with `lake exe bench` and
-`sh bench/mkchart.sh`.
+Against Haskell's attoparsec (~19.5ms, DOM build) grip's combinator path is ~2x slower;
+the gap is `Except`-per-step boxing in the combinator layer, not the byte core (a
+hand-rolled scan over grip's primitives reaches ~12.5ms). Reducing that boxing is the
+open tuning target. First-byte `dispatch` -- jumping to a branch on the leading byte
+instead of trying an `alt` chain -- already cut ~18% off the JSON parse. Regenerate with
+`lake exe bench` and `sh bench/mkchart.sh`.
 
 ## Packages
 

@@ -99,11 +99,20 @@ private def value : GParser conditional Nat :=
       GParser.seqR (GParser.byte 123)                   -- '{'
         (GParser.seqR ws
           (GParser.seqL objectBody (GParser.seqR ws (GParser.byte 125))))  -- '}'
+    -- Malformed leading byte: fail at the current position (conditional grade).
+    let invalid : GParser conditional Nat :=
+      GParser.map (fun _ => 0) (GParser.satisfy (fun _ => false))
+    -- First-byte dispatch: peek the leading byte (after whitespace) and jump straight
+    -- to the matching parser, instead of trying keyword/number/string/array/object in
+    -- an `alt` chain and paying a failed attempt (plus an error allocation) per miss.
     GParser.seqR ws
-      (GParser.alt keyword
-        (GParser.alt number
-          (GParser.alt jstring
-            (GParser.alt array object))))
+      (GParser.dispatch fun b =>
+        if b == 123 then object                                  -- '{'
+        else if b == 91 then array                               -- '['
+        else if b == 34 then jstring                             -- '"'
+        else if b == 116 || b == 102 || b == 110 then keyword    -- 't'rue / 'f'alse / 'n'ull
+        else if (48 ≤ b && b ≤ 57) || b == 45 then number        -- digit or '-'
+        else invalid)
 
 /-- Parse one complete JSON value from `arr`; return the total leaf count.
 Leaf semantics: 1 per number, string, or keyword; sum of children for arrays and
