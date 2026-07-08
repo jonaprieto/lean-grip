@@ -1,0 +1,119 @@
+name: Benchmark
+
+# A `/bench` comment on a PR (from a trusted commenter) builds the PR, runs `lake exe
+# bench`, re-runs it on the PR's base commit, and posts a PR-vs-base table as a comment.
+# issue_comment workflows always run the copy on the default branch, so this only takes
+# effect once merged to main. Adapted from the prim-parser fork's bench workflow.
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  bench:
+    # Trusted commenters only: this builds and runs PR code.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request &&
+       contains(github.event.comment.body, '/bench') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: React to trigger
+        if: github.event_name == 'issue_comment'
+        run: |
+          gh api --method POST \
+            "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content=eyes || true
+
+      - name: Resolve PR head and base
+        id: pr
+        if: github.event_name == 'issue_comment'
+        run: |
+          num=${{ github.event.issue.number }}
+          echo "num=$num" >> "$GITHUB_OUTPUT"
+          echo "sha=$(gh api "repos/${{ github.repository }}/pulls/$num" -q .head.sha)" >> "$GITHUB_OUTPUT"
+          echo "base=$(gh api "repos/${{ github.repository }}/pulls/$num" -q .base.sha)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.pr.outputs.sha || github.sha }}
+          fetch-depth: 0
+
+      # Cache the elan toolchain so a run does not re-download it (avoids the
+      # releases.lean-lang.org 429 rate-limit) and the batteries/Grip build.
+      - name: Cache elan toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.elan
+          key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}
+      - name: Cache build
+        uses: actions/cache@v4
+        with:
+          path: .lake
+          key: lake-${{ runner.os }}-${{ hashFiles('lake-manifest.json', 'lean-toolchain') }}
+          restore-keys: lake-${{ runner.os }}-
+
+      - uses: leanprover/lean-action@v1
+        with:
+          build: false
+          test: false
+
+      - name: Run benchmarks (PR head, then base)
+        run: |
+          lake build bench
+          lake exe bench > pr.txt 2>/dev/null || true
+          echo "== PR ==" && cat pr.txt
+          : > base.txt
+          if [ -n "${{ steps.pr.outputs.base }}" ]; then
+            git checkout -q "${{ steps.pr.outputs.base }}" -- Grip Grip.lean examples bench lakefile.toml lean-toolchain \
+              && lake build bench \
+              && lake exe bench > base.txt 2>/dev/null \
+              && { echo "== base ==" && cat base.txt; } \
+              || echo "baseline bench failed; reporting PR only"
+          fi
+
+      - name: Format results
+        run: |
+          {
+            echo '<!-- bench -->'
+            echo "### Benchmark results (canada.json + example parsers)"
+            echo ""
+            echo "PR \`${{ steps.pr.outputs.sha || github.sha }}\` vs base \`${{ steps.pr.outputs.base }}\` -- best-of-20 ms, lower is better. Δ = PR vs base."
+            echo ""
+            awk '
+              function name() { if ($0 ~ /^count=/) return "json"; if ($1 == "lean.json") return "lean.json"; return $1 }
+              function getms(  i, a) { for (i = 1; i <= NF; i++) if ($i ~ /^(ms|parse_ms)=/) { split($i, a, "="); return a[2] } return "" }
+              FNR == NR { m = getms(); if (m != "") { n = name(); if (!(n in seen)) { ord[++k] = n; seen[n] = 1 }; pr[n] = m }; next }
+              { m = getms(); if (m != "") base[name()] = m }
+              END {
+                print "| parser | PR ms | base ms | Δ |"
+                print "|---|--:|--:|--:|"
+                for (i = 1; i <= k; i++) {
+                  n = ord[i]
+                  has = (n in base)
+                  bm = has ? sprintf("%.2f", base[n]) : "-"
+                  d  = (has && base[n] + 0 > 0) ? sprintf("%+.1f%%", (pr[n] - base[n]) / base[n] * 100) : "-"
+                  printf "| %s | %.2f | %s | %s |\n", n, pr[n], bm, d
+                }
+              }' pr.txt base.txt
+          } > body.md
+          cat body.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post comment
+        if: steps.pr.outputs.num
+        run: gh pr comment "${{ steps.pr.outputs.num }}" --body-file body.md --edit-last --create-if-none
+
+      - name: React done
+        if: github.event_name == 'issue_comment'
+        run: |
+          gh api --method POST \
+            "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content=rocket || true
