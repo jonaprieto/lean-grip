@@ -2,7 +2,7 @@
 Copyright 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 -/
-import Grip.Parser
+import Grip
 
 /-!
 # Grip.Examples.Lambda -- an untyped lambda-calculus parser built on grip combinators
@@ -34,36 +34,23 @@ inductive Term where
   | lam : String → Term → Term
   deriving BEq, Repr
 
-@[inline] private def isWs (b : UInt8) : Bool :=
-  b == 32 || b == 10 || b == 9 || b == 13
-
-/-- An identifier byte: an ASCII letter. -/
-@[inline] private def isAlpha (b : UInt8) : Bool :=
-  (97 ≤ b && b ≤ 122) || (65 ≤ b && b ≤ 90)
-
-@[inline] private def ws : GParser flexible Nat := GParser.takeWhile isWs
-
 /-- An identifier (one or more letters), after any leading whitespace. -/
 @[inline] private def name : GParser conditional String :=
-  GParser.seqR ws (GParser.capture (GParser.takeWhile1 isAlpha))
+  GParser.ws *> GParser.capture (GParser.takeWhile1 Ascii.isAlpha)
 
 /-- Parse one lambda term. -/
 def term : GParser conditional Term :=
   GParser.fix fun term =>
     let var : GParser conditional Term :=
-      GParser.map Term.var (GParser.capture (GParser.takeWhile1 isAlpha))
-    let paren : GParser conditional Term :=
-      GParser.seqR (GParser.byte 40)                              -- '('
-        (GParser.seqL (GParser.seqR ws term) (GParser.seqR ws (GParser.byte 41)))  -- ')'
-    let lam : GParser conditional Term :=
-      GParser.seqR (GParser.byte 92)                              -- '\'
-        (GParser.map2 Term.lam name
-          (GParser.seqR ws (GParser.seqR (GParser.byte 46)        -- '.'
-            (GParser.seqR ws term))))
+      Term.var <$> GParser.capture (GParser.takeWhile1 Ascii.isAlpha)
+    let paren : GParser conditional Term :=                        -- '(' term ')'
+      GParser.byteC '(' *> ((GParser.ws *> term) <* (GParser.ws *> GParser.byteC ')'))
+    let lam : GParser conditional Term :=                          -- '\' var '.' term
+      GParser.byteC '\\' *>
+        (Term.lam <$> name <*> (GParser.ws *> GParser.byteC '.' *> GParser.ws *> term))
     let atom : GParser conditional Term :=
-      GParser.seqR ws
-        (GParser.dispatch fun b =>
-          if b == 40 then paren else if b == 92 then lam else var)
+      GParser.ws *> GParser.dispatch fun b =>
+        if b == Ascii.lparen then paren else if b == Ascii.backslash then lam else var
     -- Left-associative application: fold trailing atoms onto the first with `Term.app`.
     GParser.map2 (fun first rest => rest.foldl Term.app first) atom (GParser.many atom)
 

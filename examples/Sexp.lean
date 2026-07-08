@@ -2,7 +2,7 @@
 Copyright 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 -/
-import Grip.Parser
+import Grip
 
 /-!
 # Grip.Examples.Sexp -- an S-expression parser built on grip combinators
@@ -33,30 +33,21 @@ inductive Sexp where
   | list : List Sexp → Sexp
   deriving BEq, Repr
 
-/-- Insignificant whitespace: space, tab, newline, carriage return. -/
-@[inline] private def isWs (b : UInt8) : Bool :=
-  b == 32 || b == 10 || b == 9 || b == 13
-
 /-- An atom byte: any visible byte that is not a delimiter (`(` or `)`). -/
 @[inline] private def isAtomByte (b : UInt8) : Bool :=
-  b > 32 && b != 40 && b != 41
-
-/-- Skip insignificant whitespace. -/
-@[inline] private def ws : GParser flexible Nat := GParser.takeWhile isWs
+  b > Ascii.space && b != Ascii.lparen && b != Ascii.rparen
 
 /-- Parse one S-expression (after any leading whitespace). -/
 def sexp : GParser conditional Sexp :=
   GParser.fix fun sexp =>
     let atom : GParser conditional Sexp :=
-      GParser.map Sexp.atom (GParser.capture (GParser.takeWhile1 isAtomByte))
+      Sexp.atom <$> GParser.capture (GParser.takeWhile1 isAtomByte)
     let elements : GParser flexible (List Sexp) :=
-      GParser.many (GParser.seqL sexp ws)             -- each element eats its trailing ws
+      GParser.many (sexp <* GParser.ws)               -- each element eats its trailing ws
     let list : GParser conditional Sexp :=
-      GParser.seqR (GParser.byte 40)                  -- '('
-        (GParser.seqR ws
-          (GParser.seqL (GParser.map Sexp.list elements) (GParser.byte 41)))  -- ')'
-    GParser.seqR ws
-      (GParser.dispatch fun b => if b == 40 then list else atom)
+      GParser.byteC '(' *> GParser.ws *>
+        ((Sexp.list <$> elements) <* (GParser.ws *> GParser.byteC ')'))
+    GParser.ws *> GParser.dispatch fun b => if b == Ascii.lparen then list else atom
 
 /-- Parse one S-expression from `arr`, or `none` on failure. -/
 @[inline] def parse (arr : ByteArray) : Option Sexp := GParser.run? sexp arr
