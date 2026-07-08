@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="152" font-family="sans-serif">
+<text x="20" y="26" font-size="18" font-weight="bold">grip: canada.json parse time (ms, lower is better)</text>
+<text x="20" y="66" font-size="13">grip (combinators + fix)</text>
+<rect x="230" y="52" width="400.0" height="24" rx="3" fill="#4c78a8"/>
+<text x="638.0" y="69" font-size="13">49.0</text>
+<text x="20" y="112" font-size="13">attoparsec (reference)</text>
+<rect x="230" y="98" width="159.2" height="24" rx="3" fill="#4c78a8"/>
+<text x="397.2" y="115" font-size="13">19.5</text>
+</svg>
