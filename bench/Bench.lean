@@ -8,6 +8,7 @@ import Lambda
 import Http
 import Toml
 import Yaml
+import Lean.Data.Json
 
 /-!
 # grip benchmark harness
@@ -71,6 +72,17 @@ partial def repeatStr (s : String) (n : Nat) : String :=
   | some _         => 1
   | none           => 0
 
+/-- Cross-library reference: Lean's built-in `Lean.Json.parse`. It builds a full DOM (a
+`Lean.Json` tree), so it does strictly more work than grip's validate-and-count; shown
+for context on the same toolchain and machine. -/
+@[noinline] def parseLeanJson (s : String) : Nat :=
+  match Lean.Json.parse s with
+  | .ok _    => 1
+  | .error _ => 0
+
+/-- String barrier, mirroring `barrier` for the `String`-input `Lean.Json` driver. -/
+@[noinline] def barrierStr (_k : Nat) (s : String) : String := s
+
 /-- `@[noinline]` barrier: re-passes `b` each iteration so the timing loop cannot hoist
 the work past the timestamp. -/
 @[noinline] def barrier (_k : Nat) (b : ByteArray) : ByteArray := b
@@ -100,6 +112,11 @@ def main : IO Unit := do
   let jsonCount := parseJson jsonSrc
   let jsonMs ← bestMs 20 (fun i => parseJson (barrier i jsonSrc))
   IO.println s!"count={jsonCount} parse_ms={jsonMs}"
+  -- Cross-library reference on the same file/machine/toolchain: Lean's built-in
+  -- Json.parse (builds a full DOM, so it does more than grip's validator).
+  let jsonStr ← IO.FS.readFile "bench/data/canada.json"
+  let ljMs ← bestMs 20 (fun i => parseLeanJson (barrierStr i jsonStr))
+  IO.println s!"lean.json parse_ms={ljMs}"
   -- The other example parsers on generated inputs.
   benchOne "sexp"   ("(" ++ repeatStr "sym " 50000 ++ ")").toUTF8                     parseSexp
   benchOne "lambda" ("f" ++ repeatStr " x" 50000).toUTF8                              parseLambda
