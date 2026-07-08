@@ -3,32 +3,46 @@ Copyright 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 -/
 
-/-!
-# grip benchmark harness (Milestone 0 stub)
+import Json
 
-Times a trivial byte scan over `canada.json` so the harness, fixture, and CI wiring
-exist before the first real combinator. Milestone 1 replaces the stub scan with the
-real JSON parser. Run from the repo root: `lake exe bench`.
+/-!
+# grip benchmark harness (Milestone 1)
+
+Reads `bench/data/canada.json`, parses it with the grip-combinator JSON parser
+(`Grip.Examples.Json.json`), and prints `count=<nodes> parse_ms=<best_of_20>`.
+
+The parser is built entirely from grip combinators: leaf parsers plus `fix` for
+recursion and `foldMany` for array and object repetition.
+
+## Timing technique
+
+`bestMs` forces each parse as an IO-sequenced effect between two
+`monoNanosNow` timestamps by evaluating `act i == 0`.  The guard is never
+true at runtime but depends on the result, so the compiler cannot hoist the
+work past `t1`.  The barrier parameter `i` prevents loop-invariant lifting.
 -/
 
-/-- Stand-in "parse": count comma bytes (0x2c), starting the fold from `seed`. Replaced
-by the real parser in M1. The `seed` parameter makes each call depend on a runtime value
-so the scan cannot be hoisted out of the timing loop or memoized as loop-invariant; the
-true comma count is the `seed = 0` result. -/
-@[noinline] def stubParse (seed : Nat) (a : ByteArray) : Nat :=
-  a.foldl (fun c b => if b == 44 then c + 1 else c) seed
+open Grip
 
-/-- Best-of-`reps` wall time of `act` in milliseconds. `act` takes the iteration index so
-the compiler cannot lift a loop-invariant computation out of the loop. Evaluating the
-guard `act i == 0` forces the scan as an IO-sequenced effect between the two timestamps,
-so the compiler cannot float the pure work past `t1`; the guard is never true here, but
-that depends on the runtime input so it is not optimized away. Every iteration does the
-full work. -/
+/-- Parse `arr` from offset 0 using the grip combinator parser;
+    return the leaf-value count, or 0 on failure. -/
+@[noinline] private def parseJson (arr : ByteArray) : Nat :=
+  match Grip.Examples.Json.json.run arr 0 with
+  | .ok (n, _) => n
+  | .error _   => 0
+
+/-- `@[noinline]` barrier: re-passes `b` each iteration so the timing loop
+    cannot hoist the work past the timestamp. -/
+@[noinline] private def barrier (_k : Nat) (b : ByteArray) : ByteArray := b
+
+/-- Best-of-`reps` wall time of `act` in milliseconds.  `act` receives the
+    iteration index so the compiler cannot memoize a loop-invariant result.
+    Evaluating `act i == 0` forces the parse between the two timestamps. -/
 def bestMs (reps : Nat) (act : Nat → Nat) : IO Float := do
   let mut best : Float := 0.0
   for i in [0:reps] do
     let t0 ← IO.monoNanosNow
-    if act i == 0 then IO.eprintln "bench: unexpected empty scan"
+    if act i == 0 then IO.eprintln "bench: unexpected zero count"
     let t1 ← IO.monoNanosNow
     let dt := Float.ofNat (t1 - t0) / 1000000.0
     if i == 0 || dt < best then best := dt
@@ -36,6 +50,6 @@ def bestMs (reps : Nat) (act : Nat → Nat) : IO Float := do
 
 def main : IO Unit := do
   let bytes ← IO.FS.readBinFile "bench/data/canada.json"
-  let count := stubParse 0 bytes
-  let ms ← bestMs 20 (fun i => stubParse i bytes)
+  let count := parseJson bytes
+  let ms ← bestMs 20 (fun i => parseJson (barrier i bytes))
   IO.println s!"count={count} parse_ms={ms}"
