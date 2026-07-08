@@ -3,22 +3,27 @@
 Input: `bench/data/canada.json` (~2.1 MB, the standard nativejson-benchmark GeoJSON
 file). Machine: Apple Silicon, arm64-darwin. Toolchain: `leanprover/lean4:v4.28.0`.
 
-Methodology: best-of-20 wall time via `IO.monoNanosNow`, self-timed. grip's number is
-from `lake exe bench`. The lean4-parser number is its shipped `examples/JSON.lean`
-validator (fgdorais/lean4-parser, toolchain v4.32.0-rc1) run through the *same*
-best-of-20 harness on the *same* file and machine. Both do a full structural parse of
-canada.json; grip additionally counts leaf nodes (cheap `Nat` adds). Neither builds a
-materialised DOM, so these are not comparable to a DOM-building parser.
+Methodology: best-of-20 wall time via `IO.monoNanosNow`, self-timed, all on the *same*
+file and machine. grip and `Lean.Json` are timed by `lake exe bench` (same toolchain).
+The lean4-parser number is its shipped `examples/JSON.lean` validator
+(fgdorais/lean4-parser, toolchain v4.32.0-rc1) run through the same harness. grip's
+parser is `examples/Json.lean`, built entirely from grip combinators (`fix`, `dispatch`,
+`seqR`, `alt`, `foldMany`, `takeWhile1`) -- not a hand-rolled scanner.
 
-| parser                          | parse_ms | notes                                          |
-|---------------------------------|---------:|------------------------------------------------|
-| grip (combinators + dispatch)   |    ~40   | byte-level; `foldMany` (no list alloc); counts leaves |
-| lean4-parser (fgdorais)         |   ~273   | `SimpleParser String.Slice Char`; `sepBy` builds arrays; validate-only |
+Read the `work` column before comparing: grip and lean4-parser **validate** the input
+(grip also counts leaves, cheap `Nat` adds); `Lean.Json` builds a **full DOM** (a
+`Lean.Json` tree), which is strictly more work.
 
-grip parses canada.json about **6.8x faster** than lean4-parser's shipped validator. The
-two engines differ (grip is byte-level; lean4-parser decodes to `Char` and its JSON
-validator allocates via `sepBy`), but this is the competitor's own example, unmodified,
-on identical input -- and grip wins decisively.
+| parser                        | parse_ms | work             | notes                                            |
+|-------------------------------|---------:|------------------|--------------------------------------------------|
+| grip (combinators)            |    ~40   | validate + count | byte-level; `examples/Json.lean`, pure combinators |
+| Lean.Json (core, built-in)    |    ~68   | full DOM build   | Lean's `Lean.Json.parse`; builds the tree        |
+| lean4-parser (fgdorais)       |   ~273   | validate         | `SimpleParser String.Slice Char`; `sepBy` allocates |
+
+Apples-to-apples (both validate, no DOM): grip is about **6.8x faster than lean4-parser**
+on the competitor's own unmodified JSON example. grip's validator is also ~1.7x faster
+than `Lean.Json`, but that is not the same task -- `Lean.Json` materialises a tree grip
+does not build, so treat it as context, not a like-for-like win.
 
 ## First-byte dispatch
 
@@ -47,12 +52,14 @@ best time.
 others; `lambda` reports a success flag). These stress the shared combinators (`fix`,
 `dispatch`, `capture`, `many`) across recursive, line-oriented, and nested grammars.
 
-## Reference point
+## Cross-language reference (not run here)
 
-Haskell's attoparsec parses canada.json in ~19.5ms on comparable hardware
-(nativejson-benchmark, DOM build). grip's combinator path is ~2x that. The remaining gap
-is `Except (α × Nat)`-per-step boxing in the combinator layer -- a hand-rolled scan over
-grip's own byte primitives reaches ~12.5ms. Reducing that boxing (an unboxed result
-encoding) is the open tuning target; the byte primitives themselves are already fast.
+Haskell's attoparsec parses canada.json in ~19.5ms in nativejson-benchmark (DOM build,
+different language and runtime; a published number, not measured on this machine). It is
+context for where a fast native parser sits, not a like-for-like grip comparison.
+
+grip's open tuning target is `Except (α × Nat)`-per-step boxing in the combinator layer:
+every combinator allocates a boxed result. An unboxed result encoding is the path to
+closing that gap; the byte primitives themselves are already fast.
 
 Update this file by running `lake exe bench` and `sh bench/mkchart.sh`.
