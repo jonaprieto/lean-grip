@@ -28,6 +28,25 @@ sub-parse plus an error allocation -- before reaching the number branch. Replaci
 `alt` chain with `GParser.dispatch` (peek the leading byte, jump straight to the branch)
 removed that per-node waste and cut the parse from ~49ms to ~40ms (about 18%).
 
+## All example parsers
+
+`lake exe bench` times every example parser (JSON on canada.json, the rest on inputs
+generated at startup), best-of-20 on the same machine. Throughput is input size over
+best time.
+
+| parser | input                | count  |  ms  | MB/s |
+|--------|----------------------|-------:|-----:|-----:|
+| json   | canada.json, 2.1 MB  | 111130 | ~40  | ~52  |
+| sexp   | 200 KB, 50k atoms    |  50000 | ~9.0 | ~22  |
+| lambda | 100 KB application   |    ok  | ~6.0 | ~17  |
+| http   | 80 KB, 10k headers   |  10000 | ~1.5 | ~53  |
+| toml   | 200 KB, 20k entries  |  20000 | ~7.1 | ~28  |
+| yaml   | 90 KB, 30k scalars   |  30001 | ~7.3 | ~12  |
+
+`count` is the parser's own result on the input (leaf nodes for JSON, list length for the
+others; `lambda` reports a success flag). These stress the shared combinators (`fix`,
+`dispatch`, `capture`, `many`) across recursive, line-oriented, and nested grammars.
+
 ## Reference point
 
 Haskell's attoparsec parses canada.json in ~19.5ms on comparable hardware
