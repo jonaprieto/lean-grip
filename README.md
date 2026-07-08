@@ -137,6 +137,14 @@ Rust's `nom` ~2ms. See [bench/RESULTS.md](bench/RESULTS.md); regenerate with `la
   Depend on this and you never transitively acquire mathlib.
 - `grip-props` (opt-in, grip + mathlib): the machine-checked metatheory.
 
+## Acknowledgements
+
+grip took its inspiration and its initial byte core from
+[prim-parser](https://github.com/janmasrovira/prim-parser) by Jan Mas Rovira, the
+size-indexed, kernel-total graded parser grip descends from. The graded approach and the
+original combinator shapes are its; grip's byte-level core, `ParseResult`, first-byte
+`dispatch`, and the `@[specialize]` scan loops are where it diverged.
+
 ## License
 
 Apache-2.0.
