@@ -1,7 +1,9 @@
 # grip benchmark results
 
 Input: `bench/data/canada.json` (~2.1 MB, the standard nativejson-benchmark GeoJSON
-file). Machine: Apple Silicon, arm64-darwin. Toolchain: `leanprover/lean4:v4.28.0`.
+file). Machine: Apple Silicon, arm64-darwin, on AC power (battery / Low Power Mode caps
+the CPU frequency and inflates every figure ~1.4x uniformly). Toolchain:
+`leanprover/lean4:v4.28.0`.
 
 Methodology: best-of-20 wall time via `IO.monoNanosNow`, self-timed, all on the *same*
 file and machine. grip and `Lean.Json` are timed by `lake exe bench` (same toolchain).
@@ -16,14 +18,14 @@ Read the `work` column before comparing: grip and lean4-parser **validate** the 
 
 | parser                        | parse_ms | work             | notes                                            |
 |-------------------------------|---------:|------------------|--------------------------------------------------|
-| grip (combinators)            |    ~34   | validate + count | byte-level; `examples/Json.lean`, pure combinators |
+| grip (combinators)            |    ~20   | validate + count | byte-level; `examples/Json.lean`, pure combinators |
 | Lean.Json (core, built-in)    |    ~68   | full DOM build   | Lean's `Lean.Json.parse`; builds the tree        |
 | lean4-parser (fgdorais)       |   ~273   | validate         | `SimpleParser String.Slice Char`; `sepBy` allocates |
 
-Apples-to-apples (both validate, no DOM): grip is about **8x faster than lean4-parser**
-on the competitor's own unmodified JSON example. grip's validator is also ~2x faster
-than `Lean.Json`, but that is not the same task -- `Lean.Json` materialises a tree grip
-does not build, so treat it as context, not a like-for-like win.
+Apples-to-apples (both validate, no DOM): grip is about **14x faster than lean4-parser**
+on the competitor's own unmodified JSON example, and ~3.5x faster than `Lean.Json` (which
+does more -- it builds a tree grip does not, so treat that as context). At ~20ms grip is
+level with Haskell's attoparsec (see below).
 
 ## First-byte dispatch
 
@@ -42,6 +44,21 @@ parse from ~40ms to ~34ms (about 15%). Every combinator, the `cwit`/`ewit`/`swit
 witnesses, and the whole `grip-props` metatheory were ported to the new shape with no
 loss of features and no new `sorry`.
 
+## Specialize the scan loops (the big one)
+
+`scanFwd`/`foldFwd`/`natFwd` -- the tight inner loops that walk the bytes -- were plain
+recursive `def`s, so their function arguments (the byte predicate, the fold step) were
+*closures called indirectly once per byte* over the whole 2 MB. Marking them
+`@[specialize]` (and `@[inline]` on the `weaken`/`weakenFallible` wrappers) makes Lean
+monomorphize a statically-known predicate like `Ascii.isWs` straight into the loop, so
+the per-byte call disappears. canada.json dropped from ~34ms to **~20ms** (about 40%).
+
+This is the fix for what an earlier draft of this file wrongly called the "combinator
+indirection" wall (claiming it needed a CPS or monomorphizing rewrite). It did not: a
+one-word attribute on the three scan loops recovered most of the gap while keeping the
+combinator model intact. grip is now level with attoparsec (~19.5ms) and ~1.5x off a
+hand-written Lean scanner.
+
 ## All example parsers
 
 `lake exe bench` times every example parser (JSON on canada.json, the rest on inputs
@@ -50,61 +67,58 @@ best time.
 
 | parser | input                | count  |  ms  | MB/s |
 |--------|----------------------|-------:|-----:|-----:|
-| json   | canada.json, 2.1 MB  | 111130 | ~34  | ~62  |
-| sexp   | 200 KB, 50k atoms    |  50000 | ~7.4 | ~27  |
-| lambda | 100 KB application   |    ok  | ~5.0 | ~20  |
-| http   | 80 KB, 10k headers   |  10000 | ~1.4 | ~58  |
-| toml   | 200 KB, 20k entries  |  20000 | ~6.8 | ~29  |
-| yaml   | 90 KB, 30k scalars   |  30001 | ~6.0 | ~15  |
+| json   | canada.json, 2.1 MB  | 111130 | ~20  | ~107 |
+| sexp   | 200 KB, 50k atoms    |  50000 | ~5.9 | ~34  |
+| lambda | 100 KB application   |    ok  | ~3.7 | ~27  |
+| http   | 80 KB, 10k headers   |  10000 | ~1.0 | ~80  |
+| toml   | 200 KB, 20k entries  |  20000 | ~5.4 | ~37  |
+| yaml   | 90 KB, 30k scalars   |  30001 | ~4.5 | ~20  |
 
 `count` is the parser's own result on the input (leaf nodes for JSON, list length for the
 others; `lambda` reports a success flag). These stress the shared combinators (`fix`,
 `dispatch`, `capture`, `many`) across recursive, line-oriented, and nested grammars. All
-got ~10-20% faster from the single-constructor result too.
+got faster from the single-constructor result and the scan-loop `@[specialize]`.
 
 ### Does the nom gap generalize past JSON?
 
-Yes. A `nom` S-expression atom-counter on the same input grip's sexp bench uses (`"(" ++
-"sym " * 50000 ++ ")"`, count 50000) runs in ~0.7ms; grip's sexp is ~7.4ms, about **10x**.
-JSON is ~17x (grip ~34ms, nom ~2ms). The ratio is the Lean-vs-Rust runtime gap and it
-varies with per-node work: JSON's `fix` recursion, `dispatch`, and `foldMany` cost more
-per node than sexp's flat `many`, so JSON shows a wider gap. Either way grip is the fast
-combinator option in Lean, roughly an order of magnitude off a systems-language combinator
-library, by runtime not by model. (The `nom` parsers are not shipped -- no Rust in CI.)
+Yes, and it narrowed after the scan-loop specialization. A `nom` S-expression
+atom-counter on the same input grip's sexp bench uses (`"(" ++ "sym " * 50000 ++ ")"`,
+count 50000) runs in ~0.7ms; grip's sexp is ~5.9ms, about **8x**. JSON is ~10x (grip
+~20ms, nom ~2ms). What is left is the Lean-vs-Rust runtime floor (reference counting,
+bounds-checked indexing, no borrowed slices) -- not the combinator model. (The `nom`
+parsers are not shipped -- no Rust in CI.)
 
 ## Where grip's time goes
 
-To attribute the gap to a fast native combinator library, the same leaf-count parse was
-run four ways on canada.json, best-of-20, same machine (all counted 111130):
+The same leaf-count parse, several ways, canada.json, best-of-20, on AC (all count
+111130):
 
-| approach                                   | parse_ms | difference explained                         |
-|--------------------------------------------|---------:|----------------------------------------------|
-| Rust `nom` (byte-level, `fold_many0`)      |   ~2.0ms  | monomorphized, borrowed slices, no boxing    |
-| hand-written Lean scanner (no combinators) |  ~13.2ms  | the Lean runtime floor                       |
-| **grip today** (single-constructor result) |   ~34ms   | grip's model, one heap object per step       |
-| grip before (`Except Err (α × Nat)`)       |   ~40ms   | two heap objects per step (`Except` + `Prod`) |
+| approach                                   | parse_ms | note                                          |
+|--------------------------------------------|---------:|-----------------------------------------------|
+| Rust `nom` (byte-level, `fold_many0`)      |   ~2.0ms  | monomorphized, borrowed slices, no boxing     |
+| hand-written Lean scanner (no combinators) |  ~13ms    | the Lean runtime floor                        |
+| **grip today** (scan loops specialized)    |  ~20ms    | combinators; predicate monomorphized in-loop  |
+| grip before `@[specialize]`                |  ~34ms    | scan predicate called indirectly per byte     |
+| grip before single-constructor result      |  ~40ms    | two heap objects per step (`Except` + `Prod`) |
 
 Reading the steps:
 
-- **Result boxing (~40 to ~34):** *done.* Merging `Except Err (α × Nat)` into a single
-  `ParseResult α = ok value offset | error e` constructor removed one allocation per step,
-  worth about 15%. This is the shipped representation; every combinator and every
-  soundness proof was ported to it.
-- **Combinator indirection (~34 to ~13):** the largest remaining share. Each combinator is a
-  `GParser` struct whose `run` is a closure; Lean calls through those closures instead
-  of inlining the grammar into one flat function the way Rust monomorphizes `nom`.
-  Closing this needs a monomorphizing or CPS redesign, not a result-type tweak.
-- **Language floor (~13 to ~2):** reference counting, bounds-checked `ByteArray`
-  indexing, and no monomorphization. Even a hand-written Lean scanner stays ~6.5x off
-  `nom`; that part is the runtime, not grip.
+- **`Except`+`Prod` to one constructor (~40 to ~34):** a success now allocates one object.
+- **`@[specialize]` the scan loops (~34 to ~20):** the per-byte predicate was the dominant
+  cost, called indirectly once per byte. Monomorphizing it into the loop recovered it --
+  no CPS or redesign, the combinator model stayed intact. An earlier draft wrongly called
+  this a "combinator indirection wall" needing a rewrite; it was a one-word attribute.
+- **grip ~20 vs hand-written Lean ~13 (~1.5x):** the residue -- one `ParseResult` object per
+  combinator step and the `GParser` struct/closure dispatch the specializer does not reach.
+- **hand-written Lean ~13 vs nom ~2:** the Lean runtime floor (RC, bounds checks, no
+  borrowed slices). That part is the language, not grip.
 
-So grip is the fast *combinator* option in Lean, and a hand-written scanner or a
-systems-language library like `nom` will beat it -- see the README's "When to reach for
-grip". Haskell's attoparsec (~19.5ms, DOM build, nativejson-benchmark) is a published
-cross-language point, not run here.
+grip now sits level with Haskell's attoparsec (~19.5ms, DOM build, nativejson-benchmark, a
+published cross-language point). A hand-written scanner or a systems-language library like
+`nom` is still faster, but grip is no longer an order of magnitude behind -- it is a
+competitive combinator parser that keeps its grades and machine-checked soundness.
 
 The `nom` parser used here is a byte-level leaf-counter matching grip's semantics
-(validate, count leaves, keys not counted, `fold_many0` so no per-element `Vec`); it is
-not shipped in this repo (no Rust in CI).
+(validate, count leaves, keys not counted, `fold_many0` so no per-element `Vec`).
 
 Update this file by running `lake exe bench` and `sh bench/mkchart.sh`.
