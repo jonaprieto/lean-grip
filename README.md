@@ -8,7 +8,7 @@ parsec/attoparsec infinite-loop footgun, is a **compile error**.
 [![CI](https://github.com/jonaprieto/grip/actions/workflows/ci.yml/badge.svg)](https://github.com/jonaprieto/grip/actions/workflows/ci.yml)
 [![Lean](https://img.shields.io/badge/Lean-v4.28.0-blue)](lean-toolchain)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
-[![canada.json](https://img.shields.io/badge/canada.json-~34ms%20(8x%20vs%20lean4--parser)-blue)](bench/RESULTS.md)
+[![canada.json](https://img.shields.io/badge/canada.json-~20ms%20(14x%20vs%20lean4--parser)-blue)](bench/RESULTS.md)
 
 ## Status
 
@@ -94,22 +94,21 @@ core is the whole idea in five lines:
 ```lean
 def sexp : GParser conditional Sexp :=
   GParser.fix fun sexp =>
-    let atom := GParser.map Sexp.atom (GParser.capture (GParser.takeWhile1 isAtomByte))
-    let list := GParser.seqR (GParser.byte 40)              -- '('
-      (GParser.seqR ws (GParser.seqL (GParser.map Sexp.list
-        (GParser.many (GParser.seqL sexp ws))) (GParser.byte 41)))  -- ')'
-    GParser.seqR ws (GParser.dispatch fun b => if b == 40 then list else atom)
+    let atom := Sexp.atom <$> GParser.capture (GParser.takeWhile1 isAtomByte)
+    let list := GParser.byteC '(' *> GParser.ws *>
+      ((Sexp.list <$> GParser.many (sexp <* GParser.ws)) <* (GParser.ws *> GParser.byteC ')'))
+    GParser.ws *> GParser.dispatch fun b => if b == Ascii.lparen then list else atom
 ```
 
 ## When to reach for grip
 
-If you want the fastest possible parser in Lean and will hand-write a byte scanner to get
-it, do that; a bespoke parser beats any combinator library, grip included. grip is for
-the other case: you want parser-combinator ergonomics -- composable, readable grammars
-with a compile-time consumption guarantee (the [gate](#the-gate)) -- and you can trade a
-little speed for it. Among combinator options grip is the fast one; against a hand-written
-parser it will not win on raw throughput, and it does not try to. Reach for it when the
-grammar's clarity and the many-gate safety matter more than the last few milliseconds.
+grip is a parser-combinator library: composable, readable grammars with a compile-time
+consumption guarantee (the [gate](#the-gate)) and machine-checked soundness. It is also
+fast -- on canada.json it is level with Haskell's attoparsec (~20ms) and ~1.5x off a
+hand-written Lean byte scanner (~13ms), so you rarely pay for the ergonomics. A bespoke
+hand-written scanner or a systems-language library like Rust's `nom` (~2ms) is still
+faster on raw throughput; reach for one of those only when the last few milliseconds beat
+grammar clarity and the many-gate safety.
 
 ## Benchmarks
 
@@ -120,17 +119,16 @@ self-timed, all on the same file and machine. grip's parser is
 
 ![canada.json parse time](bench/results.svg)
 
-Apples-to-apples, both validating, grip is about **8x faster than lean4-parser**
-(grip ~34ms, lean4-parser ~273ms). Lean's built-in `Lean.Json.parse` takes ~68ms but
-builds a full DOM -- strictly more work than grip's validator, so treat that as context,
-not a like-for-like win.
+Apples-to-apples, both validating, grip is about **14x faster than lean4-parser**
+(grip ~20ms, lean4-parser ~273ms) and ~3.5x faster than Lean's built-in `Lean.Json.parse`
+(~68ms, which does more -- it builds a full DOM). At ~20ms grip is level with Haskell's
+attoparsec (~19.5ms).
 
-For scale, Rust's `nom` does the same leaf-count parse in ~2ms and a hand-written Lean
-scanner in ~13ms. `bench/RESULTS.md` attributes grip's gap: result boxing (now merged
-into the single-constructor `ParseResult`, ~40ms to ~34ms) is done; the larger remaining
-share is combinator `run`-closure indirection that Lean does not monomorphize the way
-Rust does, and the rest is the Lean runtime floor. First-byte `dispatch` cut another ~18%
-earlier. See [bench/RESULTS.md](bench/RESULTS.md); regenerate with `lake exe bench` and
+`bench/RESULTS.md` walks the path from ~49ms to ~20ms: first-byte `dispatch` (~49→40),
+the single-constructor `ParseResult` (~40→34), and `@[specialize]` on the byte-scan loops
+so a known predicate is monomorphized in-loop instead of called per byte (~34→20, the big
+one). What remains is the Lean runtime floor: a hand-written Lean scanner does ~13ms and
+Rust's `nom` ~2ms. See [bench/RESULTS.md](bench/RESULTS.md); regenerate with `lake exe bench` and
 `sh bench/mkchart.sh`.
 
 ## Packages
