@@ -27,7 +27,7 @@ structure Err where
   pos      : Nat
   /-- Labels expected at `pos` (one per `label`/`<?>` annotation). -/
   expected : List String
-  deriving Repr, DecidableEq, BEq
+  deriving Repr, DecidableEq, BEq, Inhabited
 
 /-- User-facing positioned parse error, produced by `GParser.parse`. -/
 structure ParseError where
