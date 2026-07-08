@@ -51,15 +51,26 @@ best time.
 | parser | input                | count  |  ms  | MB/s |
 |--------|----------------------|-------:|-----:|-----:|
 | json   | canada.json, 2.1 MB  | 111130 | ~34  | ~62  |
-| sexp   | 200 KB, 50k atoms    |  50000 | ~9.0 | ~22  |
-| lambda | 100 KB application   |    ok  | ~6.0 | ~17  |
-| http   | 80 KB, 10k headers   |  10000 | ~1.5 | ~53  |
-| toml   | 200 KB, 20k entries  |  20000 | ~7.1 | ~28  |
-| yaml   | 90 KB, 30k scalars   |  30001 | ~7.3 | ~12  |
+| sexp   | 200 KB, 50k atoms    |  50000 | ~7.4 | ~27  |
+| lambda | 100 KB application   |    ok  | ~5.0 | ~20  |
+| http   | 80 KB, 10k headers   |  10000 | ~1.4 | ~58  |
+| toml   | 200 KB, 20k entries  |  20000 | ~6.8 | ~29  |
+| yaml   | 90 KB, 30k scalars   |  30001 | ~6.0 | ~15  |
 
 `count` is the parser's own result on the input (leaf nodes for JSON, list length for the
 others; `lambda` reports a success flag). These stress the shared combinators (`fix`,
-`dispatch`, `capture`, `many`) across recursive, line-oriented, and nested grammars.
+`dispatch`, `capture`, `many`) across recursive, line-oriented, and nested grammars. All
+got ~10-20% faster from the single-constructor result too.
+
+### Does the nom gap generalize past JSON?
+
+Yes. A `nom` S-expression atom-counter on the same input grip's sexp bench uses (`"(" ++
+"sym " * 50000 ++ ")"`, count 50000) runs in ~0.7ms; grip's sexp is ~7.4ms, about **10x**.
+JSON is ~17x (grip ~34ms, nom ~2ms). The ratio is the Lean-vs-Rust runtime gap and it
+varies with per-node work: JSON's `fix` recursion, `dispatch`, and `foldMany` cost more
+per node than sexp's flat `many`, so JSON shows a wider gap. Either way grip is the fast
+combinator option in Lean, roughly an order of magnitude off a systems-language combinator
+library, by runtime not by model. (The `nom` parsers are not shipped -- no Rust in CI.)
 
 ## Where grip's time goes
 
