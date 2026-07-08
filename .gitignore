@@ -2,3 +2,6 @@
 /grip-props/.lake
 *.olean
 .DS_Store
+
+# Implementation plans are working notes, not tracked artifacts.
+/docs/plans/
