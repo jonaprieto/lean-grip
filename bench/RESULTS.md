@@ -16,12 +16,12 @@ Read the `work` column before comparing: grip and lean4-parser **validate** the 
 
 | parser                        | parse_ms | work             | notes                                            |
 |-------------------------------|---------:|------------------|--------------------------------------------------|
-| grip (combinators)            |    ~40   | validate + count | byte-level; `examples/Json.lean`, pure combinators |
+| grip (combinators)            |    ~34   | validate + count | byte-level; `examples/Json.lean`, pure combinators |
 | Lean.Json (core, built-in)    |    ~68   | full DOM build   | Lean's `Lean.Json.parse`; builds the tree        |
 | lean4-parser (fgdorais)       |   ~273   | validate         | `SimpleParser String.Slice Char`; `sepBy` allocates |
 
-Apples-to-apples (both validate, no DOM): grip is about **6.8x faster than lean4-parser**
-on the competitor's own unmodified JSON example. grip's validator is also ~1.7x faster
+Apples-to-apples (both validate, no DOM): grip is about **8x faster than lean4-parser**
+on the competitor's own unmodified JSON example. grip's validator is also ~2x faster
 than `Lean.Json`, but that is not the same task -- `Lean.Json` materialises a tree grip
 does not build, so treat it as context, not a like-for-like win.
 
@@ -33,6 +33,15 @@ sub-parse plus an error allocation -- before reaching the number branch. Replaci
 `alt` chain with `GParser.dispatch` (peek the leading byte, jump straight to the branch)
 removed that per-node waste and cut the parse from ~49ms to ~40ms (about 18%).
 
+## Single-constructor result
+
+The core result was `Except Err (α × Nat)`: a successful step allocated `Except.ok`
+wrapping a `Prod`, two heap objects. Replacing it with one constructor,
+`ParseResult α = ok value offset | error e`, makes a success a single object and took the
+parse from ~40ms to ~34ms (about 15%). Every combinator, the `cwit`/`ewit`/`swit`
+witnesses, and the whole `grip-props` metatheory were ported to the new shape with no
+loss of features and no new `sorry`.
+
 ## All example parsers
 
 `lake exe bench` times every example parser (JSON on canada.json, the rest on inputs
@@ -41,7 +50,7 @@ best time.
 
 | parser | input                | count  |  ms  | MB/s |
 |--------|----------------------|-------:|-----:|-----:|
-| json   | canada.json, 2.1 MB  | 111130 | ~40  | ~52  |
+| json   | canada.json, 2.1 MB  | 111130 | ~34  | ~62  |
 | sexp   | 200 KB, 50k atoms    |  50000 | ~9.0 | ~22  |
 | lambda | 100 KB application   |    ok  | ~6.0 | ~17  |
 | http   | 80 KB, 10k headers   |  10000 | ~1.5 | ~53  |
@@ -59,18 +68,18 @@ run four ways on canada.json, best-of-20, same machine (all counted 111130):
 
 | approach                                   | parse_ms | difference explained                         |
 |--------------------------------------------|---------:|----------------------------------------------|
-| Rust `nom` (byte-level, `fold_many0`)      |    ~2.0  | monomorphized, borrowed slices, no boxing    |
-| hand-written Lean scanner (no combinators) |   ~13.2  | the Lean runtime floor                       |
-| grip with a single-constructor result      |   ~33.8  | grip's model, one heap object per step       |
-| grip today (`Except Err (α × Nat)`)        |   ~40.0  | two heap objects per step (`Except` + `Prod`) |
+| Rust `nom` (byte-level, `fold_many0`)      |   ~2.0ms  | monomorphized, borrowed slices, no boxing    |
+| hand-written Lean scanner (no combinators) |  ~13.2ms  | the Lean runtime floor                       |
+| **grip today** (single-constructor result) |   ~34ms   | grip's model, one heap object per step       |
+| grip before (`Except Err (α × Nat)`)       |   ~40ms   | two heap objects per step (`Except` + `Prod`) |
 
 Reading the steps:
 
-- **Result boxing (~40 to ~34):** merging `Except Err (α × Nat)` into a single
-  `ok a pos | err` constructor removes one allocation per step, worth about 15%. Real,
-  but not where most of the time is, and it would touch every combinator and every
-  soundness proof.
-- **Combinator indirection (~34 to ~13):** the largest share. Each combinator is a
+- **Result boxing (~40 to ~34):** *done.* Merging `Except Err (α × Nat)` into a single
+  `ParseResult α = ok value offset | error e` constructor removed one allocation per step,
+  worth about 15%. This is the shipped representation; every combinator and every
+  soundness proof was ported to it.
+- **Combinator indirection (~34 to ~13):** the largest remaining share. Each combinator is a
   `GParser` struct whose `run` is a closure; Lean calls through those closures instead
   of inlining the grammar into one flat function the way Rust monomorphizes `nom`.
   Closing this needs a monomorphizing or CPS redesign, not a result-type tweak.
