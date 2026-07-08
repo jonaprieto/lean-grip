@@ -7,6 +7,7 @@ autoImplicit = false
 
 [[lean_lib]]
 name = "GripProps"
+globs = ["GripProps", "GripProps.+"]
 
 [[require]]
 name = "grip"
