@@ -2,7 +2,7 @@
 Copyright 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 -/
-import Grip.Parser
+import Grip
 
 /-!
 # Grip.Examples.Toml -- a minimal TOML key/value parser
@@ -37,31 +37,24 @@ inductive Value where
   | bool : Bool → Value
   deriving BEq, Repr
 
-@[inline] private def isAlpha (b : UInt8) : Bool :=
-  (97 ≤ b && b ≤ 122) || (65 ≤ b && b ≤ 90)
-
 /-- A bare-key byte: letter, digit, underscore, or dash. -/
 @[inline] private def isKeyByte (b : UInt8) : Bool :=
-  isAlpha b || (48 ≤ b && b ≤ 57) || b == 95 || b == 45
+  Ascii.isAlpha b || Ascii.isDigit b || b == 95 || b == Ascii.dash
 
 /-- An integer byte: digit or sign. -/
 @[inline] private def isIntByte (b : UInt8) : Bool :=
-  (48 ≤ b && b ≤ 57) || b == 45 || b == 43
-
-/-- Whitespace including newlines, used as the separator between entries. -/
-@[inline] private def ws : GParser flexible Nat :=
-  GParser.takeWhile (fun b => b == 32 || b == 9 || b == 10 || b == 13)
+  Ascii.isDigit b || b == Ascii.dash || b == Ascii.plus
 
 /-- A scalar value, chosen by its first byte. -/
 private def value : GParser conditional Value :=
   let strVal : GParser conditional Value :=
-    GParser.seqR (GParser.byte 34)                              -- opening '"'
-      (GParser.seqL (GParser.map Value.str (GParser.capture (GParser.takeWhile (· != 34))))
-        (GParser.byte 34))                                      -- closing '"'
+    GParser.seqR (GParser.byte Ascii.quote)                    -- opening '"'
+      (GParser.seqL (GParser.map Value.str (GParser.capture (GParser.takeWhile (· != Ascii.quote))))
+        (GParser.byte Ascii.quote))                            -- closing '"'
   -- Capture the token, then accept only an exact `true`/`false` -- a bareword like
   -- `trueish` must fail, not silently read as `false`.
   let boolVal : GParser conditional Value :=
-    GParser.bind (GParser.capture (GParser.takeWhile1 isAlpha)) fun s =>
+    GParser.bind (GParser.capture (GParser.takeWhile1 Ascii.isAlpha)) fun s =>
       if s == "true" then GParser.weakenFallible (GParser.pure (Value.bool true))
       else if s == "false" then GParser.weakenFallible (GParser.pure (Value.bool false))
       else GParser.weakenFallible (GParser.fail : GParser empty Value)
@@ -73,19 +66,19 @@ private def value : GParser conditional Value :=
       | some n => GParser.weakenFallible (GParser.pure (Value.int n))
       | none   => GParser.weakenFallible (GParser.fail : GParser empty Value)
   GParser.dispatch fun b =>
-    if b == 34 then strVal
-    else if b == 116 || b == 102 then boolVal                   -- 't'rue / 'f'alse
+    if b == Ascii.quote then strVal
+    else if b == Ascii.code 't' || b == Ascii.code 'f' then boolVal   -- 't'rue / 'f'alse
     else intVal
 
 /-- One `key = value` entry. -/
 private def entry : GParser conditional (String × Value) :=
   GParser.map2 (·, ·)
     (GParser.capture (GParser.takeWhile1 isKeyByte))
-    (GParser.seqR ws (GParser.seqR (GParser.byte 61) (GParser.seqR ws value)))  -- '=' value
+    (GParser.seqR GParser.ws (GParser.seqR (GParser.byte Ascii.equals) (GParser.seqR GParser.ws value)))
 
 /-- Parse a whole document into an ordered association list. -/
 def toml : GParser flexible (List (String × Value)) :=
-  GParser.seqL (GParser.many (GParser.seqR ws entry)) ws
+  GParser.seqL (GParser.many (GParser.seqR GParser.ws entry)) GParser.ws
 
 /-- Parse a TOML document from `arr`, or `none` on failure. -/
 @[inline] def parse (arr : ByteArray) : Option (List (String × Value)) :=
