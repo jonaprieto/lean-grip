@@ -2,7 +2,7 @@
 Copyright 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 -/
-import Grip.Parser
+import Grip
 
 /-!
 # Grip.Examples.Yaml -- a flow-style YAML parser
@@ -39,19 +39,16 @@ inductive Yaml where
   | map : List (String × Yaml) → Yaml
   deriving BEq, Repr
 
-@[inline] private def isWs (b : UInt8) : Bool :=
-  b == 32 || b == 10 || b == 9 || b == 13
-
 /-- A plain-scalar byte: visible and not a flow delimiter (`, [ ] { } :` or `"`). -/
 @[inline] private def isPlainByte (b : UInt8) : Bool :=
-  b > 32 && b != 44 && b != 91 && b != 93 && b != 123 && b != 125 && b != 58 && b != 34
-
-@[inline] private def ws : GParser flexible Nat := GParser.takeWhile isWs
+  b > Ascii.space && b != Ascii.comma && b != Ascii.lbracket && b != Ascii.rbracket
+  && b != Ascii.lbrace && b != Ascii.rbrace && b != Ascii.colon && b != Ascii.quote
 
 /-- A double-quoted scalar's `String` contents (escape-transparent). -/
 @[inline] private def quoted : GParser conditional String :=
-  GParser.seqR (GParser.byte 34)
-    (GParser.seqL (GParser.capture (GParser.takeWhile (· != 34))) (GParser.byte 34))
+  GParser.seqR (GParser.byte Ascii.quote)
+    (GParser.seqL (GParser.capture (GParser.takeWhile (· != Ascii.quote)))
+      (GParser.byte Ascii.quote))
 
 /-- A plain (unquoted) scalar's `String`. -/
 @[inline] private def plain : GParser conditional String :=
@@ -59,41 +56,49 @@ inductive Yaml where
 
 /-- A scalar key/value string: quoted or plain, by first byte. -/
 @[inline] private def scalarStr : GParser conditional String :=
-  GParser.dispatch fun b => if b == 34 then quoted else plain
+  GParser.dispatch fun b => if b == Ascii.quote then quoted else plain
 
 /-- Parse one flow-style YAML value. -/
 def value : GParser conditional Yaml :=
   GParser.fix fun value =>
     -- sequence: "[" ws ( value ("," value)* )? ws "]"
     let commaValue : GParser conditional Yaml :=
-      GParser.seqR ws (GParser.seqR (GParser.byte 44) (GParser.seqR ws value))
+      GParser.seqR GParser.ws
+        (GParser.seqR (GParser.byte Ascii.comma)
+          (GParser.seqR GParser.ws value))
     let seqBody : GParser flexible (List Yaml) :=
       GParser.alt
         (GParser.map2 (fun h t => h :: t) value (GParser.many commaValue))
         (GParser.pure [])
     let seq : GParser conditional Yaml :=
-      GParser.seqR (GParser.byte 91)
-        (GParser.seqR ws
-          (GParser.seqL (GParser.map Yaml.seq seqBody) (GParser.seqR ws (GParser.byte 93))))
+      GParser.seqR (GParser.byte Ascii.lbracket)
+        (GParser.seqR GParser.ws
+          (GParser.seqL (GParser.map Yaml.seq seqBody)
+            (GParser.seqR GParser.ws (GParser.byte Ascii.rbracket))))
     -- mapping: "{" ws ( pair ("," pair)* )? ws "}"
     let pair : GParser conditional (String × Yaml) :=
       GParser.map2 (·, ·) scalarStr
-        (GParser.seqR ws (GParser.seqR (GParser.byte 58) (GParser.seqR ws value)))
+        (GParser.seqR GParser.ws
+          (GParser.seqR (GParser.byte Ascii.colon)
+            (GParser.seqR GParser.ws value)))
     let commaPair : GParser conditional (String × Yaml) :=
-      GParser.seqR ws (GParser.seqR (GParser.byte 44) (GParser.seqR ws pair))
+      GParser.seqR GParser.ws
+        (GParser.seqR (GParser.byte Ascii.comma)
+          (GParser.seqR GParser.ws pair))
     let mapBody : GParser flexible (List (String × Yaml)) :=
       GParser.alt
         (GParser.map2 (fun h t => h :: t) pair (GParser.many commaPair))
         (GParser.pure [])
     let flowMap : GParser conditional Yaml :=
-      GParser.seqR (GParser.byte 123)
-        (GParser.seqR ws
-          (GParser.seqL (GParser.map Yaml.map mapBody) (GParser.seqR ws (GParser.byte 125))))
-    GParser.seqR ws
+      GParser.seqR (GParser.byte Ascii.lbrace)
+        (GParser.seqR GParser.ws
+          (GParser.seqL (GParser.map Yaml.map mapBody)
+            (GParser.seqR GParser.ws (GParser.byte Ascii.rbrace))))
+    GParser.seqR GParser.ws
       (GParser.dispatch fun b =>
-        if b == 91 then seq                                     -- '['
-        else if b == 123 then flowMap                           -- '{'
-        else if b == 34 then GParser.map Yaml.scalar quoted     -- '"'
+        if b == Ascii.lbracket then seq                        -- '['
+        else if b == Ascii.lbrace then flowMap                 -- '{'
+        else if b == Ascii.quote then GParser.map Yaml.scalar quoted  -- '"'
         else GParser.map Yaml.scalar plain)
 
 /-- Parse one flow-style YAML value from `arr`, or `none` on failure. -/
