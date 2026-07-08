@@ -663,6 +663,75 @@ def GParser.weakenFallible {g : Grade} (p : GParser g α) : GParser fallible α 
 -- Example: a `conditional` parser weakened to `fallible` typechecks.
 example (f : UInt8 → Bool) : GParser fallible UInt8 := GParser.weakenFallible (GParser.satisfy f)
 
+/-- Default `GParser conditional α`: always fails at the current offset.
+Satisfies Lean's `[Inhabited]` requirement for `partial def` recursion over
+`GParser conditional α` return types (grip has no `fix` combinator yet). -/
+instance : Inhabited (GParser conditional α) :=
+  ⟨{ run := fun _ p => .error ⟨p, []⟩,
+     cwit := by intro arr q a q' h; exact absurd h (by simp),
+     ewit := by intro he; exact absurd he (by decide),
+     swit := by intro he; exact absurd he (by decide) }⟩
+
+/-! ### Recursion via a fixpoint
+
+`GParser.fix` ties the knot on a parser transformer, giving the body a reference back
+to the whole parser so recursive grammars can be written from combinators. The
+self-reference is `conditional` (always-consuming), so a well-behaved grammar shrinks
+the input before each recursive call.
+
+It is implemented with `partial def`: grip's byte core is not size-indexed, so an
+efficient kernel-total `fix` is impractical. A runtime clamp downgrades a
+non-advancing success to a failure, which keeps the `always`-consume grade SOUND even
+though termination is not kernel-checked. A left-recursive body (one that reaches its
+recursive call without consuming) therefore fails rather than looping. This is the
+honest totality-not-productivity limitation, not a defect. -/
+
+/-- Clamp a raw result so a success that did not advance past `q` becomes a failure at
+`q`. This is what makes the `conditional` (`always`-consume) witness hold for `fix`
+without unfolding the `partial` recursion. -/
+@[inline] private def clampAdvance (q : Nat) : Except Err (α × Nat) → Except Err (α × Nat)
+  | .ok (x, q') => if q < q' then .ok (x, q') else .error ⟨q, []⟩
+  | .error e    => .error e
+
+/-- The recursive run: applies `f` to a `self` whose recursive calls are clamped. -/
+partial def GParser.fixRun (f : GParser conditional α → GParser conditional α)
+    (arr : ByteArray) (q : Nat) : Except Err (α × Nat) :=
+  let self : GParser conditional α :=
+    { run := fun a p => clampAdvance p (GParser.fixRun f a p)
+      cwit := by
+        intro a p x p' h
+        show p < p'
+        simp only [clampAdvance] at h
+        split at h
+        · split at h
+          · rename_i hlt
+            simp only [Except.ok.injEq, Prod.mk.injEq] at h
+            omega
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      ewit := by intro he; exact absurd he (by decide)
+      swit := by intro he; exact absurd he (by decide) }
+  (f self).run arr q
+
+/-- Build a recursive `conditional` parser as the fixpoint of `f`. See the module note
+above for the totality-not-productivity caveat. -/
+@[specialize] def GParser.fix (f : GParser conditional α → GParser conditional α) :
+    GParser conditional α where
+  run arr q := clampAdvance q (GParser.fixRun f arr q)
+  cwit := by
+    intro arr q a q' h
+    show q < q'
+    simp only [clampAdvance] at h
+    split at h
+    · split at h
+      · rename_i hlt
+        simp only [Except.ok.injEq, Prod.mk.injEq] at h
+        omega
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  ewit := by intro he; exact absurd he (by decide)
+  swit := by intro he; exact absurd he (by decide)
+
 end Grip
 
 /-! ### Sanity: the graded byte backend parses. -/
@@ -679,6 +748,19 @@ private def sample :=
 #guard (GParser.run? sample "(42)".toUTF8) == some 2       -- 2 digit bytes inside parens
 #guard (GParser.run? sample "(42".toUTF8) == none          -- missing ')'
 #guard (GParser.run? (GParser.foldMany (· + ·) 0 digits) "".toUTF8) == some 0
+
+-- fix: a recursive nested-parens parser returning the nesting depth. Each level
+-- consumes "(" before recursing, so the always-consume clamp never fires on
+-- balanced input; unbalanced input fails.
+private def parenDepth : GParser conditional Nat :=
+  GParser.fix fun self =>
+    GParser.map (· + 1)
+      (GParser.seqR (GParser.byte 40)
+        (GParser.seqL (GParser.alt self (GParser.pure 0)) (GParser.byte 41)))
+
+#guard (GParser.run? parenDepth "()".toUTF8) == some 1
+#guard (GParser.run? parenDepth "((()))".toUTF8) == some 3
+#guard (GParser.run? parenDepth "(()".toUTF8) == none            -- unbalanced
 
 -- BEq for Except Err, needed by the #guard comparisons below.
 private instance instBEqExceptErr {β : Type} [BEq β] : BEq (Except Err β) where
