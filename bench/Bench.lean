@@ -42,8 +42,8 @@ partial def repeatStr (s : String) (n : Nat) : String :=
 
 @[noinline] def parseJson (arr : ByteArray) : Nat :=
   match Grip.Examples.Json.json.run arr 0 with
-  | .ok (n, _) => n
-  | .error _   => 0
+  | .ok n _  => n
+  | .error _ => 0
 
 @[noinline] def parseSexp (arr : ByteArray) : Nat :=
   match Grip.Examples.Sexp.parse arr with
