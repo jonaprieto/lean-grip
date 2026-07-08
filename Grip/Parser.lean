@@ -80,8 +80,8 @@ Line and column are 1-based byte positions derived by scanning `arr` for newline
 def GParser.parse {g : Grade} {α : Type} (p : GParser g α) (arr : ByteArray) :
     Except ParseError α :=
   match p.run arr 0 with
-  | .ok (a, _) => .ok a
-  | .error e   => .error (mkParseError arr e)
+  | .ok a _  => .ok a
+  | .error e => .error (mkParseError arr e)
 
 /-! ### MonadExcept instance -/
 
@@ -98,13 +98,15 @@ call the handler `h` and run its result from the same offset. -/
 def GParser.tryCatch {α : Type} (p : Parser α) (h : Err → Parser α) : Parser α where
   run := fun arr q =>
     match p.run arr q with
-    | .ok r  => .ok r
+    | .ok a q' => .ok a q'
     | .error e => (h e).run arr q
   cwit := by
     intro arr q a q' heq
     split at heq
-    · rename_i r hp
-      exact p.cwit (Except.ok.inj heq ▸ hp)
+    · rename_i b p' hp
+      simp only [ParseResult.ok.injEq] at heq
+      obtain ⟨rfl, rfl⟩ := heq
+      exact p.cwit hp
     · rename_i e hp
       exact (h e).cwit heq
   ewit := by intro he; exact absurd he (by decide)
