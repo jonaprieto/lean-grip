@@ -12,6 +12,14 @@ The lean4-parser number is its shipped `examples/JSON.lean` validator
 parser is `examples/Json.lean`, built entirely from grip combinators (`fix`, `dispatch`,
 `seqR`, `alt`, `foldMany`, `takeWhile1`) -- not a hand-rolled scanner.
 
+The `~20ms` figures are the *pure parse*: input preloaded, timed between two
+`monoNanosNow` calls, best of 20. For an end-to-end wall-clock cross-check, `sh
+bench/hyperfine.sh` runs the built binary (`bench once`, a single parse then exit) under
+hyperfine: ~46ms mean including process startup and the 2.1 MB file read. The two answer
+different questions -- pure parse vs whole-command latency -- and both are honest; the
+tables below report the pure-parse number so grip and the other parsers are compared on
+the same basis.
+
 Read the `work` column before comparing: grip and lean4-parser **validate** the input
 (grip also counts leaves, cheap `Nat` adds); `Lean.Json` builds a **full DOM** (a
 `Lean.Json` tree), which is strictly more work.
