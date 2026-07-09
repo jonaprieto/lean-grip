@@ -1,6 +1,7 @@
 /-
-Copyright 2026 Jonathan Cubides. All rights reserved.
+Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Jonathan Cubides
 -/
 import Json
 import Sexp
@@ -130,6 +131,7 @@ def main (args : List String) : IO Unit := do
   -- The other example parsers on generated inputs.
   benchOne "sexp"   ("(" ++ repeatStr "sym " 50000 ++ ")").toUTF8                     parseSexp
   benchOne "lambda" ("f" ++ repeatStr " x" 50000).toUTF8                              parseLambda
-  benchOne "http"   ("GET / HTTP/1.1\r\n" ++ repeatStr "X-H: v\r\n" 10000 ++ "\r\n").toUTF8 parseHttp
+  benchOne "http"
+    ("GET / HTTP/1.1\r\n" ++ repeatStr "X-H: v\r\n" 10000 ++ "\r\n").toUTF8 parseHttp
   benchOne "toml"   (repeatStr "key = 123\n" 20000).toUTF8                            parseToml
   benchOne "yaml"   ("[" ++ repeatStr "x, " 30000 ++ "x]").toUTF8                     parseYaml

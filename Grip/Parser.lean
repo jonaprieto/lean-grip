@@ -1,6 +1,7 @@
 /-
-Copyright 2026 Jonathan Cubides. All rights reserved.
+Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Jonathan Cubides
 -/
 
 import Grip.Graded
@@ -186,7 +187,8 @@ where
     match elem with
     | `(doElem| let $x:ident ← $e:term)             => `(Grip.GParser.bind $e fun $x => $rest)
     | `(doElem| let _ ← $e:term)                    => `(Grip.GParser.bind $e fun _ => $rest)
-    | `(doElem| let $x:ident : $ty:term ← $e:term)  => `(Grip.GParser.bind $e fun ($x : $ty) => $rest)
+    | `(doElem| let $x:ident : $ty:term ← $e:term)  =>
+      `(Grip.GParser.bind $e fun ($x : $ty) => $rest)
     | `(doElem| let $x:ident := $e:term)             => `(let $x := $e; $rest)
     | `(doElem| let $x:ident : $ty:term := $e:term) => `(let $x : $ty := $e; $rest)
     | _ =>

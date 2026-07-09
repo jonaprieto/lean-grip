@@ -1,6 +1,7 @@
 /-
-Copyright 2026 Jonathan Cubides. All rights reserved.
+Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Jonathan Cubides
 -/
 
 import Grip.Grade
@@ -414,8 +415,8 @@ On failure the furthest offset is the current position. -/
 and strictly consumes (in bounds). **Total** -- structural on `arr.size - q`; the
 guard `q < q' ≤ arr.size` guarantees the measure drops. `@[specialize]` so the `step`
 and the element parser fuse into the loop when they are statically known. -/
-@[specialize] def foldFwd {ge : Necessity} {α β : Type} (step : β → α → β) (p : GParser ⟨ge, always⟩ α)
-    (arr : ByteArray) (a : β) (q : Nat) : β × Nat :=
+@[specialize] def foldFwd {ge : Necessity} {α β : Type} (step : β → α → β)
+    (p : GParser ⟨ge, always⟩ α) (arr : ByteArray) (a : β) (q : Nat) : β × Nat :=
   match p.run arr q with
   | .ok x q' =>
     if _hq : q < q' ∧ q' ≤ arr.size then foldFwd step p arr (step a x) q' else (step a x, q')
@@ -570,7 +571,8 @@ decreasing_by omega
 theorem natFwd_gt (arr : ByteArray) (acc q : Nat) (h : q < arr.size)
     (hd : (48 ≤ arr[q] && arr[q] ≤ 57) = true) : q < (natFwd arr acc q).2 := by
   rw [natFwd_eq, dif_pos h, if_pos hd]
-  exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q) (natFwd_ge arr (acc * 10 + (arr[q].toNat - 48)) (q + 1))
+  exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q)
+    (natFwd_ge arr (acc * 10 + (arr[q].toNat - 48)) (q + 1))
 
 /-- Parse a decimal natural number (one or more digits). Always consumes on success.
 On failure the furthest offset is the current position. -/

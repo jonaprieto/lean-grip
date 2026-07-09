@@ -1,6 +1,7 @@
 /-
-Copyright 2026 Jonathan Cubides. All rights reserved.
+Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Jonathan Cubides
 -/
 
 /-!
@@ -110,7 +111,8 @@ open Grip.Ascii
 
 #guard (isWs 32 && isWs 10 && isWs 9 && isWs 13) == true
 #guard isWs 65 == false
-#guard (isDigit 47 == false) && (isDigit 48 == true) && (isDigit 57 == true) && (isDigit 58 == false)
+#guard (isDigit 47 == false) && (isDigit 48 == true)
+#guard (isDigit 57 == true) && (isDigit 58 == false)
 #guard (isHexDigit 0x39 && isHexDigit 0x61 && isHexDigit 0x46) == true
 #guard isHexDigit 0x67 == false
 #guard (isAlpha 65 && isAlpha 122 && isAlphaNum 48) == true
