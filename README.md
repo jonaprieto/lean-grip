@@ -27,7 +27,7 @@ labels). `import Grip` brings them all in.
 
 Worked example parsers under [`examples/`](examples/), each with `#guard` tests: JSON
 (byte-level, benchmarked), S-expressions, untyped lambda calculus, HTTP request lines +
-headers, a TOML scalar subset, and flow-style YAML.
+headers, TOML (tables, arrays, comments -- parses a real `Cargo.lock`), and flow-style YAML.
 
 ## Quick start
 
@@ -111,7 +111,7 @@ CI:
 | [Sexp.lean](examples/Sexp.lean)     | S-expressions                    |
 | [Lambda.lean](examples/Lambda.lean) | untyped lambda calculus          |
 | [Http.lean](examples/Http.lean)     | HTTP request line + headers      |
-| [Toml.lean](examples/Toml.lean)     | a TOML scalar subset             |
+| [Toml.lean](examples/Toml.lean)     | TOML (tables, arrays, comments)  |
 | [Yaml.lean](examples/Yaml.lean)     | flow-style YAML                  |
 
 They share a shape: `fix` for recursion, `dispatch` to pick a branch on the leading byte,
