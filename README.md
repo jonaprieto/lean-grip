@@ -48,13 +48,21 @@ import Grip
 open Grip
 
 -- A run of one or more digits; the result is the count of bytes consumed.
--- `conditional` = always consumes on success, may error.
+-- `conditional` = always consumes on success, may error. `Ascii.isDigit` is a
+-- named byte predicate from `Grip.Ascii` -- no magic `48 ≤ b && b ≤ 57` literals.
 def digits : GParser conditional Nat :=
-  GParser.takeWhile1 (fun b => 48 ≤ b && b ≤ 57)
+  GParser.takeWhile1 Ascii.isDigit
 
 #eval GParser.run? digits "2026".toUTF8   -- some 4
 #eval GParser.run? digits "x".toUTF8      -- none
+
+-- Or lean on `Grip.Combinators` directly: `digit` is the byte parser, and the
+-- operators/vocabulary compose it -- e.g. `ws *> digit` skips leading spaces.
 ```
+
+The example parsers use the same facilities throughout: `Ascii` predicates/constants
+(`isWs`, `isHexDigit`, `quote`, `lbrace`), `Combinators` (`ws`, `sepBy`, `between`,
+`choice`) and the operators (`<$> <*> *> <* <|>`), instead of hand-rolled byte math.
 
 Grades are opt-in. Write at the ungraded `Parser` with `Monad`/`Alternative`/`do` (or
 `gdo` to keep grades precise) and still get the compile-time consumption gate below.
