@@ -1,5 +1,9 @@
 # grip design
 
+> Point-in-time design spec (2026-07-07). Kept as a historical record; the numbers and
+> version pins below reflect that date and are not maintained. Current benchmarks live in
+> [`bench/RESULTS.md`](../../bench/RESULTS.md); the current API is the source.
+
 Working name: `grip`. A fast, graded Lean 4 parser-combinator library that aims to
 beat `fgdorais/lean4-parser` on speed and adoptability. Standalone private repo,
 not part of prim-parser. The fast core is seeded by porting the technique in

@@ -1,5 +1,9 @@
 # grip Ascii + Combinators library -- design
 
+> Point-in-time design spec (2026-07-08). Historical record; numbers here (e.g. the
+> ~34ms JSON baseline and the "15% slower" fast-path rule) predate the `@[specialize]`
+> work that took JSON to ~20ms. Current benchmarks: [`bench/RESULTS.md`](../../bench/RESULTS.md).
+
 ## Goal
 
 Factor the byte-literal magic numbers repeated across grip's six example parsers into a
