@@ -64,8 +64,8 @@ partial def repeatStr (s : String) (n : Nat) : String :=
 
 @[noinline] def parseToml (arr : ByteArray) : Nat :=
   match Grip.Examples.Toml.parse arr with
-  | some xs => xs.length
-  | none    => 0
+  | some d => d.tables.length
+  | none   => 0
 
 @[noinline] def parseYaml (arr : ByteArray) : Nat :=
   match Grip.Examples.Yaml.parse arr with
@@ -128,10 +128,12 @@ def main (args : List String) : IO Unit := do
   let jsonStr ← IO.FS.readFile "bench/data/canada.json"
   let ljMs ← bestMs 20 (fun i => parseLeanJson (barrierStr i jsonStr))
   IO.println s!"lean.json parse_ms={ljMs}"
-  -- The other example parsers on generated inputs.
+  -- TOML on a real file: a vendored Cargo.lock (count = number of [[package]] tables).
+  let tomlSrc ← IO.FS.readBinFile "bench/data/cargo.lock"
+  -- The remaining example parsers on generated inputs.
   benchOne "sexp"   ("(" ++ repeatStr "sym " 50000 ++ ")").toUTF8                     parseSexp
   benchOne "lambda" ("f" ++ repeatStr " x" 50000).toUTF8                              parseLambda
   benchOne "http"
     ("GET / HTTP/1.1\r\n" ++ repeatStr "X-H: v\r\n" 10000 ++ "\r\n").toUTF8 parseHttp
-  benchOne "toml"   (repeatStr "key = 123\n" 20000).toUTF8                            parseToml
+  benchOne "toml"   tomlSrc parseToml
   benchOne "yaml"   ("[" ++ repeatStr "x, " 30000 ++ "x]").toUTF8                     parseYaml
