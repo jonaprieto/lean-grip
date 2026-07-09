@@ -1,9 +1,10 @@
 # grip
 
-A graded Lean 4 byte-parser library. grip pairs a fast `ByteArray` core with grades:
-an opt-in, compile-time layer that tracks whether a parser may error and whether it
-must consume input. The headline payoff is that `many (pure x)`, the classic
-parsec/attoparsec infinite-loop footgun, is a **compile error**.
+A graded byte-parser library for Lean 4. The core parses over a raw `ByteArray`. On top
+of it sits an optional grade layer that records, at compile time, whether a parser can
+fail and whether it always consumes input. One thing that layer buys you: `many (pure x)`
+does not compile. That expression loops forever at runtime in parsec and attoparsec; here
+the type checker rejects it up front.
 
 [![CI](https://github.com/jonaprieto/grip/actions/workflows/ci.yml/badge.svg)](https://github.com/jonaprieto/grip/actions/workflows/ci.yml)
 [![Lean](https://img.shields.io/badge/Lean-v4.28.0-blue)](lean-toolchain)
@@ -12,22 +13,23 @@ parsec/attoparsec infinite-loop footgun, is a **compile error**.
 
 ## Status
 
-The core is in. Byte primitives, the `Parser`/graded `GParser` split with
+The core is in. That means the byte primitives, the `Parser`/graded `GParser` split with
 `Monad`/`Alternative`/`MonadExcept`, `gdo`, the always-consume `many` gate, `fix` for
-recursion, first-byte `dispatch`, `capture` for building syntax trees, and positioned
-`ParseError` with labels and caret. The machine-checked metatheory lives in `grip-props`;
+recursion, first-byte `dispatch`, `capture` for building syntax trees, and a positioned
+`ParseError` with labels and a caret. The machine-checked metatheory lives in `grip-props`.
 Verso docs are a later milestone.
 
-Two batteries-only helper modules sit on top: `Grip.Ascii` (named byte predicates
-`isWs`/`isDigit`/`isHexDigit`/..., delimiter constants `quote`/`comma`/`lbrace`/..., and
-`code : Char → UInt8`) and `Grip.Combinators` (the megaparsec-style vocabulary: `ws`,
-`digit`, `oneOf`, `sepBy`, `between`, `option`, `choice`, `manyTill`, `notFollowedBy`, ...
-plus the familiar operators `<$> <*> *> <* <|>` at the graded level, and `<?>` for
-labels). `import Grip` brings them all in.
+Two batteries-only helper modules sit on top. `Grip.Ascii` gives you named byte
+predicates (`isWs`, `isDigit`, `isHexDigit`, ...), delimiter constants (`quote`, `comma`,
+`lbrace`, ...), and `code : Char → UInt8`. `Grip.Combinators` gives you the megaparsec-style
+vocabulary: `ws`, `digit`, `oneOf`, `sepBy`, `between`, `option`, `choice`, `manyTill`,
+`notFollowedBy`, and the rest, plus the familiar `<$> <*> *> <* <|>` operators at the graded
+level and `<?>` for labels. `import Grip` pulls in all of it.
 
-Worked example parsers under [`examples/`](examples/), each with `#guard` tests: JSON
-(byte-level, benchmarked), S-expressions, untyped lambda calculus, HTTP request lines +
-headers, TOML (tables, arrays, comments -- parses a real `Cargo.lock`), and flow-style YAML.
+There are worked example parsers under [`examples/`](examples/), each with its own `#guard`
+tests: JSON (byte-level, the one we benchmark), S-expressions, untyped lambda calculus,
+HTTP request lines and headers, TOML (tables, arrays, comments, and it parses a real
+`Cargo.lock`), and flow-style YAML.
 
 ## Quick start
 
@@ -41,7 +43,8 @@ rev = "main"
 ```
 
 A parser is a `GParser g α` (graded) or the ungraded `Parser α`. Combinators run over a
-`ByteArray`; `run?` returns `Option`, `parse` returns a positioned `ParseError`:
+`ByteArray`. `run?` gives you back an `Option`; `parse` gives you a positioned
+`ParseError`:
 
 ```lean
 import Grip
@@ -60,50 +63,52 @@ def digits : GParser conditional Nat :=
 -- operators/vocabulary compose it -- e.g. `ws *> digit` skips leading spaces.
 ```
 
-The example parsers use the same facilities throughout: `Ascii` predicates/constants
-(`isWs`, `isHexDigit`, `quote`, `lbrace`), `Combinators` (`ws`, `sepBy`, `between`,
-`choice`) and the operators (`<$> <*> *> <* <|>`), instead of hand-rolled byte math.
+The example parsers use these facilities throughout rather than hand-rolled byte math:
+the `Ascii` predicates and constants (`isWs`, `isHexDigit`, `quote`, `lbrace`), the
+`Combinators` (`ws`, `sepBy`, `between`, `choice`), and the operators (`<$> <*> *> <* <|>`).
 
-Grades are opt-in. Write at the ungraded `Parser` with `Monad`/`Alternative`/`do` (or
-`gdo` to keep grades precise) and still get the compile-time consumption gate below.
+Grades are opt-in. You can write at the ungraded `Parser` with `Monad`/`Alternative`/`do`
+(or reach for `gdo` when you want to keep grades precise) and still get the compile-time
+consumption gate described below.
 
 ## The gate
 
-The one grade payoff to remember: `many`, `foldMany`, and `some` demand an
-always-consuming parser at the type level. `pure x` never consumes, so:
+Here is the one grade payoff worth remembering. `many`, `foldMany`, and `some` all demand
+an always-consuming parser at the type level. `pure x` never consumes, so this fails to
+elaborate:
 
 ```lean
 def loop : Parser Unit := many (pure ())   -- compile error: many needs an always-consuming parser
 ```
 
-You do not opt into this safety; it is carried by the library's own combinator types. A
-user writes at the ungraded `Parser` and still gets it. Writing a precise grade
+You never opt into this safety. It rides on the library's own combinator types, so a user
+who writes at the ungraded `Parser` still gets it. Writing a precise grade
 (`GParser conditional α`) is how you export a machine-checked contract to downstream
 combinators.
 
 ## Total, verified combinators
 
-grip's repetition core -- `many`, `foldMany`, and the `foldFwd`/`scanFwd`/`natFwd` loops
-under them -- is **total**, not `partial`. Each loop is structural on `arr.size - q`, and
-the [gate](#the-gate) forces every repeated element to be always-consuming (grade
-`⟨_, always⟩`), which is exactly the "the input shrank" proof a termination argument needs
--- enforced at the type level. Only `fix` is `partial` (with a runtime clamp), so nothing
-else on the hot path is an opaque axiom, and the `grip-props` metatheory can actually
-reason about looping parsers.
+grip's repetition core is total, not `partial`: `many`, `foldMany`, and the
+`foldFwd`/`scanFwd`/`natFwd` loops underneath them. Each loop is structural on
+`arr.size - q`, and the [gate](#the-gate) forces every repeated element to be
+always-consuming (grade `⟨_, always⟩`), which is exactly the "the input shrank" fact a
+termination proof needs, enforced at the type level. Only `fix` is `partial` (with a
+runtime clamp), so nothing else on the hot path is an opaque axiom, and the `grip-props`
+metatheory can actually reason about looping parsers.
 
-That is the deliberate trade. grip is concrete over an in-memory `ByteArray` -- finite, so
-`arr.size - q` is a free well-founded measure -- rather than generic over arbitrary
-streams. A stream-generic combinator library gets sockets and pipes, but pays with
-`partial` fold combinators that no theorem can unfold (a `partial def` is opaque to the
-kernel). grip is an existence proof for the other corner: **total + verified + byte-level**,
-where the generic libraries sit at **generic + partial**. Different point on the tradeoff
-curve, not a drop-in replacement -- pick grip when you parse bytes in memory and want the
-proofs.
+That is a deliberate trade. grip is concrete over an in-memory `ByteArray`, which is
+finite, so `arr.size - q` is a free well-founded measure. It is not generic over arbitrary
+streams. A stream-generic library gets you sockets and pipes, but it pays for them with
+`partial` fold combinators that no theorem can unfold, since a `partial def` is opaque to
+the kernel. grip stakes out the other corner (total, verified, byte-level) where the
+generic libraries sit at generic and partial. That makes it a different point on the
+tradeoff curve, not a drop-in replacement. Reach for grip when you parse bytes in memory
+and want the proofs.
 
 ## Examples
 
-Six worked parsers under [`examples/`](examples/), each with `#guard` tests that run in
-CI:
+Six worked parsers live under [`examples/`](examples/), each with `#guard` tests that run
+in CI:
 
 | file | grammar |
 |------|---------|
@@ -114,9 +119,9 @@ CI:
 | [Toml.lean](examples/Toml.lean)     | TOML (tables, arrays, comments)  |
 | [Yaml.lean](examples/Yaml.lean)     | flow-style YAML                  |
 
-They share a shape: `fix` for recursion, `dispatch` to pick a branch on the leading byte,
-`capture` to pull out a token, and `many`/`foldMany` for repetition. The S-expression
-core is the whole idea in five lines:
+They all share a shape: `fix` for recursion, `dispatch` to pick a branch on the leading
+byte, `capture` to pull out a token, and `many`/`foldMany` for repetition. The
+S-expression core is the whole idea in five lines:
 
 ```lean
 def sexp : GParser conditional Sexp :=
@@ -129,44 +134,44 @@ def sexp : GParser conditional Sexp :=
 
 ## When to reach for grip
 
-grip is a parser-combinator library: composable, readable grammars with a compile-time
-consumption guarantee (the [gate](#the-gate)) and machine-checked soundness. It is also
-fast -- on canada.json it is level with Haskell's attoparsec and within ~1.5x of a
-hand-written Lean byte scanner, so you rarely pay for the ergonomics. A bespoke scanner or
-a systems-language library like Rust's `nom` is still faster on raw throughput; reach for
-one of those only when the last few milliseconds beat grammar clarity and the many-gate
-safety. See [bench/RESULTS.md](bench/RESULTS.md) for the numbers.
+grip is a parser-combinator library: composable grammars that read clearly, with a
+compile-time consumption guarantee (the [gate](#the-gate)) and machine-checked soundness.
+It is also fast. On canada.json it runs level with Haskell's attoparsec and within about
+1.5x of a hand-written Lean byte scanner, so the ergonomics rarely cost you anything. A
+bespoke scanner or a systems-language library like Rust's `nom` will still beat it on raw
+throughput; go there when the last few milliseconds matter more than grammar clarity and
+the many-gate safety. The numbers are in [bench/RESULTS.md](bench/RESULTS.md).
 
 ## Benchmarks
 
-Parsing canada.json (~2.1 MB, standard nativejson-benchmark GeoJSON), best-of-20,
+Parsing canada.json (~2.1 MB, the standard nativejson-benchmark GeoJSON file), best-of-20,
 self-timed. grip's parser is [`examples/Json.lean`](examples/Json.lean), built entirely
 from grip combinators (`fix`, `dispatch`, `foldMany`, `takeWhile1`), not a hand-rolled
 scanner.
 
 ![canada.json parse time](bench/results.svg)
 
-Both validating, grip is roughly **14x faster than lean4-parser** and lands next to
+Both validating, grip comes in roughly 14x faster than lean4-parser and lands next to
 Haskell's attoparsec. The exact numbers, the methodology, the optimization path, and the
-cross-language comparison (`Lean.Json`, Rust's `nom`, a hand-written Lean scanner) all
-live in **[bench/RESULTS.md](bench/RESULTS.md)** -- the single source of truth. Regenerate
-with `lake exe bench` and `sh bench/mkchart.sh`.
+cross-language comparison (`Lean.Json`, Rust's `nom`, a hand-written Lean scanner) all live
+in [bench/RESULTS.md](bench/RESULTS.md), which is the single source of truth. Regenerate
+them with `lake exe bench` and `sh bench/mkchart.sh`.
 
 ## Packages
 
-- `grip` (core, batteries only): the parser, grades, and erased soundness witnesses.
-  Depend on this and you never transitively acquire mathlib.
+- `grip` (core, batteries only): the parser, the grades, and the erased soundness
+  witnesses. Depend on this and you never transitively pull in mathlib.
 - `grip-props` (opt-in, grip + mathlib): the machine-checked metatheory.
 
 ## Acknowledgements
 
 grip took its central idea from
 [prim-parser](https://github.com/janmasrovira/prim-parser) by Jan Mas Rovira: a
-**`Necessity`-graded monad**, where each parser's type records whether it may error and
-whether it consumes input, and sequencing/choice combine those grades. That graded
-discipline (and the many-gate it enables) is prim-parser's contribution. grip carries it
-onto its own byte-level `ByteArray` core with erased soundness witnesses, and adds the
-`ParseResult` result, first-byte `dispatch`, and the `@[specialize]` scan loops.
+`Necessity`-graded monad, where each parser's type records whether it may error and whether
+it consumes input, and sequencing and choice combine those grades. That graded discipline,
+and the many-gate it enables, is prim-parser's contribution. grip carries it onto its own
+byte-level `ByteArray` core with erased soundness witnesses, and adds the `ParseResult`
+result type, first-byte `dispatch`, and the `@[specialize]` scan loops.
 
 ## License
 

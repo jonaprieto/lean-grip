@@ -352,7 +352,7 @@ This is the megaparsec-style furthest-failure merge. -/
 
 /-! ### Scanners and repetition -/
 
-/-- Scan forward while `f` holds. **Total** -- structural on the measure
+/-- Scan forward while `f` holds. Total -- structural on the measure
 `arr.size - q` (each step advances one byte, bounded by `arr.size`). `@[specialize]` so
 a known predicate (e.g. `Ascii.isWs`) is monomorphized into the loop rather than called
 indirectly per byte. -/
@@ -412,7 +412,7 @@ On failure the furthest offset is the current position. -/
   swit := by intro he; exact absurd he (by decide)
 
 /-- Total repetition core: fold `p`'s results into `a`, advancing while `p` succeeds
-and strictly consumes (in bounds). **Total** -- structural on `arr.size - q`; the
+and strictly consumes (in bounds). Total -- structural on `arr.size - q`; the
 guard `q < q' ≤ arr.size` guarantees the measure drops. `@[specialize]` so the `step`
 and the element parser fuse into the loop when they are statically known. -/
 @[specialize] def foldFwd {ge : Necessity} {α β : Type} (step : β → α → β)
@@ -537,7 +537,7 @@ Furthest offset propagates on failure. -/
       obtain ⟨a, q', ha⟩ := x.swit he1 arr q
       rw [ha] at hx; exact absurd hx (by simp)
 
-/-- Fold decimal digits into `acc`. **Total** -- structural on `arr.size - q`. -/
+/-- Fold decimal digits into `acc`. Total -- structural on `arr.size - q`. -/
 @[specialize] def natFwd (arr : ByteArray) (acc q : Nat) : Nat × Nat :=
   if h : q < arr.size then
     let b := arr[q]
