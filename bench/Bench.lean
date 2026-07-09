@@ -106,7 +106,17 @@ def benchOne (name : String) (src : ByteArray) (p : ByteArray → Nat) : IO Unit
   let ms ← bestMs 20 (fun i => p (barrier i src))
   IO.println s!"{name} size={src.size} count={count} ms={ms}"
 
-def main : IO Unit := do
+def main (args : List String) : IO Unit := do
+  -- `bench once [file]`: parse the file exactly once and exit -- no internal
+  -- best-of loop, no input generation. This is the single work unit hyperfine is
+  -- meant to sample (its warmup + repeated runs characterise end-to-end wall time,
+  -- process startup and file IO included), unlike the self-timed suite below which
+  -- loops 20x in-process and would make hyperfine measure the whole batch.
+  if args.head? == some "once" then
+    let file := args.getD 1 "bench/data/canada.json"
+    let src ← IO.FS.readBinFile file
+    IO.println s!"count={parseJson src}"
+    return
   -- JSON on canada.json: the headline number, compared against lean4-parser.
   let jsonSrc ← IO.FS.readBinFile "bench/data/canada.json"
   let jsonCount := parseJson jsonSrc
