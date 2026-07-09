@@ -81,6 +81,25 @@ user writes at the ungraded `Parser` and still gets it. Writing a precise grade
 (`GParser conditional α`) is how you export a machine-checked contract to downstream
 combinators.
 
+## Total, verified combinators
+
+grip's repetition core -- `many`, `foldMany`, and the `foldFwd`/`scanFwd`/`natFwd` loops
+under them -- is **total**, not `partial`. Each loop is structural on `arr.size - q`, and
+the [gate](#the-gate) forces every repeated element to be always-consuming (grade
+`⟨_, always⟩`), which is exactly the "the input shrank" proof a termination argument needs
+-- enforced at the type level. Only `fix` is `partial` (with a runtime clamp), so nothing
+else on the hot path is an opaque axiom, and the `grip-props` metatheory can actually
+reason about looping parsers.
+
+That is the deliberate trade. grip is concrete over an in-memory `ByteArray` -- finite, so
+`arr.size - q` is a free well-founded measure -- rather than generic over arbitrary
+streams. A stream-generic combinator library gets sockets and pipes, but pays with
+`partial` fold combinators that no theorem can unfold (a `partial def` is opaque to the
+kernel). grip is an existence proof for the other corner: **total + verified + byte-level**,
+where the generic libraries sit at **generic + partial**. Different point on the tradeoff
+curve, not a drop-in replacement -- pick grip when you parse bytes in memory and want the
+proofs.
+
 ## Examples
 
 Six worked parsers under [`examples/`](examples/), each with `#guard` tests that run in
