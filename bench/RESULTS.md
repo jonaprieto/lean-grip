@@ -69,23 +69,24 @@ hand-written Lean scanner.
 
 ## All example parsers
 
-`lake exe bench` times every example parser (JSON on canada.json, the rest on inputs
-generated at startup), best-of-20 on the same machine. Throughput is input size over
-best time.
+`lake exe bench` times every example parser, best-of-20 on the same machine. JSON runs on
+canada.json and TOML on a real `Cargo.lock` (both vendored under `bench/data/`); the rest
+run on inputs generated at startup. Throughput is input size over best time.
 
-| parser | input                | count  |  ms  | MB/s |
-|--------|----------------------|-------:|-----:|-----:|
-| json   | canada.json, 2.1 MB  | 111130 | ~20  | ~107 |
-| sexp   | 200 KB, 50k atoms    |  50000 | ~5.9 | ~34  |
-| lambda | 100 KB application   |    ok  | ~3.7 | ~27  |
-| http   | 80 KB, 10k headers   |  10000 | ~1.0 | ~80  |
-| toml   | 200 KB, 20k entries  |  20000 | ~5.4 | ~37  |
-| yaml   | 90 KB, 30k scalars   |  30001 | ~4.5 | ~20  |
+| parser | input                    | count  |  ms  | MB/s |
+|--------|--------------------------|-------:|-----:|-----:|
+| json   | canada.json, 2.1 MB      | 111130 | ~19  | ~110 |
+| sexp   | 200 KB, 50k atoms        |  50000 | ~5.7 | ~35  |
+| lambda | 100 KB application       |    ok  | ~3.7 | ~27  |
+| http   | 80 KB, 10k headers       |  10000 | ~1.0 | ~80  |
+| toml   | cargo.lock, 72 KB        |    307 | ~0.8 | ~89  |
+| yaml   | 90 KB, 30k scalars       |  30001 | ~4.4 | ~20  |
 
-`count` is the parser's own result on the input (leaf nodes for JSON, list length for the
-others; `lambda` reports a success flag). These stress the shared combinators (`fix`,
-`dispatch`, `capture`, `many`) across recursive, line-oriented, and nested grammars. All
-got faster from the single-constructor result and the scan-loop `@[specialize]`.
+`count` is the parser's own result on the input (leaf nodes for JSON, `[[package]]` tables
+for TOML, list length for the others; `lambda` reports a success flag). These stress the
+shared combinators (`fix`, `dispatch`, `capture`, `many`) across recursive, line-oriented,
+and nested grammars. The TOML parser handles a genuine `Cargo.lock` -- comments,
+`[[array-of-tables]]`, and multi-line arrays -- not a synthetic input.
 
 ### Does the nom gap generalize past JSON?
 
