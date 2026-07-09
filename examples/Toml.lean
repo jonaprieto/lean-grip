@@ -1,6 +1,7 @@
 /-
-Copyright 2026 Jonathan Cubides. All rights reserved.
+Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Jonathan Cubides
 -/
 import Grip
 
@@ -74,7 +75,8 @@ private def value : GParser conditional Value :=
 private def entry : GParser conditional (String × Value) :=
   GParser.map2 (·, ·)
     (GParser.capture (GParser.takeWhile1 isKeyByte))
-    (GParser.seqR GParser.ws (GParser.seqR (GParser.byte Ascii.equals) (GParser.seqR GParser.ws value)))
+    (GParser.seqR GParser.ws
+      (GParser.seqR (GParser.byte Ascii.equals) (GParser.seqR GParser.ws value)))
 
 /-- Parse a whole document into an ordered association list. -/
 def toml : GParser flexible (List (String × Value)) :=
