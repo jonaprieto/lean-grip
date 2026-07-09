@@ -142,7 +142,7 @@ Replace inline magic numbers with `Ascii`/`Combinators` names in all six:
 
 - **Json** -- swap literals for `Ascii.isWs`, `byteC`, `Ascii.isDigit`, etc. Keep the
   `dispatch` + `foldMany` hot path (it is the ~34ms benchmark). Try rewriting the
-  array/object bodies with `sepBy`; **measure**, and keep the combinator form only if the
+  array/object bodies with `sepBy`; measure it, and keep the combinator form only if the
   parse stays within ~15% of ~34ms, otherwise keep `dispatch`/`foldMany` and only rename.
 - **Sexp / Lambda / Http / Toml / Yaml** -- use `Ascii` predicates and, where they read
   more clearly, `sepBy` / `between` / `option` / `choice` / `chooseG`. Each example's

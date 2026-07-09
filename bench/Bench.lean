@@ -118,7 +118,7 @@ def main (args : List String) : IO Unit := do
     let src ← IO.FS.readBinFile file
     IO.println s!"count={parseJson src}"
     return
-  -- JSON on canada.json: the headline number, compared against lean4-parser.
+  -- JSON on canada.json: the main number, compared against lean4-parser.
   let jsonSrc ← IO.FS.readBinFile "bench/data/canada.json"
   let jsonCount := parseJson jsonSrc
   let jsonMs ← bestMs 20 (fun i => parseJson (barrier i jsonSrc))
