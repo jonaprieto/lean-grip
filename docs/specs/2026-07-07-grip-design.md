@@ -19,7 +19,7 @@ proven total. grip keeps that ergonomics and dependency profile while adding two
 things:
 
 1. A byte-level fast path that ties or beats attoparsec.
-2. Grades as an opt-in static safety layer. Grades are a feature, not a tax.
+2. Grades as an opt-in static safety layer, so code that does not want them pays nothing.
 
 ## Name
 
@@ -137,11 +137,10 @@ A `weaken` coercion moves a precise parser into a less precise grade: `always` a
 it helps, so precise combinators drop into `Parser` do-blocks. Weakening only ever
 loosens, never strengthens.
 
-The one grade payoff to preserve and market: `many`, `foldMany`, and `some` demand an
+The grade payoff worth keeping front and center: `many`, `foldMany`, and `some` demand an
 always-consuming parser at the type level (`GParser ⟨_, always⟩`). `pure x` has grade
 `⟨never, never⟩`, and `never` cannot strengthen to `always`, so `many (pure x)`, the
-classic parsec/attoparsec infinite-loop footgun, is a compile error. This is the
-headline feature.
+parsec/attoparsec expression that loops forever at runtime, is a compile error here.
 
 ## Usage: two tiers, one library
 
