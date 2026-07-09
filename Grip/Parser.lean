@@ -8,9 +8,9 @@ import Grip.Graded
 import Grip.Error
 
 /-!
-# Grip.Parser — ungraded face for graded parsers
+# Grip.Parser -- ungraded face for graded parsers
 
-`Parser α` is `GParser fallible α` — the idempotent `fallible` grade satisfies
+`Parser α` is `GParser fallible α` -- the idempotent `fallible` grade satisfies
 `Grade.mul fallible fallible = fallible` and `Grade.choice fallible fallible = fallible`
 (both verified by `#guard` in `Grip.Grade`), so standard `Monad` and `Alternative`
 instances work here with grade tracking disabled.
@@ -19,14 +19,14 @@ instances work here with grade tracking disabled.
 the coercion transparent, so any `GParser g α` can be used where a `Parser α`
 is expected.
 
-## `gdo` — graded do-notation
+## `gdo` -- graded do-notation
 
 `gdo` desugars `let x ← p` and bare `p` lines into `GParser.bind`/`GParser.pure`
-calls, **preserving** the exact product grade in the elaborated term instead of
+calls, preserving the exact product grade in the elaborated term instead of
 collapsing everything to `fallible`. An optional trailing `grade_by proof` coerces
 the elaborated grade to the expected one via `GParser.gcast`.
 
-`gdo` does **not** yet support `match` expressions inside the block; use explicit
+`gdo` does not yet support `match` expressions inside the block; use explicit
 `GParser.bind p fun | .foo => ...` calls in that case.
 -/
 
@@ -62,7 +62,7 @@ explicit casts.
 
 We use `CoeOut` rather than `Coe` because in Lean 4.28 `Coe`'s first parameter is
 `semiOutParam`, which would require the grade `g` to be determined from the
-destination type alone — impossible when `g` is free. `CoeOut` applies "left-to-right"
+destination type alone -- impossible when `g` is free. `CoeOut` applies "left-to-right"
 (source known → determine destination), which is exactly our direction. -/
 instance {g : Grade} {α : Type} : CoeOut (GParser g α) (Parser α) := ⟨GParser.weakenFallible⟩
 
@@ -119,7 +119,7 @@ instance : MonadExcept Err Parser where
 
 end Grip
 
-/-! ### `gdo` — graded do-notation -/
+/-! ### `gdo` -- graded do-notation -/
 
 /-- Trailing element in a `gdo` block: supply an equality proof to coerce the
 elaborated grade to the expected type. Example:
@@ -132,16 +132,16 @@ gdo
 syntax "grade_by " term : doElem
 
 /-- Graded do-notation over `GParser`: desugars a do-like block into
-`GParser.bind`/`GParser.pure` calls, **preserving** the exact product grade.
+`GParser.bind`/`GParser.pure` calls, preserving the exact product grade.
 
 Supported forms:
-- `let x ← p` — binds `p`'s result via `GParser.bind`
-- `let x : T ← p` — same with type annotation
-- `let x := e` — local `let`-binding, no parser action
-- bare `p` (non-final) — sequences via `GParser.bind _ fun _ => ...`
-- `return e` (final) — wraps `e` in `GParser.pure`
-- bare `p` (final) — the parser expression itself
-- `grade_by proof` (optional final) — coerces the elaborated grade via `GParser.gcast`
+- `let x ← p` -- binds `p`'s result via `GParser.bind`
+- `let x : T ← p` -- same with type annotation
+- `let x := e` -- local `let`-binding, no parser action
+- bare `p` (non-final) -- sequences via `GParser.bind _ fun _ => ...`
+- `return e` (final) -- wraps `e` in `GParser.pure`
+- bare `p` (final) -- the parser expression itself
+- `grade_by proof` (optional final) -- coerces the elaborated grade via `GParser.gcast`
 
 Example:
 ```
