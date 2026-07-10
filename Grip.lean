@@ -4,6 +4,9 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
 -/
 
+import Grip.Graded
+import Grip.Byte
+import Grip.Scan
 import Grip.Parser
 import Grip.Char
 import Grip.Ascii
@@ -12,8 +15,9 @@ import Grip.Combinators
 /-!
 # grip
 
-A fast, graded Lean 4 byte-parser library. `import Grip` brings in the graded core and
-`Parser` face (`Grip.Parser`), the UTF-8/`Char` layer (`Grip.Char`), the named byte
-predicates and constants (`Grip.Ascii`), and the combinator vocabulary
-(`Grip.Combinators`).
+A fast, graded Lean 4 byte-parser library. `import Grip` brings in the graded core --
+the type (`Grip.Graded`), the point combinators (`Grip.Byte`), and the total scanners
+(`Grip.Scan`) -- along with the `Parser` face (`Grip.Parser`), the UTF-8/`Char` layer
+(`Grip.Char`), the named byte predicates and constants (`Grip.Ascii`), and the
+combinator vocabulary (`Grip.Combinators`).
 -/
