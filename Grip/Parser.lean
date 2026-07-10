@@ -4,7 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
 -/
 
-import Grip.Graded
+import Grip.Byte
+import Grip.Scan
 import Grip.Error
 
 /-!
