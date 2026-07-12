@@ -8,11 +8,12 @@ import GripProps.Lawful
 import GripProps.GradeSound
 import GripProps.Productivity
 import GripProps.ChoiceGrade
+import GripProps.Scanner
 
 /-!
 # grip-props
 
 Machine-checked metatheory for grip: the lawful graded-monad instances for `GParser`,
-grade soundness, the totality-not-productivity gap, and the impossible-grade result.
-Depends on grip + mathlib.
+grade soundness, the totality-not-productivity gap, the impossible-grade result, and
+output-level correctness of the scanner. Depends on grip + mathlib.
 -/
