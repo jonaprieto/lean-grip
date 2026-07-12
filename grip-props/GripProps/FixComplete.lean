@@ -81,13 +81,15 @@ theorem clamp_oob {r₁ r₂ : ParseResult α} (arr : ByteArray) (q : Nat) (hq :
 
 /-! ### Guardedness and completeness -/
 
-/-- The body `f` is **guarded**: its output at offset `q` depends on its self-reference only at
-strictly greater offsets. Stated up to `AgreeOk`, matching the completeness conclusion. Every
-consume-before-recurring grammar satisfies this; `notFollowedBy self` does not. -/
-def Guarded (f : GParser conditional α → GParser conditional α) : Prop :=
+/-- A parser-building function `F` is **guarded**: its output at offset `q` depends on its
+self-reference only at strictly greater offsets. Stated up to `AgreeOk`, matching the completeness
+conclusion. `F` may build a parser of any grade and value type (intermediate combinators change
+the type), so the closure lemmas below compose; `fixFuel_complete` uses the endofunction case.
+Every consume-before-recurring grammar is guarded; `notFollowedBy self` is not. -/
+def Guarded {β : Type} {g : Grade} (F : GParser conditional α → GParser g β) : Prop :=
   ∀ (s₁ s₂ : GParser conditional α) (arr : ByteArray) (q : Nat),
     (∀ q', q < q' → AgreeOk (s₁.run arr q') (s₂.run arr q')) →
-    AgreeOk ((f s₁).run arr q) ((f s₂).run arr q)
+    AgreeOk ((F s₁).run arr q) ((F s₂).run arr q)
 
 /-- One fuel step is invisible once the fuel already covers the bytes remaining: for a guarded
 body, `fixFuel f m` and `fixFuel f (m+1)` accept the same parses whenever `arr.size - q < m`.
@@ -159,28 +161,92 @@ theorem fix_complete (f : GParser conditional α → GParser conditional α) (hf
 
 /-! ### The consumption grade forces guardedness
 
-A body that consults its self-reference only *after* a `conditional` (always-consuming) parser
-is guarded: the consumed byte pushes the recursive call to a strictly greater offset. This is the
-formal content of "the grade forces guardedness". -/
+The combinators build guarded bodies compositionally. A body that consults its self-reference
+only *after* a `conditional` (always-consuming) parser is guarded, because the consumed byte
+pushes the recursive call to a strictly greater offset -- this is the formal content of "the
+grade forces guardedness". Wrapping combinators (`map`, `alt`) preserve guardedness. A worked
+grammar (`manyTill`) is assembled from these at the end. -/
 
-/-- Prepending a `conditional` consumer to a body makes it guarded. `seqR p (k rec)` runs `p`
-first; a success advances past `q` (`p.cwit`), so `k rec` -- and hence `rec` -- is consulted only
-at offsets `> q`. Guardedness of `k` at those offsets carries the rest. -/
-theorem guarded_seqR {β : Type} (p : GParser conditional β)
-    (k : GParser conditional α → GParser conditional α) (hk : Guarded k) :
-    Guarded (fun rec => GParser.seqR p (k rec)) := by
+/-- Two failures agree on acceptance. -/
+theorem agree_error {r₁ r₂ : ParseResult α} (h₁ : ∃ e, r₁ = .error e) (h₂ : ∃ e, r₂ = .error e) :
+    AgreeOk r₁ r₂ := by
+  obtain ⟨e₁, rfl⟩ := h₁; obtain ⟨e₂, rfl⟩ := h₂; exact True.intro
+
+/-- The furthest-reach merge two `alt` branches take on double failure is itself a failure. -/
+theorem altMergeError {β : Type} (ex ey : Err) :
+    ∃ e, (if ex.pos < ey.pos then (.error ey : ParseResult β)
+          else if ey.pos < ex.pos then .error ex
+          else .error ⟨ex.pos, ex.expected ++ ey.expected⟩) = .error e := by
+  by_cases h1 : ex.pos < ey.pos
+  · rw [if_pos h1]; exact ⟨ey, rfl⟩
+  · rw [if_neg h1]; by_cases h2 : ey.pos < ex.pos
+    · rw [if_pos h2]; exact ⟨ex, rfl⟩
+    · rw [if_neg h2]; exact ⟨_, rfl⟩
+
+/-- A body that ignores its self-reference is guarded (output independent of `rec`), the base case
+for building guarded bodies. -/
+theorem guarded_const {β : Type} {g : Grade} (c : GParser g β) :
+    Guarded (fun (_ : GParser conditional α) => c) := by
+  intro _ _ _ _ _; exact AgreeOk.refl _
+
+/-- Recurring directly after a `conditional` consumer is guarded: `seqR p rec` runs `p` first,
+whose success advances past `q` (`p.cwit`), so `rec` is read only at offsets `> q`, where the
+agreement premise already holds. -/
+theorem guarded_seqR_self {β : Type} (p : GParser conditional β) :
+    Guarded (fun (rec : GParser conditional α) => GParser.seqR p rec) := by
   intro s₁ s₂ arr q hpre
   simp only [GParser.seqR]
   cases hp : p.run arr q with
   | error e => exact AgreeOk.refl _
-  | ok x q' =>
-    have hadv : q < q' := p.cwit hp
-    exact hk s₁ s₂ arr q' (fun q'' hlt => hpre q'' (by omega))
+  | ok x q' => exact hpre q' (p.cwit hp)
 
-/-- A body that ignores its self-reference is guarded (its output does not depend on `rec` at
-all), the base case for building guarded bodies compositionally. -/
-theorem guarded_const (c : GParser conditional α) : Guarded (fun _ => c) := by
-  intro _ _ _ _ _; exact AgreeOk.refl _
+/-- The recursive call as the second argument of `map2` after a `conditional` first argument is
+guarded: `p` consumes, so `rec` is read past `q`. This is the shape `manyTill` uses. -/
+theorem guarded_map2_self {β δ : Type} (f : β → α → δ) (p : GParser conditional β) :
+    Guarded (fun (rec : GParser conditional α) => GParser.map2 f p rec) := by
+  intro s₁ s₂ arr q hpre
+  simp only [GParser.map2]
+  cases hp : p.run arr q with
+  | error e => exact AgreeOk.refl _
+  | ok a q' =>
+    have hrec := hpre q' (p.cwit hp)
+    cases h1 : s₁.run arr q' <;> cases h2 : s₂.run arr q' <;>
+      rw [h1, h2] at hrec <;> simp_all [AgreeOk]
+
+/-- `map` preserves guardedness: it relabels the value and leaves failure a failure. -/
+theorem guarded_map {β γ : Type} {gg : Grade} (φ : β → γ)
+    (k : GParser conditional α → GParser gg β) (hk : Guarded k) :
+    Guarded (fun rec => GParser.map φ (k rec)) := by
+  intro s₁ s₂ arr q hpre
+  have hk' := hk s₁ s₂ arr q hpre
+  simp only [GParser.map]
+  cases h1 : (k s₁).run arr q <;> cases h2 : (k s₂).run arr q <;>
+    rw [h1, h2] at hk' <;> simp_all [AgreeOk]
+
+/-- `alt` preserves guardedness: acceptance of the choice is decided by the two branches, which
+agree at `q`; the error-merge of a double failure is still a failure. -/
+theorem guarded_alt {β : Type} {ge gc : Necessity}
+    (x y : GParser conditional α → GParser ⟨ge, gc⟩ β)
+    (hx : Guarded x) (hy : Guarded y) :
+    Guarded (fun rec => GParser.alt (x rec) (y rec)) := by
+  intro s₁ s₂ arr q hpre
+  have hx' := hx s₁ s₂ arr q hpre
+  have hy' := hy s₁ s₂ arr q hpre
+  simp only [GParser.alt]
+  cases hx1 : (x s₁).run arr q with
+  | ok a1 p1 => cases hx2 : (x s₂).run arr q with
+    | ok a2 p2 => rw [hx1, hx2] at hx'; simp_all [AgreeOk]
+    | error ex2 => rw [hx1, hx2] at hx'; simp_all [AgreeOk]
+  | error ex1 => cases hx2 : (x s₂).run arr q with
+    | ok a2 p2 => rw [hx1, hx2] at hx'; simp_all [AgreeOk]
+    | error ex2 =>
+      cases hy1 : (y s₁).run arr q with
+      | ok b1 r1 => cases hy2 : (y s₂).run arr q with
+        | ok b2 r2 => rw [hy1, hy2] at hy'; simp_all [AgreeOk]
+        | error ey2 => rw [hy1, hy2] at hy'; simp_all [AgreeOk]
+      | error ey1 => cases hy2 : (y s₂).run arr q with
+        | ok b2 r2 => rw [hy1, hy2] at hy'; simp_all [AgreeOk]
+        | error ey2 => exact agree_error (altMergeError ex1 ey1) (altMergeError ex2 ey2)
 
 /-! ### Guardedness is necessary
 
@@ -216,5 +282,31 @@ def oscBody (self : GParser conditional Unit) : GParser conditional Unit where
 -- fuel bound is complete for this non-guarded body, so `fixFuel_complete` genuinely needs `Guarded`.
 #guard (match GParser.fixFuel oscBody 2 (String.toUTF8 "ab") 0 with | .error _ => true | _ => false)
 #guard (match GParser.fixFuel oscBody 3 (String.toUTF8 "ab") 0 with | .ok _ q => q == 1 | _ => false)
+
+/-! ### A worked grammar, complete end to end
+
+`manyTill` (`Grip/Combinators.lean`) is `fix` of `alt (map _ endp) (map2 (· :: ·) p rec)`. Its body
+is guarded purely by composition of the lemmas above: the left branch ignores `rec`
+(`guarded_const`), the right consults `rec` only after the `conditional` parser `p` consumes
+(`guarded_map2_self`), and `alt` preserves that (`guarded_alt`). So `manyTill` computes the ideal
+fixpoint: the fuel bound truncates none of its parses. -/
+
+/-- `manyTill`'s body is guarded, assembled from the closure lemmas. -/
+theorem guarded_manyTillBody {β : Type} (p : GParser conditional α)
+    (endp : GParser conditional β) :
+    Guarded (fun (rec : GParser conditional (List α)) =>
+      GParser.alt (GParser.map (fun _ => ([] : List α)) endp)
+        (GParser.map2 (fun x xs => x :: xs) p rec)) :=
+  guarded_alt _ _ (guarded_const _) (guarded_map2_self _ _)
+
+/-- `manyTill` is complete: a success reachable at any larger fuel is produced by `manyTill`
+itself. A combinator-built recursive grammar, proved complete end to end. -/
+theorem manyTill_complete {β : Type} (p : GParser conditional α) (endp : GParser conditional β)
+    (arr : ByteArray) (q : Nat) (hq : q ≤ arr.size) {m : Nat} (hm : arr.size - q + 1 ≤ m)
+    {a : List α} {q' : Nat}
+    (h : GParser.fixFuel (fun rec => GParser.alt (GParser.map (fun _ => ([] : List α)) endp)
+      (GParser.map2 (fun x xs => x :: xs) p rec)) m arr q = .ok a q') :
+    (GParser.manyTill p endp).run arr q = .ok a q' :=
+  fix_complete _ (guarded_manyTillBody p endp) arr q hq hm h
 
 end Grip.FixComplete
