@@ -27,14 +27,18 @@ also counts leaves, which is a cheap `Nat` add); `Lean.Json` builds a full DOM (
 | parser                        | parse_ms | work             | notes                                            |
 |-------------------------------|---------:|------------------|--------------------------------------------------|
 | grip (combinators)            |    ~20   | validate + count | byte-level; `examples/Json.lean`, pure combinators |
+| Std.Internal.Parsec (core)    |    ~34   | validate + count | byte-level; Lean's std combinator library, same task |
 | Lean.Json (core, built-in)    |    ~68   | full DOM build   | Lean's `Lean.Json.parse`; builds the tree        |
 | lean4-parser (fgdorais)       |   ~273   | validate         | `SimpleParser String.Slice Char`; `sepBy` allocates |
 
-On an apples-to-apples comparison (both validate, no DOM), grip runs about 14x faster than
-lean4-parser on the competitor's own unmodified JSON example, and about 3.5x faster than
-`Lean.Json`. `Lean.Json` does more, since it builds a tree grip does not, so treat that
-second figure as context rather than a head-to-head win. At ~20ms grip is level with
-Haskell's attoparsec (see below).
+The cleanest head-to-head is `Std.Internal.Parsec`, Lean's own standard combinator library:
+byte-level, same toolchain, and the *same* validate-and-count task (it returns the identical
+111130 leaf count). grip is about **1.7x faster** than it. Against the others: grip runs about
+14x faster than lean4-parser on the competitor's own unmodified JSON example (a different
+toolchain, v4.32.0-rc1), and about 3.5x faster than `Lean.Json`, which does more since it
+builds a tree grip does not (treat that as context, not a head-to-head win). At ~20ms grip is
+level with Haskell's attoparsec (see below). The `Std.Internal.Parsec` validator is in
+`bench/Bench.lean`.
 
 ## First-byte dispatch
 
