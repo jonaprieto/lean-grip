@@ -21,8 +21,8 @@ witnesses tying the static `Grade` (error x consumption `Necessity`) to that run
 The witnesses erase, so `run` stays the bare `ParseResult` fast path; the `.error k`
 offset records the furthest byte any branch reached, for precise error reporting.
 
-This module has the type, the grade-weakening coercion, and the `partial` `fix`
-combinator. The point combinators live in `Grip.Byte`, the total scanners in
+This module has the type, the grade-weakening coercion, and the total, fuel-bounded
+`fix` combinator. The point combinators live in `Grip.Byte`, the total scanners in
 `Grip.Scan`. Ported from `prim-parser/PrimParser/Byte.lean`. No mathlib.
 -/
 
@@ -126,16 +126,6 @@ losing all grade precision. Used by the ungraded `Parser` layer. -/
 
 
 
-/-- Default `GParser conditional α`: always fails at the current offset.
-Satisfies Lean's `[Inhabited]` requirement for `partial def` recursion over
-`GParser conditional α` return types. -/
-instance : Inhabited (GParser conditional α) :=
-  ⟨{ run := fun _ p => .error ⟨p, []⟩,
-     cwit := by intro arr q a q' h; exact absurd h (by simp),
-     ewit := by intro he; exact absurd he (by decide),
-     swit := by intro he; exact absurd he (by decide),
-     bwit := by intro arr q a q' hq h; exact absurd h (by simp) }⟩
-
 /-! ### Recursion via a fixpoint
 
 `GParser.fix` ties the knot on a parser transformer, giving the body a reference back
@@ -143,25 +133,36 @@ to the whole parser so recursive grammars can be written from combinators. The
 self-reference is `conditional` (always-consuming), so a well-behaved grammar shrinks
 the input before each recursive call.
 
-It is implemented with `partial def`: grip's byte core is not size-indexed, so an
-efficient kernel-total `fix` is impractical. A runtime clamp downgrades a
-non-advancing success to a failure, which keeps the `always`-consume grade SOUND even
-though termination is not kernel-checked. A left-recursive body (one that reaches its
-recursive call without consuming) therefore fails rather than looping. This is the
-honest totality-not-productivity limitation, not a defect. -/
+grip's byte core is not size-indexed -- `run` is `ByteArray → Nat → ParseResult`, with no
+length in the type -- so the kernel cannot see the offset measure `arr.size - q` decrease
+through the opaque transformer `f`. Rather than fall back to `partial def`, `fix` recurses on
+an explicit fuel (`GParser.fixFuel`), structurally decreasing, with the fuel set to the bytes
+remaining (`arr.size - q + 1`). A runtime clamp downgrades any non-advancing success to a
+failure, so every self-*success* advances the offset; the productive nesting depth is
+therefore bounded by the bytes remaining and the chosen fuel never truncates a guarded
+grammar. A left-recursive body (one that reaches its recursive call without consuming)
+exhausts the fuel and fails -- kernel-total, in place of the `partial` loop it would once have
+been. This makes grip total throughout; see `grip-props/Productivity.lean`. -/
 
 /-- Clamp a raw result so a success that did not advance past `q` becomes a failure at
 `q`. This is what makes the `conditional` (`always`-consume) witness hold for `fix`
-without unfolding the `partial` recursion. -/
+without unfolding the fuel recursion. -/
 @[inline] private def clampAdvance (arr : ByteArray) (q : Nat) : ParseResult α → ParseResult α
   | .ok x q' => if q < q' ∧ q' ≤ arr.size then .ok x q' else .error ⟨q, []⟩
   | .error e => .error e
 
-/-- The recursive run: applies `f` to a `self` whose recursive calls are clamped. -/
-partial def GParser.fixRun (f : GParser conditional α → GParser conditional α)
-    (arr : ByteArray) (q : Nat) : ParseResult α :=
+/-- The recursive run, made total by a depth `fuel`. Each self-call spends one unit of fuel;
+because the clamp forces every self-*success* to advance the offset, the productive nesting
+depth is bounded by the bytes remaining, so the `arr.size - q + 1` fuel `fix` supplies never
+truncates a guarded grammar. Fuel exhaustion is reached only by a left-recursive (non-advancing)
+body and returns a failure -- the same outcome the clamp already forces for a non-advancing
+success, except kernel-total rather than a `partial` loop. -/
+@[specialize] def GParser.fixFuel (f : GParser conditional α → GParser conditional α) :
+    Nat → ByteArray → Nat → ParseResult α
+  | 0, _, q => .error ⟨q, []⟩
+  | n + 1, arr, q =>
   let self : GParser conditional α :=
-    { run := fun a p => clampAdvance a p (GParser.fixRun f a p)
+    { run := fun a p => clampAdvance a p (GParser.fixFuel f n a p)
       cwit := by
         intro a p x p' h
         show p < p'
@@ -191,7 +192,7 @@ partial def GParser.fixRun (f : GParser conditional α → GParser conditional �
 above for the totality-not-productivity caveat. -/
 @[specialize] def GParser.fix (f : GParser conditional α → GParser conditional α) :
     GParser conditional α where
-  run arr q := clampAdvance arr q (GParser.fixRun f arr q)
+  run arr q := clampAdvance arr q (GParser.fixFuel f (arr.size - q + 1) arr q)
   cwit := by
     intro arr q a q' h
     show q < q'

@@ -8,20 +8,26 @@ import Grip
 /-!
 # Totality is not productivity
 
-prim-parser's `fix` is kernel-total: its input is size-indexed (`Text n`), so the
-recursion is well-founded on the length index and a non-productive body is caught as a
-premature failure rather than a loop. See `PrimParser/Productivity.lean`.
+prim-parser's `fix` is kernel-total by size-indexing its input (`Text n`): the recursion is
+well-founded on the length index, so a non-productive body is caught as a premature failure
+rather than a loop. See `PrimParser/Productivity.lean`.
 
-grip's byte core trades size-indexing for `ByteArray` speed: `run` is
-`ByteArray → Nat → ParseResult α`, with no length in the type. So `GParser.fix`
-is `partial def`: a guarded body (one that consumes before reaching its recursive call,
-as every real grammar does) terminates and is productive, but a left-recursive body
-loops instead of failing. That is the honest limitation.
+grip keeps the flat, fast core -- `run` is `ByteArray → Nat → ParseResult α`, with no length
+in the type -- and still gets kernel totality, by a different route. `GParser.fix` recurses on
+an explicit fuel (`GParser.fixFuel`), set to the bytes remaining (`arr.size - q + 1`). The
+runtime clamp downgrades any non-advancing success to a failure, so every self-success
+advances the offset; the productive nesting depth is thus bounded by the bytes remaining and
+the chosen fuel never truncates a guarded grammar (the grade that gives the clamp its
+soundness is exactly what bounds the recursion). A guarded body -- one that consumes before
+reaching its recursive call, as every real grammar does -- terminates with the right result; a
+left-recursive body exhausts the fuel and fails. So the *totality* prim-parser buys with a
+size index, grip buys with a grade-bounded fuel, keeping the `ByteArray` speed.
 
-What the grade still guarantees, even for `partial` `fix`, is consumption soundness: the
-runtime clamp downgrades a non-advancing success to a failure, so a success of `fix f`
-always advances the offset. The `always`-consume grade never lies, which is what keeps
-the `many`/`foldMany` gate sound over recursive parsers.
+Totality is still not productivity: a left-recursive grammar cannot be accepted, and grip now
+reports that as a clean failure (fuel exhaustion) rather than the `partial` loop it once was.
+The guarantee that survives, and is proved below, is consumption soundness: the clamp makes
+every success of `fix f` advance the offset, so the `always`-consume grade never lies, which is
+what keeps the `many`/`foldMany` gate sound over recursive parsers.
 -/
 
 open Grip
@@ -31,8 +37,8 @@ namespace Grip.Productivity
 variable {α : Type}
 
 /-- Consumption soundness of `fix`: every success of `GParser.fix f` advances the
-offset, enforced by the runtime clamp despite `fix` being `partial`. This is the
-guarantee that survives the loss of kernel totality. -/
+offset, enforced by the runtime clamp. This is the guarantee that keeps `many`/`foldMany`
+sound over recursive parsers. -/
 theorem fix_advances (f : GParser conditional α → GParser conditional α)
     {arr : ByteArray} {q : Nat} {a : α} {q' : Nat}
     (h : (GParser.fix f).run arr q = .ok a q') : q < q' := (GParser.fix f).cwit h

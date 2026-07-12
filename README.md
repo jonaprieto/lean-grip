@@ -88,22 +88,25 @@ combinators.
 
 ## Total, verified combinators
 
-grip's repetition core is total, not `partial`: `many`, `foldMany`, and the
-`foldFwd`/`scanFwd`/`natFwd` loops underneath them. Each loop is structural on
+grip's whole combinator core is total, not `partial` -- recursion included. `many`,
+`foldMany`, and the `foldFwd`/`scanFwd`/`natFwd` loops underneath them are structural on
 `arr.size - q`, and the [gate](#the-gate) forces every repeated element to be
 always-consuming (grade `⟨_, always⟩`), which is exactly the "the input shrank" fact a
-termination proof needs, enforced at the type level. Only `fix` is `partial` (with a
-runtime clamp), so nothing else on the hot path is an opaque axiom, and the `grip-props`
-metatheory can actually reason about looping parsers.
+termination proof needs, enforced at the type level. `fix`, the one recursive knot, is
+total too: it recurses on a fuel set to the bytes remaining, and its runtime clamp forces
+every recursive success to consume, so that fuel provably suffices for any guarded grammar
+(a left-recursive body exhausts it and fails, rather than looping). Nothing on the hot path
+is an opaque axiom, so the `grip-props` metatheory can reason about every combinator,
+recursion and all.
 
 That is a deliberate trade. grip is concrete over an in-memory `ByteArray`, which is
-finite, so `arr.size - q` is a free well-founded measure. It is not generic over arbitrary
-streams. A stream-generic library gets you sockets and pipes, but it pays for them with
-`partial` fold combinators that no theorem can unfold, since a `partial def` is opaque to
-the kernel. grip stakes out the other corner (total, verified, byte-level) where the
-generic libraries sit at generic and partial. That makes it a different point on the
-tradeoff curve, not a drop-in replacement. Reach for grip when you parse bytes in memory
-and want the proofs.
+finite, so `arr.size - q` is a free well-founded measure -- and the same finiteness bounds
+`fix`'s fuel. It is not generic over arbitrary streams. A stream-generic library gets you
+sockets and pipes, but pays for them with `partial` fold and fixpoint combinators that no
+theorem can unfold, since a `partial def` is opaque to the kernel. grip stakes out the
+other corner (total, verified, byte-level) where the generic libraries sit at generic and
+partial. That makes it a different point on the tradeoff curve, not a drop-in replacement.
+Reach for grip when you parse bytes in memory and want the proofs.
 
 ## Examples
 
