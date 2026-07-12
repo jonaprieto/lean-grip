@@ -147,7 +147,7 @@ been. This makes grip total throughout; see `grip-props/Productivity.lean`. -/
 /-- Clamp a raw result so a success that did not advance past `q` becomes a failure at
 `q`. This is what makes the `conditional` (`always`-consume) witness hold for `fix`
 without unfolding the fuel recursion. -/
-@[inline] private def clampAdvance (arr : ByteArray) (q : Nat) : ParseResult α → ParseResult α
+@[inline] def clampAdvance (arr : ByteArray) (q : Nat) : ParseResult α → ParseResult α
   | .ok x q' => if q < q' ∧ q' ≤ arr.size then .ok x q' else .error ⟨q, []⟩
   | .error e => .error e
 
@@ -216,5 +216,52 @@ above for the totality-not-productivity caveat. -/
         omega
       · exact absurd h (by simp)
     · exact absurd h (by simp)
+
+/-- The clamped self-reference `fix` threads into the body at fuel level `n`: its recursive
+run is `fixFuel f n` behind the advance clamp. Exposed (with unfolding lemmas below) so the
+metatheory can reason about `fixFuel` without unfolding the anonymous inner structure; see
+`grip-props/GripProps/FixComplete.lean`. -/
+def GParser.fixSelf (f : GParser conditional α → GParser conditional α) (n : Nat) :
+    GParser conditional α where
+  run a p := clampAdvance a p (GParser.fixFuel f n a p)
+  cwit := by
+    intro a p x p' h
+    show p < p'
+    simp only [clampAdvance] at h
+    split at h
+    · split at h
+      · rename_i hg
+        simp only [ParseResult.ok.injEq] at h
+        omega
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+  ewit := by intro he; exact absurd he (by decide)
+  swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro a p x p' _hq h
+    simp only [clampAdvance] at h
+    split at h
+    · split at h
+      · rename_i hg
+        simp only [ParseResult.ok.injEq] at h
+        omega
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
+
+/-- `fixSelf`'s run is the clamp of the lower-fuel `fixFuel`. -/
+@[simp] theorem GParser.fixSelf_run (f : GParser conditional α → GParser conditional α)
+    (n : Nat) (a : ByteArray) (p : Nat) :
+    (GParser.fixSelf f n).run a p = clampAdvance a p (GParser.fixFuel f n a p) := rfl
+
+/-- The one-step unfolding of `fixFuel`: at fuel `n+1`, run the body applied to the clamped
+`fixSelf` at fuel `n`. -/
+theorem GParser.fixFuel_succ (f : GParser conditional α → GParser conditional α)
+    (n : Nat) (arr : ByteArray) (q : Nat) :
+    GParser.fixFuel f (n + 1) arr q = (f (GParser.fixSelf f n)).run arr q := rfl
+
+/-- Fuel zero fails at the current offset. -/
+@[simp] theorem GParser.fixFuel_zero (f : GParser conditional α → GParser conditional α)
+    (arr : ByteArray) (q : Nat) :
+    GParser.fixFuel f 0 arr q = .error ⟨q, []⟩ := rfl
 
 end Grip
