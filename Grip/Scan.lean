@@ -49,6 +49,19 @@ theorem scanFwd_gt (arr : ByteArray) (f : UInt8 → Bool) (q : Nat)
   rw [scanFwd, dif_pos h, if_pos hf]
   exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q) (scanFwd_ge arr f (q + 1))
 
+/-- `scanFwd` stays within bounds when it starts within bounds. -/
+theorem scanFwd_le (arr : ByteArray) (f : UInt8 → Bool) (q : Nat) (hq : q ≤ arr.size) :
+    scanFwd arr f q ≤ arr.size := by
+  rw [scanFwd]
+  split
+  · rename_i hlt
+    split
+    · exact scanFwd_le arr f (q + 1) hlt
+    · exact hq
+  · exact hq
+termination_by arr.size - q
+decreasing_by omega
+
 /-- Scan while `f` holds, returning the number of bytes consumed.
 Always succeeds (result is `.ok`). -/
 @[inline] def GParser.takeWhile (f : UInt8 → Bool) : GParser flexible Nat where
@@ -60,6 +73,11 @@ Always succeeds (result is `.ok`). -/
     exact scanFwd_ge arr f q
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro _ arr q; exact ⟨_, _, rfl⟩
+  bwit := by
+    intro arr q a q' hq heq
+    simp only [ParseResult.ok.injEq] at heq
+    obtain ⟨_, rfl⟩ := heq
+    exact scanFwd_le arr f q hq
 
 /-- One-or-more bytes satisfying `f`.
 On failure the furthest offset is the current position. -/
@@ -81,6 +99,17 @@ On failure the furthest offset is the current position. -/
     · exact absurd heq (by simp)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    · rename_i hbound
+      split at heq
+      · rename_i hf
+        simp only [GParser.takeWhile, ParseResult.ok.injEq] at heq
+        obtain ⟨_, rfl⟩ := heq
+        exact scanFwd_le arr f q hq
+      · exact absurd heq (by simp)
+    · exact absurd heq (by simp)
 
 /-- Total repetition core: fold `p`'s results into `a`, advancing while `p` succeeds
 and strictly consumes (in bounds). Total -- structural on `arr.size - q`; the
@@ -109,6 +138,22 @@ theorem foldFwd_ge {ge : Necessity} {α β : Type} (step : β → α → β) (p 
 termination_by arr.size - q
 decreasing_by omega
 
+/-- `foldFwd` stays within bounds when it starts within bounds (using the element's `bwit`). -/
+theorem foldFwd_le {ge : Necessity} {α β : Type} (step : β → α → β) (p : GParser ⟨ge, always⟩ α)
+    (arr : ByteArray) (a : β) (q : Nat) (hq : q ≤ arr.size) :
+    (foldFwd step p arr a q).2 ≤ arr.size := by
+  rw [foldFwd]
+  split
+  next x q' hp =>
+    have hlt : q < q' := p.cwit hp
+    have hb : q' ≤ arr.size := p.bwit hq hp
+    split
+    · exact foldFwd_le step p arr (step a x) q' hb
+    · exact hb
+  next => exact hq
+termination_by arr.size - q
+decreasing_by omega
+
 /-- Fold `p` zero-or-more times into `acc` (no list). Total (see `foldFwd`).
 Always succeeds (result is `.ok`). -/
 @[inline] def GParser.foldMany (h : β → α → β) (acc : β) (p : GParser ⟨ge, always⟩ α) :
@@ -122,6 +167,12 @@ Always succeeds (result is `.ok`). -/
     exact hge
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro _ arr pos; exact ⟨_, _, rfl⟩
+  bwit := by
+    intro arr pos b q' hq heq
+    simp only [ParseResult.ok.injEq] at heq
+    have hle := foldFwd_le h p arr acc pos hq
+    obtain ⟨_, rfl⟩ := heq
+    exact hle
 
 /-- Fold decimal digits into `acc`. Total -- structural on `arr.size - q`. -/
 @[specialize] def natFwd (arr : ByteArray) (acc q : Nat) : Nat × Nat :=
@@ -160,6 +211,19 @@ theorem natFwd_gt (arr : ByteArray) (acc q : Nat) (h : q < arr.size)
   exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q)
     (natFwd_ge arr (acc * 10 + (arr[q].toNat - 48)) (q + 1))
 
+/-- `natFwd` stays within bounds when it starts within bounds. -/
+theorem natFwd_le (arr : ByteArray) (acc q : Nat) (hq : q ≤ arr.size) :
+    (natFwd arr acc q).2 ≤ arr.size := by
+  rw [natFwd_eq]
+  split
+  next hbound =>
+    split
+    · exact natFwd_le arr (acc * 10 + (arr[q].toNat - 48)) (q + 1) hbound
+    · exact hq
+  next => exact hq
+termination_by arr.size - q
+decreasing_by omega
+
 /-- Parse a decimal natural number (one or more digits). Always consumes on success.
 On failure the furthest offset is the current position. -/
 @[inline] def GParser.nat : GParser conditional Nat where
@@ -182,6 +246,18 @@ On failure the furthest offset is the current position. -/
     · exact absurd heq (by simp)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    · rename_i hbound
+      by_cases hd : (48 ≤ arr[q] && arr[q] ≤ 57) = true
+      · have hle := natFwd_le arr 0 q hq
+        simp only [hd, if_true, ParseResult.ok.injEq] at heq
+        obtain ⟨_, rfl⟩ := heq
+        exact hle
+      · simp only [Bool.not_eq_true] at hd
+        simp [hd] at heq
+    · exact absurd heq (by simp)
 
 /-- Zero-or-more `p` (always-consuming) into a list. Total (via `foldFwd`).
 Always succeeds (result is `.ok`). -/
@@ -203,5 +279,14 @@ Always succeeds (result is `.ok`). -/
     intro _ arr pos
     split
     next xs q _ => exact ⟨xs.reverse, q, rfl⟩
+  bwit := by
+    intro arr pos b q' hq heq
+    have hle := foldFwd_le (fun acc x => x :: acc) p arr ([] : List α) pos hq
+    split at heq
+    next xs q hfold =>
+      simp only [ParseResult.ok.injEq] at heq
+      obtain ⟨_, rfl⟩ := heq
+      rw [hfold] at hle
+      exact hle
 
 end Grip

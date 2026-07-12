@@ -52,6 +52,11 @@ structure GParser (g : Grade) (α : Type) where
   /-- Error soundness, must-succeed direction: a grade claiming `never`-error always
   succeeds -- for every input there exist a value `a` and next offset `q'`. -/
   swit : g.errors = never → ∀ arr q, ∃ a q', run arr q = .ok a q'
+  /-- Bounds soundness: a success that starts in bounds ends in bounds
+  (`q ≤ arr.size ⇒ q' ≤ arr.size`). Erased, proof-irrelevant. This is the invariant every
+  real combinator satisfies; carrying it in the type makes the `impossible` grade
+  `⟨never, always⟩` uninhabited outright, with no external hypothesis (see `grip-props`). -/
+  bwit : ∀ {arr q a q'}, q ≤ arr.size → run arr q = .ok a q' → q' ≤ arr.size
 
 variable {g g' : Grade} {ge ge' gc gc' : Necessity} {α β : Type}
 
@@ -103,6 +108,7 @@ Proofs required:
   cwit := fun h => hc (p.cwit h)
   ewit := fun he => p.ewit (hew he)
   swit := fun he => p.swit (hsw he)
+  bwit := fun hq h => p.bwit hq h
 
 /-- Weaken any parser to `fallible` (errors = possibly, consumes = possibly),
 losing all grade precision. Used by the ungraded `Parser` layer. -/
@@ -127,7 +133,8 @@ instance : Inhabited (GParser conditional α) :=
   ⟨{ run := fun _ p => .error ⟨p, []⟩,
      cwit := by intro arr q a q' h; exact absurd h (by simp),
      ewit := by intro he; exact absurd he (by decide),
-     swit := by intro he; exact absurd he (by decide) }⟩
+     swit := by intro he; exact absurd he (by decide),
+     bwit := by intro arr q a q' hq h; exact absurd h (by simp) }⟩
 
 /-! ### Recursion via a fixpoint
 
@@ -146,47 +153,67 @@ honest totality-not-productivity limitation, not a defect. -/
 /-- Clamp a raw result so a success that did not advance past `q` becomes a failure at
 `q`. This is what makes the `conditional` (`always`-consume) witness hold for `fix`
 without unfolding the `partial` recursion. -/
-@[inline] private def clampAdvance (q : Nat) : ParseResult α → ParseResult α
-  | .ok x q' => if q < q' then .ok x q' else .error ⟨q, []⟩
+@[inline] private def clampAdvance (arr : ByteArray) (q : Nat) : ParseResult α → ParseResult α
+  | .ok x q' => if q < q' ∧ q' ≤ arr.size then .ok x q' else .error ⟨q, []⟩
   | .error e => .error e
 
 /-- The recursive run: applies `f` to a `self` whose recursive calls are clamped. -/
 partial def GParser.fixRun (f : GParser conditional α → GParser conditional α)
     (arr : ByteArray) (q : Nat) : ParseResult α :=
   let self : GParser conditional α :=
-    { run := fun a p => clampAdvance p (GParser.fixRun f a p)
+    { run := fun a p => clampAdvance a p (GParser.fixRun f a p)
       cwit := by
         intro a p x p' h
         show p < p'
         simp only [clampAdvance] at h
         split at h
         · split at h
-          · rename_i hlt
+          · rename_i hg
             simp only [ParseResult.ok.injEq] at h
             omega
           · exact absurd h (by simp)
         · exact absurd h (by simp)
       ewit := by intro he; exact absurd he (by decide)
-      swit := by intro he; exact absurd he (by decide) }
+      swit := by intro he; exact absurd he (by decide)
+      bwit := by
+        intro a p x p' _hq h
+        simp only [clampAdvance] at h
+        split at h
+        · split at h
+          · rename_i hg
+            simp only [ParseResult.ok.injEq] at h
+            omega
+          · exact absurd h (by simp)
+        · exact absurd h (by simp) }
   (f self).run arr q
 
 /-- Build a recursive `conditional` parser as the fixpoint of `f`. See the module note
 above for the totality-not-productivity caveat. -/
 @[specialize] def GParser.fix (f : GParser conditional α → GParser conditional α) :
     GParser conditional α where
-  run arr q := clampAdvance q (GParser.fixRun f arr q)
+  run arr q := clampAdvance arr q (GParser.fixRun f arr q)
   cwit := by
     intro arr q a q' h
     show q < q'
     simp only [clampAdvance] at h
     split at h
     · split at h
-      · rename_i hlt
+      · rename_i hg
         simp only [ParseResult.ok.injEq] at h
         omega
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' _hq h
+    simp only [clampAdvance] at h
+    split at h
+    · split at h
+      · rename_i hg
+        simp only [ParseResult.ok.injEq] at h
+        omega
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
 
 end Grip
