@@ -94,6 +94,7 @@ def GParser.throwErr {α : Type} (e : Err) : Parser α where
   cwit := by intro arr q a q' h; exact absurd h (by simp)
   ewit := by intro _ arr q; exact ⟨{ e with pos := q }, rfl⟩
   swit := by intro he; exact absurd he (by decide)
+  bwit := by intro arr q a q' hq h; exact absurd h (by simp)
 
 /-- `tryCatch` at `fallible` grade: run `p`; on success pass through; on failure
 call the handler `h` and run its result from the same offset. -/
@@ -113,6 +114,15 @@ def GParser.tryCatch {α : Type} (p : Parser α) (h : Err → Parser α) : Parse
       exact (h e).cwit heq
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    · rename_i b p' hp
+      simp only [ParseResult.ok.injEq] at heq
+      obtain ⟨rfl, rfl⟩ := heq
+      exact p.bwit hq hp
+    · rename_i e hp
+      exact (h e).bwit hq heq
 
 instance : MonadExcept Err Parser where
   throw e  := GParser.throwErr e

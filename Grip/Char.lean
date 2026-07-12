@@ -61,6 +61,37 @@ new offset `q + width` (width 1 to 4), or `none` on truncated or invalid input. 
       else none
   else none
 
+/-- A successful `decodeUtf8` ends within bounds: each branch that returns `some (c, q + k)`
+first checks the byte at `q + (k-1)`, so `q + k ≤ arr.size`. -/
+theorem decodeUtf8_le {arr : ByteArray} {q : Nat} {c : Char} {q' : Nat}
+    (h : decodeUtf8 arr q = some (c, q')) : q' ≤ arr.size := by
+  simp only [decodeUtf8] at h
+  split at h
+  · rename_i h0
+    split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h; omega
+    · split at h
+      · split at h
+        · rename_i h1
+          split at h
+          · simp only [Option.some.injEq, Prod.mk.injEq] at h; omega
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · split at h
+        · split at h
+          · rename_i h2
+            split at h
+            · simp only [Option.some.injEq, Prod.mk.injEq] at h; omega
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · split at h
+          · rename_i h3
+            split at h
+            · simp only [Option.some.injEq, Prod.mk.injEq] at h; omega
+            · exact absurd h (by simp)
+          · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
 /-- Consume one `Char` satisfying `p`, or fail without consuming. Grade `conditional`. -/
 @[inline] def GParser.satisfyChar (p : Char → Bool) : GParser conditional Char where
   run arr q :=
@@ -84,6 +115,20 @@ new offset `q + width` (width 1 to 4), or `none` on truncated or invalid input. 
     · exact absurd h (by simp)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q c q' hq h
+    split at h
+    · rename_i r hd
+      split at h
+      · rename_i hlt
+        split at h
+        · rename_i hp
+          simp only [ParseResult.ok.injEq] at h
+          obtain ⟨_, rfl⟩ := h
+          exact decodeUtf8_le hd
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
 
 /-- Consume any one `Char`. Grade `conditional`. -/
 @[inline] def GParser.anyChar : GParser conditional Char := GParser.satisfyChar (fun _ => true)
@@ -96,6 +141,24 @@ private def matchBytes (arr bs : ByteArray) (i q : Nat) : Bool :=
   if i < bs.size then
     if q < arr.size then (arr[q]! == bs[i]!) && matchBytes arr bs (i + 1) (q + 1) else false
   else true
+termination_by bs.size - i
+decreasing_by omega
+
+/-- A successful `matchBytes` starting at a real index (`i < bs.size`) ends within bounds:
+each matched byte requires `q < arr.size`, so `q + (bs.size - i) ≤ arr.size`. -/
+theorem matchBytes_le (arr bs : ByteArray) (i q : Nat) (hi : i < bs.size)
+    (h : matchBytes arr bs i q = true) : q + (bs.size - i) ≤ arr.size := by
+  rw [matchBytes] at h
+  rw [if_pos hi] at h
+  split at h
+  · rename_i hq
+    rw [Bool.and_eq_true] at h
+    obtain ⟨_, hrec⟩ := h
+    by_cases hi1 : i + 1 < bs.size
+    · have ih := matchBytes_le arr bs (i + 1) (q + 1) hi1 hrec
+      omega
+    · omega
+  · exact absurd h (by simp)
 termination_by bs.size - i
 decreasing_by omega
 
@@ -119,6 +182,19 @@ literal (grade `conditional`); the `if q < q'` clamp fails an empty match. -/
     · exact absurd h (by simp)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' hq h
+    split at h
+    · rename_i hm
+      split at h
+      · rename_i hlt
+        simp only [ParseResult.ok.injEq] at h
+        obtain ⟨_, rfl⟩ := h
+        have hi : 0 < s.toUTF8.size := by omega
+        have hb := matchBytes_le arr s.toUTF8 0 q hi hm
+        simpa using hb
+      · exact absurd h (by simp)
+    · exact absurd h (by simp)
 
 end Grip
 

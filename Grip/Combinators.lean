@@ -98,8 +98,12 @@ namespace GParser
       exact h.2
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
-
-/-- Zero or more `p` until `endp` matches; `endp` is discarded. -/
+  bwit := by
+    intro arr q a q' hq h
+    split at h
+    · exact absurd h (by simp)
+    · simp only [ParseResult.ok.injEq] at h
+      omega
 @[inline] def manyTill (p : GParser conditional α) (endp : GParser conditional β) :
     GParser conditional (List α) :=
   fix fun rec =>
