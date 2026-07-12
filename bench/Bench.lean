@@ -10,6 +10,7 @@ import Http
 import Toml
 import Yaml
 import Lean.Data.Json
+import Std.Internal.Parsec.ByteArray
 
 /-!
 # grip benchmark harness
@@ -107,6 +108,67 @@ def benchOne (name : String) (src : ByteArray) (p : ByteArray → Nat) : IO Unit
   let ms ← bestMs 20 (fun i => p (barrier i src))
   IO.println s!"{name} size={src.size} count={count} ms={ms}"
 
+-- Cross-library reference: Lean's standard combinator library, `Std.Internal.Parsec`, on
+-- the same validate-and-count task. A byte-level JSON leaf-counter matching grip's semantics
+-- (number/string/keyword = 1 leaf, object keys not counted); counts 111130 on canada.json.
+namespace StdParsecJson
+open Std.Internal.Parsec Std.Internal.Parsec.ByteArray
+abbrev P := Std.Internal.Parsec.ByteArray.Parser
+@[inline] def isWs (b : UInt8) : Bool := b == 32 || b == 10 || b == 9 || b == 13
+@[inline] def isNum (b : UInt8) : Bool :=
+  (48 ≤ b && b ≤ 57) || b == 46 || b == 45 || b == 43 || b == 101 || b == 69
+@[inline] def isAlpha (b : UInt8) : Bool := (97 ≤ b && b ≤ 122) || (65 ≤ b && b ≤ 90)
+def ws : P Unit := do let _ ← many (satisfy isWs); pure ()
+def number : P Nat := do let _ ← many (satisfy isNum); pure 1
+def keyword : P Nat := do let _ ← many (satisfy isAlpha); pure 1
+partial def strTail : P Unit := do let b ← any; if b == 34 then pure () else strTail
+def pstring : P Nat := do let _ ← pbyte 34; strTail; pure 1
+mutual
+partial def value : P Nat := do
+  ws
+  match ← peek? with
+  | some 123 => object
+  | some 91  => array
+  | some 34  => pstring
+  | some 116 => keyword
+  | some 102 => keyword
+  | some 110 => keyword
+  | some _   => number
+  | none     => fail "eof"
+partial def array : P Nat := do
+  let _ ← pbyte 91; ws
+  match ← peek? with
+  | some 93 => do let _ ← any; pure 0
+  | _ => do let n ← value; arrayTail n
+partial def arrayTail (acc : Nat) : P Nat := do
+  ws; let b ← any
+  if b == 93 then pure acc
+  else if b == 44 then do let n ← value; arrayTail (acc + n)
+  else fail "array"
+partial def object : P Nat := do
+  let _ ← pbyte 123; ws
+  match ← peek? with
+  | some 125 => do let _ ← any; pure 0
+  | _ => do let n ← pair; objectTail n
+partial def pair : P Nat := do
+  ws; let _ ← pbyte 34; strTail; ws; let _ ← pbyte 58; value
+partial def objectTail (acc : Nat) : P Nat := do
+  ws; let b ← any
+  if b == 125 then pure acc
+  else if b == 44 then do let n ← pair; objectTail (acc + n)
+  else fail "object"
+end
+def json : P Nat := do let n ← value; ws; pure n
+def parse (arr : ByteArray) : Except String Nat :=
+  Std.Internal.Parsec.ByteArray.Parser.run json arr
+end StdParsecJson
+
+/-- `Std.Internal.Parsec` JSON leaf-counter driver (validate + count, like `parseJson`). -/
+@[noinline] def parseStdParsec (arr : ByteArray) : Nat :=
+  match StdParsecJson.parse arr with
+  | .ok n => n
+  | .error _ => 0
+
 def main (args : List String) : IO Unit := do
   -- `bench once [file]`: parse the file exactly once and exit -- no internal
   -- best-of loop, no input generation. This is the single work unit hyperfine is
@@ -128,6 +190,10 @@ def main (args : List String) : IO Unit := do
   let jsonStr ← IO.FS.readFile "bench/data/canada.json"
   let ljMs ← bestMs 20 (fun i => parseLeanJson (barrierStr i jsonStr))
   IO.println s!"lean.json parse_ms={ljMs}"
+  -- Cross-library reference: Lean's standard combinator library on the same task.
+  let spCount := parseStdParsec jsonSrc
+  let spMs ← bestMs 20 (fun i => parseStdParsec (barrier i jsonSrc))
+  IO.println s!"std.parsec count={spCount} parse_ms={spMs}"
   -- TOML on a real file: a vendored Cargo.lock (count = number of [[package]] tables).
   let tomlSrc ← IO.FS.readBinFile "bench/data/cargo.lock"
   -- The remaining example parsers on generated inputs.
