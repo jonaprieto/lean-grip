@@ -32,6 +32,7 @@ variable {g g' : Grade} {ge ge' gc gc' : Necessity} {α β : Type}
     exact h.2
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro _ arr q; exact ⟨a, q, rfl⟩
+  bwit := by intro arr q b q' hq h; simp only [ParseResult.ok.injEq] at h; omega
 
 /-- Always fail, recording the current position as the furthest offset reached. -/
 @[inline] def GParser.fail : GParser empty α where
@@ -39,6 +40,7 @@ variable {g g' : Grade} {ge ge' gc gc' : Necessity} {α β : Type}
   cwit := by intro arr q a q' h; exact absurd h (by simp)
   ewit := by intro _ arr q; exact ⟨⟨q, []⟩, rfl⟩
   swit := by intro he; exact absurd he (by decide)
+  bwit := by intro arr q a q' hq h; exact absurd h (by simp)
 
 /-- Consume one byte satisfying `f`, or fail without consuming.
 On failure the furthest offset is the current position `p`. -/
@@ -56,6 +58,13 @@ On failure the furthest offset is the current position `p`. -/
     · exact absurd heq (by simp)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    · split at heq
+      · simp only [ParseResult.ok.injEq] at heq; omega
+      · exact absurd heq (by simp)
+    · exact absurd heq (by simp)
 
 /-- Match a specific byte.
 On failure the furthest offset is the current position `p`. -/
@@ -73,6 +82,13 @@ On failure the furthest offset is the current position `p`. -/
     · exact absurd heq (by simp)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    · split at heq
+      · simp only [ParseResult.ok.injEq] at heq; omega
+      · exact absurd heq (by simp)
+    · exact absurd heq (by simp)
 
 /-- Return the input slice a parser consumed, decoded as text (grade preserved). Lets
 combinator parsers build real syntax trees -- atom names, identifiers, header fields --
@@ -98,6 +114,14 @@ instead of only structural counts. Invalid UTF-8 in the slice decodes to `""`. -
     intro he arr q
     obtain ⟨a, q', ha⟩ := p.swit he arr q
     exact ⟨(String.fromUTF8? (arr.extract q q')).getD "", q', by simp only [ha]⟩
+  bwit := by
+    intro arr q b q' hq heq
+    split at heq
+    next a p' hx =>
+      simp only [ParseResult.ok.injEq] at heq
+      obtain ⟨_, rfl⟩ := heq
+      exact p.bwit hq hx
+    next e hx => exact absurd heq (by simp)
 
 /-- First-byte dispatch: read the current byte and run the parser `select` chooses for
 it, without an intermediate allocation. Fails without consuming at end-of-input. This is
@@ -113,6 +137,11 @@ costs a single byte read and a jump rather than an `alt` chain of failed attempt
     · exact absurd heq (by simp)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    · exact (select _).bwit hq heq
+    · exact absurd heq (by simp)
 
 /-- Map over the result (grade preserved). -/
 @[inline] def GParser.map (h : α → β) (x : GParser g α) : GParser g β where
@@ -136,6 +165,14 @@ costs a single byte read and a jump rather than an `alt` chain of failed attempt
     intro he arr q
     obtain ⟨a, q', ha⟩ := x.swit he arr q
     exact ⟨h a, q', by simp only [ha]⟩
+  bwit := by
+    intro arr q b q' hq heq
+    split at heq
+    next a p' hx =>
+      simp only [ParseResult.ok.injEq] at heq
+      obtain ⟨_, rfl⟩ := heq
+      exact x.bwit hq hx
+    next e hx => exact absurd heq (by simp)
 
 /-- Sequence, keeping the right value; grades multiply.
 Furthest offset from either `x` or `y` propagates on failure. -/
@@ -172,6 +209,11 @@ Furthest offset from either `x` or `y` propagates on failure. -/
     | error e =>
       obtain ⟨a, q', ha⟩ := x.swit he1 arr q
       rw [ha] at hx; exact absurd hx (by simp)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    next fst p' hx => exact y.bwit (x.bwit hq hx) heq
+    next e hx => exact absurd heq (by simp)
 
 /-- Sequence, keeping the left value; grades multiply.
 Furthest offset propagates on failure. -/
@@ -220,6 +262,17 @@ Furthest offset propagates on failure. -/
     | error e =>
       obtain ⟨a, q', ha⟩ := x.swit he1 arr q
       rw [ha] at hx; exact absurd hx (by simp)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    next fst p' hx =>
+      split at heq
+      next snd p'' hy =>
+        simp only [ParseResult.ok.injEq] at heq
+        obtain ⟨_, rfl⟩ := heq
+        exact y.bwit (x.bwit hq hx) hy
+      next e hy => exact absurd heq (by simp)
+    next e hx => exact absurd heq (by simp)
 
 /-- Ordered choice; grade follows `Grade.choice`.
 On failure, the two errors are merged furthest-wins: if one branch reached a
@@ -289,6 +342,25 @@ This is the megaparsec-style furthest-failure merge. -/
           rw [ha] at hx; exact absurd hx (by simp)
         · obtain ⟨a, q', ha⟩ := y.swit hg arr q
           rw [ha] at hy; exact absurd hy (by simp)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    · rename_i b p' hx
+      simp only [ParseResult.ok.injEq] at heq
+      obtain ⟨rfl, rfl⟩ := heq
+      exact x.bwit hq hx
+    · rename_i ex hx
+      split at heq
+      · rename_i b p' hy
+        simp only [ParseResult.ok.injEq] at heq
+        obtain ⟨rfl, rfl⟩ := heq
+        exact y.bwit hq hy
+      · rename_i ey _hy
+        by_cases h1 : ex.pos < ey.pos
+        · rw [if_pos h1] at heq; exact absurd heq (by simp)
+        · by_cases h2 : ey.pos < ex.pos
+          · rw [if_neg h1, if_pos h2] at heq; exact absurd heq (by simp)
+          · rw [if_neg h1, if_neg h2] at heq; exact absurd heq (by simp)
 
 /-- Monadic bind; grades multiply.
 Furthest offset propagates on failure. -/
@@ -325,6 +397,11 @@ Furthest offset propagates on failure. -/
     | error e =>
       obtain ⟨a, q', ha⟩ := x.swit he1 arr q
       rw [ha] at hx; exact absurd hx (by simp)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    next fst p' hx => exact (f fst).bwit (x.bwit hq hx) heq
+    next e hx => exact absurd heq (by simp)
 
 /-- Apply a binary function across two parses; grades multiply.
 Furthest offset propagates on failure. -/
@@ -374,6 +451,17 @@ Furthest offset propagates on failure. -/
     | error e =>
       obtain ⟨a, q', ha⟩ := x.swit he1 arr q
       rw [ha] at hx; exact absurd hx (by simp)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    next fst p' hx =>
+      split at heq
+      next snd p'' hy =>
+        simp only [ParseResult.ok.injEq] at heq
+        obtain ⟨_, rfl⟩ := heq
+        exact y.bwit (x.bwit hq hx) hy
+      next e hy => exact absurd heq (by simp)
+    next e hx => exact absurd heq (by simp)
 
 /-- Consume exactly `n` bytes if available.
 On failure the furthest offset is the current position. -/
@@ -386,6 +474,11 @@ On failure the furthest offset is the current position. -/
     · exact absurd heq (by simp)
   ewit := by intro he; exact absurd he (by decide)
   swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    · simp only [ParseResult.ok.injEq] at heq; omega
+    · exact absurd heq (by simp)
 
 /-- Replace the expected-label set of `p`'s failure with `[name]`.
 Mirrors megaparsec's `<?>` operator: on success the result is unchanged; on
@@ -411,6 +504,14 @@ failure the `expected` field is overwritten so error messages read
     intro he arr q
     obtain ⟨a, q', ha⟩ := p.swit he arr q
     exact ⟨a, q', by simp [ha]⟩
+  bwit := by
+    intro arr q a q' hq h
+    split at h
+    · rename_i b p' hp
+      simp only [ParseResult.ok.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact p.bwit hq hp
+    · exact absurd h (by simp)
 
 /-- Attach an expected label to a parser (megaparsec-style `<?>`).
 `p <?> "name"` produces "expected name" on failure at the same position. -/
