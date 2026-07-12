@@ -25,8 +25,8 @@ This parser is written entirely from grip combinators. The leaf parsers
 over an always-consuming `", element"` parser (the comma forces consumption, so
 the many-gate accepts it). No hand-rolled byte recursion.
 
-Recursion uses grip's `fix`, which is `partial` under the hood (grip has no
-kernel-total, size-indexed fix); see the `fix` note in `Grip/Graded.lean`. The
+Recursion uses grip's `fix`, which is kernel-total via a fuel bounded by the bytes
+remaining rather than a size index; see the `fix` note in `Grip/Graded.lean`. The
 benchmark measures structural validation plus a leaf-node count, not the
 construction of a materialised value tree, so its timing is not directly
 comparable to a DOM-building parser.
