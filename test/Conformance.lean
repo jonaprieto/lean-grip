@@ -35,7 +35,12 @@ def nAllowAccept : List String := []
 
 /-- Pathological deep-nesting `n_` files skipped so they cannot overflow this
 process's stack (`fix` recurses on the Lean stack). Populate in Task 4. -/
-def excluded : List String := []
+def excluded : List String :=
+  -- Both overflow the Lean stack (`fix` recurses per level); verified to crash (exit 134).
+  -- i_structure_500 (500-deep) is NOT excluded: it parses fine, so it stays counted under i_.
+  [ "n_structure_100000_opening_arrays.json"  -- 100k-deep
+  , "n_structure_open_array_object.json"      -- ~50k-deep
+  ]
 
 private def classify (name : String) (accepted : Bool) :
     (Nat × Nat × Nat × Nat × Nat × Nat × Bool) :=
