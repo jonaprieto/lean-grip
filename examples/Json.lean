@@ -7,29 +7,24 @@ Authors: Jonathan Cubides
 import Grip
 
 /-!
-# Grip.Examples.Json -- byte-level JSON parser built on grip combinators
+# Grip.Examples.Json -- grammar-strict RFC-8259 JSON parser
 
 Parses a JSON value and returns the count of JSON leaf-value nodes in its tree:
 each number, string, `true`/`false`/`null` contributes 1; arrays and objects
 contribute the sum of their element counts (the container itself adds nothing).
 
 canada.json (GeoJSON, ~2.1 MB) uses floating-point coordinates (`-65.613033`).
-The number scanner accepts sign, decimal point, and exponent characters,
-covering all JSON number forms.
 
 ## Design
 
-This parser is written entirely from grip combinators. The leaf parsers
-(`ws`, `keyword`, `number`, `jstring`) are graded combinators; the recursive
-`value` is `GParser.fix`, and the array and object repetitions are `foldMany`
-over an always-consuming `", element"` parser (the comma forces consumption, so
-the many-gate accepts it). No hand-rolled byte recursion.
+This parser is written entirely from grip combinators and is grammar-strict per
+RFC 8259: leading zeros (`01`) are rejected, trailing dots (`1.`) are rejected,
+bare exponents (`1e`) are rejected, trailing commas are rejected, bad escapes
+(`\q`) and bad `\u` sequences are rejected, and trailing garbage after the
+top-level value is rejected via an explicit EOF check.
 
 Recursion uses grip's `fix`, which is kernel-total via a fuel bounded by the bytes
-remaining rather than a size index; see the `fix` note in `Grip/Graded.lean`. The
-benchmark measures structural validation plus a leaf-node count, not the
-construction of a materialised value tree, so its timing is not directly
-comparable to a DOM-building parser.
+remaining. The benchmark measures structural validation plus a leaf-node count.
 -/
 
 namespace Grip.Examples.Json
@@ -38,36 +33,84 @@ open Grip
 
 -- Byte predicates -------------------------------------------------------
 
-/-- Characters that may appear in a JSON number token (digits, sign, dot, exponent). -/
-@[inline] private def isNumCh (b : UInt8) : Bool :=
-  Ascii.isDigit b || b == Ascii.dot || b == Ascii.dash || b == Ascii.plus
-    || b == Ascii.code 'e' || b == Ascii.code 'E'
+/-- `'1'`..`'9'`. -/
+@[inline] private def isDigit19 (b : UInt8) : Bool := 49 ≤ b && b ≤ 57
+/-- Exponent marker `e`/`E`. -/
+@[inline] private def isExp (b : UInt8) : Bool := b == 101 || b == 69
+/-- Sign `+`/`-`. -/
+@[inline] private def isSign (b : UInt8) : Bool := b == 43 || b == 45
+/-- Escapes valid directly after `\`: `" \ / b f n r t`. -/
+@[inline] private def isSimpleEsc (b : UInt8) : Bool :=
+  b == 34 || b == 92 || b == 47 || b == 98 || b == 102 || b == 110 || b == 114 || b == 116
+/-- A byte allowed unescaped inside a string: `>= 0x20`, not `"`, not `\`.
+Bytes `>= 0x80` pass opaque -- grammar-strict does not validate UTF-8. -/
+@[inline] private def isUnescaped (b : UInt8) : Bool := 32 ≤ b && b != 34 && b != 92
 
--- Grip combinator leaf parsers -------------------------------------------
+-- Leaf parsers (non-recursive) ------------------------------------------
 
-/-- Skip insignificant whitespace. Grade `flexible` (never errors, possibly consumes). -/
+/-- Skip insignificant whitespace. -/
 @[inline] private def ws : GParser flexible Nat := GParser.ws
 
-/-- A keyword (`true`/`false`/`null`) as an ASCII-letter run. Leaf count 1. `conditional`. -/
-@[inline] private def keyword : GParser conditional Nat :=
-  (fun _ => 1) <$> GParser.takeWhile1 Ascii.isAlpha
+/-- Exact keyword, dispatched by first byte; leaf count 1. -/
+@[inline] private def keywordTrue : GParser conditional Nat :=
+  (fun _ => 1) <$> GParser.string "true"
+@[inline] private def keywordFalse : GParser conditional Nat :=
+  (fun _ => 1) <$> GParser.string "false"
+@[inline] private def keywordNull : GParser conditional Nat :=
+  (fun _ => 1) <$> GParser.string "null"
 
-/-- A number token (a run of number characters). Leaf count 1. `conditional`. -/
+/-- A `.frac` fragment: `.` then one or more digits. Fails hard if `.` is not
+followed by a digit (so `1.` is rejected). -/
+@[inline] private def frac : GParser conditional Nat :=
+  GParser.seqR (GParser.byteC '.') (GParser.takeWhile1 Ascii.isDigit)
+
+/-- An exponent fragment: `[eE]` `[+-]?` digits. Fails hard if no digit follows. -/
+@[inline] private def expo : GParser conditional Nat :=
+  GParser.seqR (GParser.satisfy isExp)
+    (GParser.seqR (GParser.optional (GParser.satisfy isSign))
+      (GParser.takeWhile1 Ascii.isDigit))
+
+/-- The integer part: `0` alone, or `[1-9]` then more digits. -/
+@[inline] private def intPart : GParser conditional Unit :=
+  GParser.alt (GParser.byteC '0')
+    (GParser.seqR (GParser.satisfy isDigit19)
+      (GParser.seqR (GParser.takeWhile Ascii.isDigit) (GParser.pure ())))
+
+/-- A JSON number: `-? int frac? exp?`; leaf count 1. Leading-zero (`01`) and a
+lone trailing token (`1 2`) are rejected by the top-level EOF check, not here. -/
 @[inline] private def number : GParser conditional Nat :=
-  (fun _ => 1) <$> GParser.takeWhile1 isNumCh
+  (fun _ => 1) <$>
+    (GParser.seqR (GParser.optional (GParser.byteC '-'))
+      (GParser.seqL intPart
+        (GParser.seqR (GParser.optional frac) (GParser.optional expo))))
 
-/-- A string `"..."` (escape-aware scan: `\X` is two bytes, so an escaped quote does not end the
-string). Leaf count 1. `conditional`. -/
+/-- One string byte: an unescaped byte, or a backslash escape (`\` + simple
+escape, or `\u` + 4 hex). Always consumes on success. -/
+@[inline] private def strChar : GParser conditional Unit :=
+  GParser.alt
+    ((fun _ => ()) <$> GParser.satisfy isUnescaped)
+    (GParser.seqR (GParser.byte Ascii.backslash)
+      (GParser.alt
+        ((fun _ => ()) <$> GParser.satisfy isSimpleEsc)
+        (GParser.seqR (GParser.byteC 'u')
+          (GParser.seqR (GParser.satisfy Ascii.isHexDigit)
+            (GParser.seqR (GParser.satisfy Ascii.isHexDigit)
+              (GParser.seqR (GParser.satisfy Ascii.isHexDigit)
+                (GParser.seqR (GParser.satisfy Ascii.isHexDigit)
+                  (GParser.pure ()))))))))
+
+/-- A validated JSON string `"..."`; leaf count 1. The body folds `strChar`
+until an unescaped `"` (where `strChar` fails without consuming and the fold
+stops); the closing `"` is then required, which rejects bad content. -/
 @[inline] private def jstring : GParser conditional Nat :=
-  GParser.byteC '"' *> GParser.takeStringBody *> ((fun _ => 1) <$> GParser.byteC '"')
+  GParser.seqR (GParser.byteC '"')
+    (GParser.seqR (GParser.foldMany (fun _ _ => ()) () strChar)
+      ((fun _ => 1) <$> GParser.byteC '"'))
 
 -- Recursive value via `fix` ---------------------------------------------
 
-/-- Parse one JSON value (after any leading whitespace), returning its leaf count.
-Arrays and objects are folded with `foldMany` over an always-consuming element. -/
 private def value : GParser conditional Nat :=
   GParser.fix fun value =>
-    -- ", value" element for arrays: the comma makes it always-consuming.
     let commaValue : GParser conditional Nat :=
       GParser.seqR ws (GParser.seqR (GParser.byteC ',') (GParser.seqR ws value))
     let arrayBody : GParser flexible Nat :=
@@ -78,7 +121,6 @@ private def value : GParser conditional Nat :=
       GParser.seqR (GParser.byteC '[')
         (GParser.seqR ws
           (GParser.seqL arrayBody (GParser.seqR ws (GParser.byteC ']'))))
-    -- "key" : value member, returning the value's leaf count.
     let pair : GParser conditional Nat :=
       GParser.seqR jstring
         (GParser.seqR ws (GParser.seqR (GParser.byteC ':') (GParser.seqR ws value)))
@@ -92,35 +134,49 @@ private def value : GParser conditional Nat :=
       GParser.seqR (GParser.byteC '{')
         (GParser.seqR ws
           (GParser.seqL objectBody (GParser.seqR ws (GParser.byteC '}'))))
-    -- Malformed leading byte: fail at the current position (conditional grade).
+    -- Fallthrough for a byte that starts no value: always fails (the mapped `0` is unreachable).
     let invalid : GParser conditional Nat :=
       (fun _ => 0) <$> GParser.satisfy (fun _ => false)
-    -- First-byte dispatch: peek the leading byte (after whitespace) and jump straight
-    -- to the matching parser, instead of trying keyword/number/string/array/object in
-    -- an `alt` chain and paying a failed attempt (plus an error allocation) per miss.
     GParser.seqR ws
       (GParser.dispatch fun b =>
-        if b == Ascii.lbrace then object                        -- '{'
-        else if b == Ascii.lbracket then array                  -- '['
-        else if b == Ascii.quote then jstring                   -- '"'
-        else if b == Ascii.code 't' || b == Ascii.code 'f' || b == Ascii.code 'n' then keyword
-        else if Ascii.isDigit b || b == Ascii.dash then number  -- digit or '-'
+        if b == Ascii.lbrace then object
+        else if b == Ascii.lbracket then array
+        else if b == Ascii.quote then jstring
+        else if b == 116 then keywordTrue
+        else if b == 102 then keywordFalse
+        else if b == 110 then keywordNull
+        else if Ascii.isDigit b || b == Ascii.dash then number
         else invalid)
 
-/-- Parse one complete JSON value from `arr`; return the total leaf count.
-Leaf semantics: 1 per number, string, or keyword; sum of children for arrays and
-objects (containers do not add 1 themselves). Grade `fallible` (the `Parser` face). -/
-def json : Parser Nat := GParser.weakenFallible value
+/-- End of input: succeeds (consuming nothing) exactly when no byte remains.
+`satisfy` fails only at end, so `notFollowedBy` of it marks EOF. -/
+@[inline] private def eof : GParser ⟨.possibly, .never⟩ Unit :=
+  GParser.notFollowedBy (GParser.satisfy (fun _ => true))
+
+/-- Parse one complete JSON document: a value, then optional trailing whitespace,
+then end of input. Full consumption is enforced here (neither `run?` nor `parse`
+checks it), which is what rejects trailing garbage. -/
+def json : Parser Nat :=
+  GParser.weakenFallible (GParser.seqL value (GParser.seqR ws eof))
 
 -- Acceptance guards -------------------------------------------------------
 
--- count 5: [1,-2.5e3,true,null] is 4 leaves, "x" is 1; keys are not counted.
+-- Valid: 4 array leaves + 1 string leaf ("x"); keys are not counted.
 #guard (GParser.run? json "{\"a\":[1,-2.5e3,true,null],\"b\":\"x\"}".toUTF8) == some 5
-
--- Malformed input (missing value before `}`): rejected.
-#guard (GParser.run? json "{\"a\":}".toUTF8) == none
-
--- Escaped quote inside a string: the `\"` does not end the string, so this is one leaf.
+#guard (GParser.run? json "{}".toUTF8) == some 0
+#guard (GParser.run? json "[]".toUTF8) == some 0
+#guard (GParser.run? json "  [ 1 , 2 , 3 ]  ".toUTF8) == some 3
+-- Escaped quote inside a string: one leaf.
 #guard (GParser.run? json "[\"a\\\"b\", 1]".toUTF8) == some 2
+-- Strict rejections that the OLD loose parser accepted:
+#guard (GParser.run? json "[truue]".toUTF8) == none         -- not an exact keyword
+#guard (GParser.run? json "01".toUTF8) == none              -- leading zero
+#guard (GParser.run? json "1.".toUTF8) == none              -- trailing dot, no frac digits
+#guard (GParser.run? json "1e".toUTF8) == none              -- exponent, no digits
+#guard (GParser.run? json "[1,]".toUTF8) == none            -- trailing comma
+#guard (GParser.run? json "{\"a\":}".toUTF8) == none        -- missing value
+#guard (GParser.run? json "1 2".toUTF8) == none             -- trailing garbage (EOF)
+#guard (GParser.run? json "\"a\\q\"".toUTF8) == none        -- bad escape \q
+#guard (GParser.run? json "\"a\\u00zz\"".toUTF8) == none    -- bad \u hex
 
 end Grip.Examples.Json
