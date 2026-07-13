@@ -111,31 +111,55 @@ def benchOne (name : String) (src : ByteArray) (p : ByteArray → Nat) : IO Unit
 -- Cross-library reference: Lean's standard combinator library, `Std.Internal.Parsec`, on
 -- the same validate-and-count task. A byte-level JSON leaf-counter matching grip's semantics
 -- (number/string/keyword = 1 leaf, object keys not counted); counts 111130 on canada.json.
+-- Strict RFC-8259 grammar: number/string/keyword validated identically to grip.
 namespace StdParsecJson
 open Std.Internal.Parsec Std.Internal.Parsec.ByteArray
 abbrev P := Std.Internal.Parsec.ByteArray.Parser
 @[inline] def isWs (b : UInt8) : Bool := b == 32 || b == 10 || b == 9 || b == 13
-@[inline] def isNum (b : UInt8) : Bool :=
-  (48 ≤ b && b ≤ 57) || b == 46 || b == 45 || b == 43 || b == 101 || b == 69
-@[inline] def isAlpha (b : UInt8) : Bool := (97 ≤ b && b ≤ 122) || (65 ≤ b && b ≤ 90)
+@[inline] def isDigit (b : UInt8) : Bool := 48 ≤ b && b ≤ 57
+@[inline] def isDigit19 (b : UInt8) : Bool := 49 ≤ b && b ≤ 57
+@[inline] def isHex (b : UInt8) : Bool :=
+  isDigit b || (97 ≤ b && b ≤ 102) || (65 ≤ b && b ≤ 70)
 -- Use the non-allocating `skipWhile`/`skipByte`, Std.Parsec's best byte-level idiom, rather
 -- than `many (satisfy ..)`, which builds and discards an Array per token (a handicap that would
 -- flatter grip). This is the fair comparison: each library at its best on the same task.
 def ws : P Unit := skipWhile isWs
-def number : P Nat := do skipWhile isNum; pure 1
-def keyword : P Nat := do skipWhile isAlpha; pure 1
--- Escape-aware string body as a raw iterator scan (Std.Parsec's best: no per-byte monadic bind),
--- mirroring grip's `scanStrFwd`. `\X` is two bytes, so an escaped quote does not end the string.
-partial def strEnd (it : ByteArray.Iterator) : ByteArray.Iterator :=
-  if it.hasNext then
-    let b := it.curr
-    if b == 34 then it                                    -- unescaped closing quote
-    else if b == 92 then (let it2 := it.next; if it2.hasNext then strEnd it2.next else it2)
-    else strEnd it.next
-  else it
-def skipStrBody : P Unit := fun it => .success (strEnd it) ()
-def skipStr : P Unit := do skipByte 34; skipStrBody; skipByte 34
+-- RFC number: `-? (0 | [1-9][0-9]*) frac? exp?`
+def digits1 : P Unit := do
+  let b ← any
+  if isDigit b then skipWhile isDigit else fail "digit"
+def number : P Nat := do
+  (do skipByte 45) <|> pure ()
+  let b ← any
+  if b == 48 then pure ()
+  else if isDigit19 b then skipWhile isDigit
+  else fail "int"
+  (do skipByte 46; digits1) <|> pure ()
+  (attempt (do let e ← any
+               if e == 101 || e == 69 then pure () else fail "exp"
+               (do skipByte 43) <|> (do skipByte 45) <|> pure ()
+               digits1) <|> pure ())
+  pure 1
+-- RFC string: validate escapes including \uXXXX, reject control chars.
+partial def strBody : P Unit := do
+  let b ← any
+  if b == 34 then pure ()
+  else if b == 92 then do
+    let c ← any
+    if c == 34 || c == 92 || c == 47 || c == 98 || c == 102 ||
+       c == 110 || c == 114 || c == 116 then strBody
+    else if c == 117 then do
+      let h1 ← any; let h2 ← any; let h3 ← any; let h4 ← any
+      if isHex h1 && isHex h2 && isHex h3 && isHex h4 then strBody else fail "hex"
+    else fail "escape"
+  else if b < 32 then fail "control"
+  else strBody
+def skipStr : P Unit := do skipByte 34; strBody
 def pstring : P Nat := do skipStr; pure 1
+-- Exact keyword: match each byte of the full literal (first byte included).
+def keywordLit (kw : List UInt8) : P Nat := do
+  for c in kw do let b ← any; if b != c then fail "keyword"
+  pure 1
 mutual
 partial def value : P Nat := do
   ws
@@ -143,10 +167,10 @@ partial def value : P Nat := do
   | some 123 => object
   | some 91  => array
   | some 34  => pstring
-  | some 116 => keyword
-  | some 102 => keyword
-  | some 110 => keyword
-  | some _   => number
+  | some 116 => keywordLit [116, 114, 117, 101]
+  | some 102 => keywordLit [102, 97, 108, 115, 101]
+  | some 110 => keywordLit [110, 117, 108, 108]
+  | some b   => if isDigit b || b == 45 then number else fail "value"
   | none     => fail "eof"
 partial def array : P Nat := do
   let _ ← pbyte 91; ws
@@ -171,7 +195,7 @@ partial def objectTail (acc : Nat) : P Nat := do
   else if b == 44 then do let n ← pair; objectTail (acc + n)
   else fail "object"
 end
-def json : P Nat := do let n ← value; ws; pure n
+def json : P Nat := do let n ← value; ws; eof; pure n
 def parse (arr : ByteArray) : Except String Nat :=
   Std.Internal.Parsec.ByteArray.Parser.run json arr
 end StdParsecJson
@@ -186,16 +210,80 @@ end StdParsecJson
 -- with an explicit `Nat` position and a `Nat` count, `arr[i]!` for the byte read. Same
 -- validate-and-count task and same 111130 count as the others; this is the "Lean runtime
 -- floor" baseline (RC, bounds-checked indexing) that grip's combinator layer sits above.
+-- Strict RFC-8259 grammar: number/string/keyword validated identically to grip.
 namespace HandScanner
 @[inline] def isWs (b : UInt8) : Bool := b == 32 || b == 10 || b == 9 || b == 13
-@[inline] def isNumCh (b : UInt8) : Bool :=
-  (48 ≤ b && b ≤ 57) || b == 46 || b == 45 || b == 43 || b == 101 || b == 69
-@[inline] def isAlpha (b : UInt8) : Bool := (97 ≤ b && b ≤ 122) || (65 ≤ b && b ≤ 90)
+@[inline] def isDigit (b : UInt8) : Bool := 48 ≤ b && b ≤ 57
+@[inline] def isDigit19 (b : UInt8) : Bool := 49 ≤ b && b ≤ 57
+@[inline] def isHex (b : UInt8) : Bool :=
+  isDigit b || (97 ≤ b && b ≤ 102) || (65 ≤ b && b ≤ 70)
 
 partial def skipWs (a : ByteArray) (i : Nat) : Nat :=
   if i < a.size then (if isWs a[i]! then skipWs a (i + 1) else i) else i
-partial def scanWhile (a : ByteArray) (p : UInt8 → Bool) (i : Nat) : Nat :=
-  if i < a.size then (if p a[i]! then scanWhile a p (i + 1) else i) else i
+partial def skipDigits (a : ByteArray) (i : Nat) : Nat :=
+  if i < a.size && isDigit a[i]! then skipDigits a (i + 1) else i
+
+/-- RFC number starting at `i`; `some end` or `none`. -/
+partial def scanNumber (a : ByteArray) (i0 : Nat) : Option Nat :=
+  let i := if i0 < a.size && a[i0]! == 45 then i0 + 1 else i0
+  if i < a.size && a[i]! == 48 then
+    Id.run do
+      let mut j := i + 1
+      if j < a.size && a[j]! == 46 then
+        let k := skipDigits a (j + 1)
+        if k == j + 1 then return none
+        j := k
+      if j < a.size && (a[j]! == 101 || a[j]! == 69) then
+        let mut k := j + 1
+        if k < a.size && (a[k]! == 43 || a[k]! == 45) then k := k + 1
+        let m := skipDigits a k
+        if m == k then return none
+        j := m
+      return some j
+  else if i < a.size && isDigit19 a[i]! then
+    Id.run do
+      let mut j := skipDigits a (i + 1)
+      if j < a.size && a[j]! == 46 then
+        let k := skipDigits a (j + 1)
+        if k == j + 1 then return none
+        j := k
+      if j < a.size && (a[j]! == 101 || a[j]! == 69) then
+        let mut k := j + 1
+        if k < a.size && (a[k]! == 43 || a[k]! == 45) then k := k + 1
+        let m := skipDigits a k
+        if m == k then return none
+        j := m
+      return some j
+  else none
+
+/-- RFC string body starting just after the opening quote at `i`; `some end`
+(index just past the closing quote) or `none`. Grammar-strict: validates
+escapes and rejects control chars; does not validate UTF-8. -/
+partial def scanString (a : ByteArray) (i : Nat) : Option Nat :=
+  if i < a.size then
+    let b := a[i]!
+    if b == 34 then some (i + 1)
+    else if b == 92 then
+      if i + 1 < a.size then
+        let c := a[i + 1]!
+        if c == 34 || c == 92 || c == 47 || c == 98 || c == 102 ||
+           c == 110 || c == 114 || c == 116 then scanString a (i + 2)
+        else if c == 117 then
+          if i + 5 < a.size && isHex a[i + 2]! && isHex a[i + 3]! &&
+             isHex a[i + 4]! && isHex a[i + 5]!
+          then scanString a (i + 6) else none
+        else none
+      else none
+    else if b < 32 then none
+    else scanString a (i + 1)
+  else none
+
+/-- Exact keyword match at `i`; `some end` or `none`. -/
+def scanKeyword (a : ByteArray) (i : Nat) (kw : List UInt8) : Option Nat :=
+  let rec go (j : Nat) : List UInt8 → Option Nat
+    | []      => some j
+    | c :: cs => if j < a.size && a[j]! == c then go (j + 1) cs else none
+  go i kw
 
 mutual
 /-- Parse one value after whitespace; return `(leafCount, nextPos)` or `none` on malformed. -/
@@ -203,18 +291,18 @@ partial def value (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
   if i < a.size then
     let b := a[i]!
-    if b == 123 then object a (i + 1)          -- '{'
-    else if b == 91 then array a (i + 1)        -- '['
-    else if b == 34 then                        -- '"' string
-      let j := scanWhile a (· != 34) (i + 1)
-      if j < a.size then some (1, j + 1) else none
-    else if b == 116 || b == 102 || b == 110 then some (1, scanWhile a isAlpha i)  -- t/f/n
-    else if (48 ≤ b && b ≤ 57) || b == 45 then some (1, scanWhile a isNumCh i)     -- digit/'-'
+    if b == 123 then object a (i + 1)
+    else if b == 91 then array a (i + 1)
+    else if b == 34 then (scanString a (i + 1)).map (fun j => (1, j))
+    else if b == 116 then (scanKeyword a i [116, 114, 117, 101]).map (fun j => (1, j))
+    else if b == 102 then (scanKeyword a i [102, 97, 108, 115, 101]).map (fun j => (1, j))
+    else if b == 110 then (scanKeyword a i [110, 117, 108, 108]).map (fun j => (1, j))
+    else if isDigit b || b == 45 then (scanNumber a i).map (fun j => (1, j))
     else none
   else none
 partial def array (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
-  if i < a.size && a[i]! == 93 then some (0, i + 1)         -- ']' empty
+  if i < a.size && a[i]! == 93 then some (0, i + 1)
   else match value a i with
     | some (n, j) => arrayTail a j n
     | none => none
@@ -222,34 +310,34 @@ partial def arrayTail (a : ByteArray) (i0 acc : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
   if i < a.size then
     let b := a[i]!
-    if b == 93 then some (acc, i + 1)                       -- ']'
-    else if b == 44 then match value a (i + 1) with          -- ','
+    if b == 93 then some (acc, i + 1)
+    else if b == 44 then match value a (i + 1) with
       | some (n, j) => arrayTail a j (acc + n)
       | none => none
     else none
   else none
 partial def object (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
-  if i < a.size && a[i]! == 125 then some (0, i + 1)        -- '}' empty
+  if i < a.size && a[i]! == 125 then some (0, i + 1)
   else match pair a i with
     | some (n, j) => objectTail a j n
     | none => none
 partial def pair (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
-  if i < a.size && a[i]! == 34 then                         -- key string (not counted)
-    let k := scanWhile a (· != 34) (i + 1)
-    if k < a.size then
-      let i2 := skipWs a (k + 1)
-      if i2 < a.size && a[i2]! == 58 then value a (i2 + 1)  -- ':' then value's count
+  if i < a.size && a[i]! == 34 then
+    match scanString a (i + 1) with
+    | some k =>
+      let i2 := skipWs a k
+      if i2 < a.size && a[i2]! == 58 then value a (i2 + 1)
       else none
-    else none
+    | none => none
   else none
 partial def objectTail (a : ByteArray) (i0 acc : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
   if i < a.size then
     let b := a[i]!
-    if b == 125 then some (acc, i + 1)                      -- '}'
-    else if b == 44 then match pair a (i + 1) with           -- ','
+    if b == 125 then some (acc, i + 1)
+    else if b == 44 then match pair a (i + 1) with
       | some (n, j) => objectTail a j (acc + n)
       | none => none
     else none
@@ -257,7 +345,9 @@ partial def objectTail (a : ByteArray) (i0 acc : Nat) : Option (Nat × Nat) :=
 end
 
 def parse (a : ByteArray) : Nat :=
-  match value a 0 with | some (n, _) => n | none => 0
+  match value a 0 with
+  | some (n, j) => if HandScanner.skipWs a j == a.size then n else 0
+  | none => 0
 end HandScanner
 
 /-- Hand-written scanner driver (validate + count, like `parseJson`). -/
