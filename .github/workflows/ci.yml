@@ -33,7 +33,23 @@ jobs:
           restore-keys: lake-core-${{ runner.os }}-
       - uses: leanprover/lean-action@v1
         with:
-          build-args: "Grip Test Examples"
+          build-args: "Grip Test Examples conformance"
+      - name: JSON conformance (JSONTestSuite)
+        run: |
+          # `if !` tests the exit status directly, so a regression fails the job
+          # regardless of the shell's `set -e` command-substitution semantics.
+          if ! out=$(lake exe conformance); then
+            echo "$out"
+            echo "conformance gate failed" >&2
+            exit 1
+          fi
+          echo "$out"
+          {
+            echo "### JSON conformance"
+            echo '```'
+            echo "$out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   bench:
     runs-on: ubuntu-latest
