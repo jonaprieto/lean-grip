@@ -279,9 +279,11 @@ def oscBody (self : GParser conditional Unit) : GParser conditional Unit where
     · exact absurd h (by simp)
 
 -- Acceptance flips with the fuel's parity: fuel 2 rejects, fuel 3 accepts at offset 1. No single
--- fuel bound is complete for this non-guarded body, so `fixFuel_complete` genuinely needs `Guarded`.
+-- fuel bound is complete for this non-guarded body, so `fixFuel_complete` genuinely needs
+-- `Guarded`.
 #guard (match GParser.fixFuel oscBody 2 (String.toUTF8 "ab") 0 with | .error _ => true | _ => false)
-#guard (match GParser.fixFuel oscBody 3 (String.toUTF8 "ab") 0 with | .ok _ q => q == 1 | _ => false)
+#guard (match GParser.fixFuel oscBody 3 (String.toUTF8 "ab") 0 with
+        | .ok _ q => q == 1 | _ => false)
 
 /-! ### A worked grammar, complete end to end
 
