@@ -56,9 +56,10 @@ open Grip
 @[inline] private def number : GParser conditional Nat :=
   (fun _ => 1) <$> GParser.takeWhile1 isNumCh
 
-/-- A string `"..."` (escape-transparent scan to the closing quote). Leaf count 1. `conditional`. -/
+/-- A string `"..."` (escape-aware scan: `\X` is two bytes, so an escaped quote does not end the
+string). Leaf count 1. `conditional`. -/
 @[inline] private def jstring : GParser conditional Nat :=
-  GParser.byteC '"' *> GParser.takeWhile (· != Ascii.quote) *> ((fun _ => 1) <$> GParser.byteC '"')
+  GParser.byteC '"' *> GParser.takeStringBody *> ((fun _ => 1) <$> GParser.byteC '"')
 
 -- Recursive value via `fix` ---------------------------------------------
 
@@ -118,5 +119,8 @@ def json : Parser Nat := GParser.weakenFallible value
 
 -- Malformed input (missing value before `}`): rejected.
 #guard (GParser.run? json "{\"a\":}".toUTF8) == none
+
+-- Escaped quote inside a string: the `\"` does not end the string, so this is one leaf.
+#guard (GParser.run? json "[\"a\\\"b\", 1]".toUTF8) == some 2
 
 end Grip.Examples.Json
