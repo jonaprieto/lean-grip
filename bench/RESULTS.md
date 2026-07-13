@@ -28,6 +28,7 @@ read them, not the absolute milliseconds.
 | `Std.Internal.Parsec` (std)     | 24.0 | 1.06x | validate + count | byte-level std combinators, `skipWhile` (its best) |
 | **grip (combinators)**          | 25.4 | 1.00x | validate + count | byte-level; `examples/Json.lean`, grades + soundness |
 | `Lean.Json` (built-in)          | ~99  |   --      | full DOM build   | builds a tree -- a *different, heavier task*        |
+| `lean4-parser` (fgdorais)       | ~149 | 0.17x (grip ~6x faster) | validate + count | `Char`-level, general-purpose; same compiler v4.28.0 |
 
 The clean comparison is **`Std.Internal.Parsec`**, Lean's own standard combinator library:
 byte-level, same toolchain, same validate-and-count task, identical 111130 count. grip and it
@@ -44,10 +45,25 @@ non-allocating `skipWhile` -- `Std.Parsec`'s own best idiom -- roughly halved it
 `Lean.Json` is the built-in and builds a full DOM, strictly more work than validate-and-count,
 so it is not a controlled comparison; it is shown for reference, not as a grip "win".
 
-**`lean4-parser` (fgdorais) is excluded** from this table. It pins toolchain `v4.32.0-rc1` (a
-different compiler than grip's `v4.28.0`) and is `Char`-level (`SimpleParser String.Slice Char`,
-a different tokenization granularity), so no same-basis number exists. A prior "14x faster than
-lean4-parser" figure mixed two toolchains and two tokenization levels and is withdrawn.
+**`lean4-parser` (fgdorais)** is measured on grip's *own* compiler, `v4.28.0` -- its last
+compatible revision `d8428e2` -- so there is no cross-toolchain confound. grip is about **6x
+faster** (~25 vs ~149 ms), same task, identical 111130 count. Two caveats keep this honest, and
+they are the whole of the gap:
+
+- lean4-parser is `Char`-level (`SimpleParser String.Slice Char`): `String.Slice` decodes UTF-8
+  to `Char`, so it does strictly more per token than a byte parser. Its byte-level `ByteSlice`
+  stream is broken on `v4.28.0` (a backtracking off-by-`start` bug, fixed only in `v4.32.0-rc1`),
+  so `Char`-level is the only working mode on grip's compiler.
+- **lean4-parser is a general-purpose combinator library, not tuned for byte throughput.** It
+  prioritizes generality (parse any `Stream`) and correctness over raw speed. Comparing byte
+  throughput understates its design goals; the 6x is a byte-vs-char and design-priority gap, not
+  a claim that grip's combinator model is 6x better.
+
+We still gave it its best on this compiler: the non-allocating `foldl` accumulator, not the
+allocating `sepBy` of the shipped example. A prior "14x faster" figure was measured on a
+different toolchain (`v4.32.0-rc1`) against the allocating example; both effects are removed here.
+(For reference, the identical hand-written scanner runs ~16.6 ms on `v4.28.0` and ~18.4 ms on
+`v4.32.0-rc1`, so the toolchain itself accounts for only ~11%.)
 
 ## Cross-language context (different runtimes; real, not cited)
 
