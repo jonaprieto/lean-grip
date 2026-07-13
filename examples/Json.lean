@@ -39,12 +39,6 @@ open Grip
 @[inline] private def isExp (b : UInt8) : Bool := b == 101 || b == 69
 /-- Sign `+`/`-`. -/
 @[inline] private def isSign (b : UInt8) : Bool := b == 43 || b == 45
-/-- Escapes valid directly after `\`: `" \ / b f n r t`. -/
-@[inline] private def isSimpleEsc (b : UInt8) : Bool :=
-  b == 34 || b == 92 || b == 47 || b == 98 || b == 102 || b == 110 || b == 114 || b == 116
-/-- A byte allowed unescaped inside a string: `>= 0x20`, not `"`, not `\`.
-Bytes `>= 0x80` pass opaque -- grammar-strict does not validate UTF-8. -/
-@[inline] private def isUnescaped (b : UInt8) : Bool := 32 ≤ b && b != 34 && b != 92
 
 -- Leaf parsers (non-recursive) ------------------------------------------
 
@@ -84,28 +78,11 @@ lone trailing token (`1 2`) are rejected by the top-level EOF check, not here. -
       (GParser.seqL intPart
         (GParser.seqR (GParser.optional frac) (GParser.optional expo))))
 
-/-- One string byte: an unescaped byte, or a backslash escape (`\` + simple
-escape, or `\u` + 4 hex). Always consumes on success. -/
-@[inline] private def strChar : GParser conditional Unit :=
-  GParser.alt
-    ((fun _ => ()) <$> GParser.satisfy isUnescaped)
-    (GParser.seqR (GParser.byte Ascii.backslash)
-      (GParser.alt
-        ((fun _ => ()) <$> GParser.satisfy isSimpleEsc)
-        (GParser.seqR (GParser.byteC 'u')
-          (GParser.seqR (GParser.satisfy Ascii.isHexDigit)
-            (GParser.seqR (GParser.satisfy Ascii.isHexDigit)
-              (GParser.seqR (GParser.satisfy Ascii.isHexDigit)
-                (GParser.seqR (GParser.satisfy Ascii.isHexDigit)
-                  (GParser.pure ()))))))))
-
-/-- A validated JSON string `"..."`; leaf count 1. The body folds `strChar`
-until an unescaped `"` (where `strChar` fails without consuming and the fold
-stops); the closing `"` is then required, which rejects bad content. -/
+/-- A validated JSON string literal `"..."`; leaf count 1. One strict single-pass scan
+(`GParser.stringLit`) validates escapes (incl. `\uXXXX`) and rejects unescaped control bytes,
+replacing the old per-byte `foldMany` over a string-char combinator. -/
 @[inline] private def jstring : GParser conditional Nat :=
-  GParser.seqR (GParser.byteC '"')
-    (GParser.seqR (GParser.foldMany (fun _ _ => ()) () strChar)
-      ((fun _ => 1) <$> GParser.byteC '"'))
+  (fun _ => 1) <$> GParser.stringLit
 
 -- Recursive value via `fix` ---------------------------------------------
 
