@@ -118,11 +118,14 @@ abbrev P := Std.Internal.Parsec.ByteArray.Parser
 @[inline] def isNum (b : UInt8) : Bool :=
   (48 ≤ b && b ≤ 57) || b == 46 || b == 45 || b == 43 || b == 101 || b == 69
 @[inline] def isAlpha (b : UInt8) : Bool := (97 ≤ b && b ≤ 122) || (65 ≤ b && b ≤ 90)
-def ws : P Unit := do let _ ← many (satisfy isWs); pure ()
-def number : P Nat := do let _ ← many (satisfy isNum); pure 1
-def keyword : P Nat := do let _ ← many (satisfy isAlpha); pure 1
-partial def strTail : P Unit := do let b ← any; if b == 34 then pure () else strTail
-def pstring : P Nat := do let _ ← pbyte 34; strTail; pure 1
+-- Use the non-allocating `skipWhile`/`skipByte`, Std.Parsec's best byte-level idiom, rather
+-- than `many (satisfy ..)`, which builds and discards an Array per token (a handicap that would
+-- flatter grip). This is the fair comparison: each library at its best on the same task.
+def ws : P Unit := skipWhile isWs
+def number : P Nat := do skipWhile isNum; pure 1
+def keyword : P Nat := do skipWhile isAlpha; pure 1
+def skipStr : P Unit := do skipByte 34; skipWhile (· != 34); skipByte 34
+def pstring : P Nat := do skipStr; pure 1
 mutual
 partial def value : P Nat := do
   ws
@@ -151,7 +154,7 @@ partial def object : P Nat := do
   | some 125 => do let _ ← any; pure 0
   | _ => do let n ← pair; objectTail n
 partial def pair : P Nat := do
-  ws; let _ ← pbyte 34; strTail; ws; let _ ← pbyte 58; value
+  ws; skipStr; ws; let _ ← pbyte 58; value
 partial def objectTail (acc : Nat) : P Nat := do
   ws; let b ← any
   if b == 125 then pure acc
@@ -168,6 +171,87 @@ end StdParsecJson
   match StdParsecJson.parse arr with
   | .ok n => n
   | .error _ => 0
+
+-- Hand-written byte-level JSON leaf-counter with NO combinators: recursion over `ByteArray`
+-- with an explicit `Nat` position and a `Nat` count, `arr[i]!` for the byte read. Same
+-- validate-and-count task and same 111130 count as the others; this is the "Lean runtime
+-- floor" baseline (RC, bounds-checked indexing) that grip's combinator layer sits above.
+namespace HandScanner
+@[inline] def isWs (b : UInt8) : Bool := b == 32 || b == 10 || b == 9 || b == 13
+@[inline] def isNumCh (b : UInt8) : Bool :=
+  (48 ≤ b && b ≤ 57) || b == 46 || b == 45 || b == 43 || b == 101 || b == 69
+@[inline] def isAlpha (b : UInt8) : Bool := (97 ≤ b && b ≤ 122) || (65 ≤ b && b ≤ 90)
+
+partial def skipWs (a : ByteArray) (i : Nat) : Nat :=
+  if i < a.size then (if isWs a[i]! then skipWs a (i + 1) else i) else i
+partial def scanWhile (a : ByteArray) (p : UInt8 → Bool) (i : Nat) : Nat :=
+  if i < a.size then (if p a[i]! then scanWhile a p (i + 1) else i) else i
+
+mutual
+/-- Parse one value after whitespace; return `(leafCount, nextPos)` or `none` on malformed. -/
+partial def value (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
+  let i := skipWs a i0
+  if i < a.size then
+    let b := a[i]!
+    if b == 123 then object a (i + 1)          -- '{'
+    else if b == 91 then array a (i + 1)        -- '['
+    else if b == 34 then                        -- '"' string
+      let j := scanWhile a (· != 34) (i + 1)
+      if j < a.size then some (1, j + 1) else none
+    else if b == 116 || b == 102 || b == 110 then some (1, scanWhile a isAlpha i)  -- t/f/n
+    else if (48 ≤ b && b ≤ 57) || b == 45 then some (1, scanWhile a isNumCh i)     -- digit/'-'
+    else none
+  else none
+partial def array (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
+  let i := skipWs a i0
+  if i < a.size && a[i]! == 93 then some (0, i + 1)         -- ']' empty
+  else match value a i with
+    | some (n, j) => arrayTail a j n
+    | none => none
+partial def arrayTail (a : ByteArray) (i0 acc : Nat) : Option (Nat × Nat) :=
+  let i := skipWs a i0
+  if i < a.size then
+    let b := a[i]!
+    if b == 93 then some (acc, i + 1)                       -- ']'
+    else if b == 44 then match value a (i + 1) with          -- ','
+      | some (n, j) => arrayTail a j (acc + n)
+      | none => none
+    else none
+  else none
+partial def object (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
+  let i := skipWs a i0
+  if i < a.size && a[i]! == 125 then some (0, i + 1)        -- '}' empty
+  else match pair a i with
+    | some (n, j) => objectTail a j n
+    | none => none
+partial def pair (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
+  let i := skipWs a i0
+  if i < a.size && a[i]! == 34 then                         -- key string (not counted)
+    let k := scanWhile a (· != 34) (i + 1)
+    if k < a.size then
+      let i2 := skipWs a (k + 1)
+      if i2 < a.size && a[i2]! == 58 then value a (i2 + 1)  -- ':' then value's count
+      else none
+    else none
+  else none
+partial def objectTail (a : ByteArray) (i0 acc : Nat) : Option (Nat × Nat) :=
+  let i := skipWs a i0
+  if i < a.size then
+    let b := a[i]!
+    if b == 125 then some (acc, i + 1)                      -- '}'
+    else if b == 44 then match pair a (i + 1) with           -- ','
+      | some (n, j) => objectTail a j (acc + n)
+      | none => none
+    else none
+  else none
+end
+
+def parse (a : ByteArray) : Nat :=
+  match value a 0 with | some (n, _) => n | none => 0
+end HandScanner
+
+/-- Hand-written scanner driver (validate + count, like `parseJson`). -/
+@[noinline] def parseHand (arr : ByteArray) : Nat := HandScanner.parse arr
 
 def main (args : List String) : IO Unit := do
   -- `bench once [file]`: parse the file exactly once and exit -- no internal
@@ -194,6 +278,10 @@ def main (args : List String) : IO Unit := do
   let spCount := parseStdParsec jsonSrc
   let spMs ← bestMs 20 (fun i => parseStdParsec (barrier i jsonSrc))
   IO.println s!"std.parsec count={spCount} parse_ms={spMs}"
+  -- Same task, no combinators: the hand-written Lean scanner (the runtime floor).
+  let handCount := parseHand jsonSrc
+  let handMs ← bestMs 20 (fun i => parseHand (barrier i jsonSrc))
+  IO.println s!"hand count={handCount} parse_ms={handMs}"
   -- TOML on a real file: a vendored Cargo.lock (count = number of [[package]] tables).
   let tomlSrc ← IO.FS.readBinFile "bench/data/cargo.lock"
   -- The remaining example parsers on generated inputs.
