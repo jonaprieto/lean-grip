@@ -36,17 +36,18 @@ under the official driver with `test/run-jsontestsuite.sh`.
 
 | parser                                | ms    | grip / it | work             | notes                                               |
 |---------------------------------------|------:|----------:|------------------|-----------------------------------------------------|
-| hand-written scanner (no combinators) |  5.3  |   3.72x   | validate + count | grammar-strict; `bench/Bench.lean` `HandScanner`    |
-| `Std.Internal.Parsec` (std)           | 22.3  |   0.88x   | validate + count | grammar-strict; byte-level std combinators          |
-| **grip (combinators)**                | 19.7  |   1.00x   | validate + count | grammar-strict; `examples/Json.lean`, grades + soundness |
+| hand-written scanner (no combinators) |  5.3  |   3.81x   | validate + count | grammar-strict; `bench/Bench.lean` `HandScanner`    |
+| `Std.Internal.Parsec` (std)           | 22.2  |   0.91x   | validate + count | grammar-strict; byte-level std combinators          |
+| **grip (combinators)**                | 20.2  |   1.00x   | validate + count | grammar-strict; `examples/Json.lean`, grades + soundness |
 | `Lean.Json` (built-in)               | ~72   |   --      | full DOM build   | builds a tree -- a *different, heavier task*        |
 
 The clean comparison is **`Std.Internal.Parsec`**, Lean's own standard combinator library:
 byte-level, same toolchain, same grammar-strict validate-and-count task, identical 111130 count.
-grip is **marginally ahead** -- 0.88x its time, within noise -- carrying static grades and
-machine-checked soundness that `Std.Parsec` does not, at **no measurable speed cost**.
+grip is **marginally ahead** -- 0.91x its time -- carrying static grades and machine-checked
+soundness that `Std.Parsec` does not, at **no measurable speed cost** (and ahead by a wider
+margin on the string-heavy files below).
 
-**Hand-scanner floor.** The strict hand-scanner runs at ~5.3 ms, making grip ~3.7x slower --
+**Hand-scanner floor.** The strict hand-scanner runs at ~5.3 ms, making grip ~3.8x slower --
 a larger gap than the 1.54x reported in the prior loose-scanner era. This is not a grip
 regression. The old loose scanner was ~16.5 ms; the new strict scanner is ~5.3 ms because it
 inlines byte checks directly rather than passing a per-byte closure (`scanWhile a (· != 34)`),
@@ -69,25 +70,25 @@ canada.json is ~99% numbers, so it exercises number scanning and array folding b
 The other two standard nativejson-benchmark files stress the parts it does not: `citm_catalog.json`
 (1.7 MB, object/key/nesting-heavy) and `twitter.json` (632 KB, string/Unicode/escape-heavy). Both
 contain escaped quotes (`\"`), so both grip and the `Std.Internal.Parsec` reference validate
-string bodies strictly. grip folds a per-byte `strChar` combinator (an unescaped byte, or a
-`\`-escape validated including `\uXXXX`) via `foldMany`; Std.Parsec uses a direct recursive
-`any`-based scan. That per-byte combinator dispatch is exactly why grip is slower on the
-string/escape-heavy files below. Both parsers are grammar-strict and return the identical leaf
+string bodies strictly. grip scans a string literal in a single validated pass
+(`GParser.stringLit`: a total escape-aware scanner that validates `\uXXXX` and rejects unescaped
+control bytes, in the same spirit as the built-in loose `takeStringBody`); Std.Parsec uses a
+direct recursive `any`-based scan. Both parsers are grammar-strict and return the identical leaf
 count on each file (grip and Std.Parsec agree with `jq`'s `[.. | scalars] | length`), so it is
 the same task.
 
 | file       | leaves | grip ms | Std.Parsec ms | grip vs Std.Parsec |
 |------------|-------:|--------:|--------------:|--------------------|
-| canada     | 111130 |  ~19.7  |     ~22.3     | grip ~1.13x faster |
-| citm       |  16390 |  ~13.6  |     ~11.7     | Std.Parsec ~1.16x faster |
-| twitter    |  11600 |  ~10.0  |     ~5.1      | Std.Parsec ~1.96x faster |
+| canada     | 111130 |  ~20.2  |     ~22.2     | grip ~1.10x faster |
+| citm       |  16390 |   ~8.1  |     ~11.8     | grip ~1.46x faster |
+| twitter    |  11600 |   ~3.0  |      ~5.1     | grip ~1.70x faster |
 
-On this run, grip is faster than Std.Parsec on number-heavy canada but behind on object-heavy
-citm and notably behind on string/escape-heavy twitter. The twitter gap is real: grip's string
-scanner processes escapes strictly per the grammar; a future measure-then-specialize pass on the
-escape path is the natural next step. The honest headline is: grip is level-to-competitive with
-Std.Parsec on number-heavy input, while being behind on escape-heavy input. (These three were
-measured back to back in the same session; read the ratios.)
+grip is **faster than `Std.Internal.Parsec` across the whole suite**: ~1.1x on number-heavy
+canada, and ~1.5-1.7x on the object- and string-heavy files, where grip's first-byte `dispatch`
+and single-pass `stringLit` scanner beat Std.Parsec's per-byte monadic navigation. twitter --
+once grip's worst case at ~2x *behind*, when the string body was a per-byte `foldMany` combinator
+-- is now grip's best ratio after that path was replaced with the `stringLit` scanner (see
+"Validated string scanner" below). (Measured back to back in one session; read the ratios.)
 
 ## Cross-language context (different runtimes; prior measurements)
 
@@ -161,6 +162,19 @@ their function arguments (the byte predicate, the fold step) were closures calle
 per byte across 2 MB. Marking them `@[specialize]` (and `@[inline]` on `weaken`/`weakenFallible`)
 lets Lean monomorphize a statically-known predicate straight into the loop, so the per-byte call
 disappears: ~34 to ~20 ms on AC, about 40%. A one-word attribute, the combinator model intact.
+
+## Validated string scanner
+
+The strict JSON string used to be `byteC '"' *> foldMany strChar *> byteC '"'` -- a per-byte
+combinator (`strChar = unescaped <|> "\\"-escape`) folded over the body. On string/escape-heavy
+input that per-byte dispatch dominated: twitter ran ~10 ms, about 2x *behind* `Std.Internal.Parsec`.
+Replacing the body with `GParser.stringLit` -- a single total, escape-aware scanner in
+`Grip/Scan.lean` (validates `\uXXXX`, rejects unescaped control bytes; `conditional` grade with the
+same four soundness witnesses as `takeWhile1`) -- collapsed that to one pass: twitter ~10 to ~3.0 ms
+(now ~1.7x *ahead* of Std.Parsec), citm ~13.6 to ~8.1 ms, canada unchanged (few strings).
+Conformance is unchanged (95/95 accept, 186/186 reject) -- the scanner validates the identical
+grammar the combinator did. The grade algebra and metatheory are untouched: `stringLit` is a new
+leaf primitive proved sound like the existing scanners, no `sorry`, `grip-props` still green.
 
 ## All example parsers
 
