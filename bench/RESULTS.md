@@ -65,6 +65,29 @@ different toolchain (`v4.32.0-rc1`) against the allocating example; both effects
 (For reference, the identical hand-written scanner runs ~16.6 ms on `v4.28.0` and ~18.4 ms on
 `v4.32.0-rc1`, so the toolchain itself accounts for only ~11%.)
 
+## Beyond canada.json: the rest of the nativejson suite
+
+canada.json is ~99% numbers, so it exercises number scanning and array folding but little else.
+The other two standard nativejson-benchmark files stress the parts it does not: `citm_catalog.json`
+(1.7 MB, object/key/nesting-heavy) and `twitter.json` (632 KB, string/Unicode/escape-heavy). Both
+contain escaped quotes (`\"`), so this needed escape-aware string scanning in both grip
+(`GParser.takeStringBody`, a total scanner) and the `Std.Internal.Parsec` reference (an
+iterator-based scan, its best -- not a per-byte monadic loop). Both parsers return the identical
+leaf count on each file (grip and Std.Parsec agree with `jq`'s `[.. | scalars] | length`), so it
+is the same task.
+
+| file       | leaves | grip ms | Std.Parsec ms | grip vs Std.Parsec |
+|------------|-------:|--------:|--------------:|--------------------|
+| canada     | 111130 |   ~18   |     ~17       | 1.05x (level)      |
+| citm       |  16390 |   ~8.1  |     ~10.2     | grip ~1.25x faster |
+| twitter    |  11600 |   ~3.3  |     ~3.6      | grip ~1.1x faster  |
+
+grip is **level-to-faster than `Std.Internal.Parsec` across the suite**: level on number-heavy
+canada, and about 1.1--1.25x faster on the object- and string-heavy files, where grip's
+first-byte `dispatch` and specialized scanners beat Std.Parsec's per-byte monadic object and
+string navigation. So the "level" headline is the number-heavy worst case for grip; on realistic
+mixed JSON it is ahead. (These three were measured back to back on AC; read the ratios.)
+
 ## Cross-language context (different runtimes; real, not cited)
 
 Measured on this machine, same task, same file (`bench/cross-lang/`, reproducible by hand):

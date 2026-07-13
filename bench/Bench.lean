@@ -124,7 +124,17 @@ abbrev P := Std.Internal.Parsec.ByteArray.Parser
 def ws : P Unit := skipWhile isWs
 def number : P Nat := do skipWhile isNum; pure 1
 def keyword : P Nat := do skipWhile isAlpha; pure 1
-def skipStr : P Unit := do skipByte 34; skipWhile (· != 34); skipByte 34
+-- Escape-aware string body as a raw iterator scan (Std.Parsec's best: no per-byte monadic bind),
+-- mirroring grip's `scanStrFwd`. `\X` is two bytes, so an escaped quote does not end the string.
+partial def strEnd (it : ByteArray.Iterator) : ByteArray.Iterator :=
+  if it.hasNext then
+    let b := it.curr
+    if b == 34 then it                                    -- unescaped closing quote
+    else if b == 92 then (let it2 := it.next; if it2.hasNext then strEnd it2.next else it2)
+    else strEnd it.next
+  else it
+def skipStrBody : P Unit := fun it => .success (strEnd it) ()
+def skipStr : P Unit := do skipByte 34; skipStrBody; skipByte 34
 def pstring : P Nat := do skipStr; pure 1
 mutual
 partial def value : P Nat := do
@@ -282,6 +292,16 @@ def main (args : List String) : IO Unit := do
   let handCount := parseHand jsonSrc
   let handMs ← bestMs 20 (fun i => parseHand (barrier i jsonSrc))
   IO.println s!"hand count={handCount} parse_ms={handMs}"
+  -- Challenging JSON datasets (nativejson-benchmark): citm_catalog (object/key/nesting-heavy)
+  -- and twitter (string/Unicode/escape-heavy). grip vs Std.Internal.Parsec, both escape-aware.
+  for (name, file) in [("citm", "bench/data/citm_catalog.json"),
+                       ("twitter", "bench/data/twitter.json")] do
+    let src ← IO.FS.readBinFile file
+    let gc := parseJson src
+    let gm ← bestMs 20 (fun i => parseJson (barrier i src))
+    let sc := parseStdParsec src
+    let sm ← bestMs 20 (fun i => parseStdParsec (barrier i src))
+    IO.println s!"{name}: grip count={gc} ms={gm} | std.parsec count={sc} ms={sm}"
   -- TOML on a real file: a vendored Cargo.lock (count = number of [[package]] tables).
   let tomlSrc ← IO.FS.readBinFile "bench/data/cargo.lock"
   -- The remaining example parsers on generated inputs.
