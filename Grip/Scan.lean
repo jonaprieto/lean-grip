@@ -79,6 +79,69 @@ Always succeeds (result is `.ok`). -/
     obtain ⟨_, rfl⟩ := heq
     exact scanFwd_le arr f q hq
 
+/-- Scan a JSON-style string body: advance until an *unescaped* `"` (0x22), treating a
+backslash (0x5c) as an escape that consumes the next byte too. Total -- structural on
+`arr.size - q`. -/
+@[specialize] def scanStrFwd (arr : ByteArray) (q : Nat) : Nat :=
+  if h : q < arr.size then
+    if arr[q] == 34 then q                                     -- unescaped `"`: stop
+    else if arr[q] == 92 then
+      (if q + 1 < arr.size then scanStrFwd arr (q + 2) else q + 1)  -- `\`: skip escaped byte
+    else scanStrFwd arr (q + 1)
+  else q
+termination_by arr.size - q
+decreasing_by all_goals omega
+
+/-- `scanStrFwd` never rewinds. -/
+theorem scanStrFwd_ge (arr : ByteArray) (q : Nat) : q ≤ scanStrFwd arr q := by
+  rw [scanStrFwd]
+  split
+  · rename_i h
+    split
+    · exact Nat.le_refl q
+    · split
+      · split
+        · have := scanStrFwd_ge arr (q + 2); omega
+        · omega
+      · have := scanStrFwd_ge arr (q + 1); omega
+  · exact Nat.le_refl q
+termination_by arr.size - q
+decreasing_by all_goals omega
+
+/-- `scanStrFwd` stays within bounds when it starts within bounds. -/
+theorem scanStrFwd_le (arr : ByteArray) (q : Nat) (hq : q ≤ arr.size) :
+    scanStrFwd arr q ≤ arr.size := by
+  rw [scanStrFwd]
+  split
+  · rename_i h
+    split
+    · exact hq
+    · split
+      · split
+        · have := scanStrFwd_le arr (q + 2) (by omega); omega
+        · omega
+      · have := scanStrFwd_le arr (q + 1) (by omega); omega
+  · exact hq
+termination_by arr.size - q
+decreasing_by all_goals omega
+
+/-- Scan a JSON string body (escape-aware), returning the number of bytes consumed.
+Always succeeds (result is `.ok`). Pair with a `"` on each side for a full string literal. -/
+@[inline] def GParser.takeStringBody : GParser flexible Nat where
+  run := fun arr p => let q := scanStrFwd arr p; .ok (q - p) q
+  cwit := by
+    intro arr q a q' heq
+    simp only [ParseResult.ok.injEq] at heq
+    obtain ⟨_, rfl⟩ := heq
+    exact scanStrFwd_ge arr q
+  ewit := by intro he; exact absurd he (by decide)
+  swit := by intro _ arr q; exact ⟨_, _, rfl⟩
+  bwit := by
+    intro arr q a q' hq heq
+    simp only [ParseResult.ok.injEq] at heq
+    obtain ⟨_, rfl⟩ := heq
+    exact scanStrFwd_le arr q hq
+
 /-- One-or-more bytes satisfying `f`.
 On failure the furthest offset is the current position. -/
 @[inline] def GParser.takeWhile1 (f : UInt8 → Bool) : GParser conditional Nat where
