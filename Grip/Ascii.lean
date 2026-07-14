@@ -5,7 +5,7 @@ Authors: Jonathan Cubides
 -/
 
 /-!
-# Grip.Ascii -- named ASCII byte predicates, constants, and helpers
+# Grip.Ascii: named ASCII byte predicates, constants, and helpers
 
 Pure byte layer: `is`-prefixed predicates over `UInt8`, the common delimiter bytes as
 named constants, and `code : Char → UInt8` for ASCII character literals. No parsers and

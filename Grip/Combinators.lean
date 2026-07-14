@@ -7,7 +7,7 @@ import Grip.Parser
 import Grip.Ascii
 
 /-!
-# Grip.Combinators -- a megaparsec-style vocabulary over the grip core
+# Grip.Combinators: a megaparsec-style vocabulary over the grip core
 
 Ready-made byte parsers (`ws`, `digit`, `oneOf`, ...) and higher-order combinators
 (`sepBy`, `between`, `choice`, ...), each with a precise grade where the grade is stable,

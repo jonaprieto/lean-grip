@@ -7,7 +7,7 @@ Authors: Jonathan Cubides
 import Grip.Graded
 
 /-!
-# Grip.Char -- a UTF-8 / `Char` layer above the byte core
+# Grip.Char: a UTF-8 / `Char` layer above the byte core
 
 Consumers that think in `Char` rather than `UInt8` use these combinators. Each
 decodes one UTF-8 scalar from the `ByteArray` and advances by its byte width, so the

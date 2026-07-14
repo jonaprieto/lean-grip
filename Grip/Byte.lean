@@ -7,7 +7,7 @@ Authors: Jonathan Cubides
 import Grip.Graded
 
 /-!
-# Grip.Byte -- point combinators over the graded byte backend
+# Grip.Byte: point combinators over the graded byte backend
 
 The non-looping combinators. Atomic byte readers (`satisfy`, `byte`, `takeN`), the
 functor / sequence / choice / monad algebra (`map`, `seqR`, `seqL`, `alt`, `bind`,
@@ -91,7 +91,7 @@ On failure the furthest offset is the current position `p`. -/
     · exact absurd heq (by simp)
 
 /-- Return the input slice a parser consumed, decoded as text (grade preserved). Lets
-combinator parsers build real syntax trees -- atom names, identifiers, header fields --
+combinator parsers build real syntax trees (atom names, identifiers, header fields)
 instead of only structural counts. Invalid UTF-8 in the slice decodes to `""`. -/
 @[inline] def GParser.capture (p : GParser g α) : GParser g String where
   run := fun arr q =>

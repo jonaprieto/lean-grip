@@ -7,7 +7,7 @@ Authors: Jonathan Cubides
 import Grip.Graded
 
 /-!
-# Grip.Scan -- total scanners and repetition
+# Grip.Scan: total scanners and repetition
 
 The looping combinators, all total (structural on `arr.size - q`) rather than `partial`.
 The raw scan loops `scanFwd`/`foldFwd`/`natFwd` with their forward-progress lemmas, and
@@ -23,7 +23,7 @@ namespace Grip
 
 variable {g g' : Grade} {ge ge' gc gc' : Modality} {α β : Type}
 
-/-- Scan forward while `f` holds. Total -- structural on the measure
+/-- Scan forward while `f` holds. Total: structural on the measure
 `arr.size - q` (each step advances one byte, bounded by `arr.size`). `@[specialize]` so
 a known predicate (e.g. `Ascii.isWs`) is monomorphized into the loop rather than called
 indirectly per byte. -/
@@ -80,7 +80,7 @@ Always succeeds (result is `.ok`). -/
     exact scanFwd_le arr f q hq
 
 /-- Scan a JSON-style string body: advance until an *unescaped* `"` (0x22), treating a
-backslash (0x5c) as an escape that consumes the next byte too. Total -- structural on
+backslash (0x5c) as an escape that consumes the next byte too. Total: structural on
 `arr.size - q`. -/
 @[specialize] def scanStrFwd (arr : ByteArray) (q : Nat) : Nat :=
   if h : q < arr.size then
@@ -148,7 +148,7 @@ Always succeeds (result is `.ok`). Pair with a `"` on each side for a full strin
 
 /-- Scan a *strict* RFC-8259 string body: from just after the opening `"` at `q`, advance to
 and past the closing `"`, validating escapes. Returns `some end` (just past the closing quote)
-on a well-formed body, or `none` on a malformed one -- an unescaped control byte (`< 0x20`), an
+on a well-formed body, or `none` on a malformed one: an unescaped control byte (`< 0x20`), an
 unknown `\`-escape, a `\u` not followed by four hex digits, or end of input before the closing
 quote. Total (structural on `arr.size - q`). Unlike `scanStrFwd`, this *validates* and can
 reject, so the parser built on it is `conditional`, not `flexible`. -/
@@ -316,7 +316,7 @@ On failure the furthest offset is the current position. -/
     · exact absurd heq (by simp)
 
 /-- Total repetition core: fold `p`'s results into `a`, advancing while `p` succeeds
-and strictly consumes (in bounds). Total -- structural on `arr.size - q`; the
+and strictly consumes (in bounds). Total: structural on `arr.size - q`; the
 guard `q < q' ≤ arr.size` guarantees the measure drops. `@[specialize]` so the `step`
 and the element parser fuse into the loop when they are statically known. -/
 @[specialize] def foldFwd {ge : Modality} {α β : Type} (step : β → α → β)
@@ -378,7 +378,7 @@ Always succeeds (result is `.ok`). -/
     obtain ⟨_, rfl⟩ := heq
     exact hle
 
-/-- Fold decimal digits into `acc`. Total -- structural on `arr.size - q`. -/
+/-- Fold decimal digits into `acc`. Total: structural on `arr.size - q`. -/
 @[specialize] def natFwd (arr : ByteArray) (acc q : Nat) : Nat × Nat :=
   if h : q < arr.size then
     let b := arr[q]
