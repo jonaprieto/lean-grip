@@ -16,12 +16,12 @@ the parsers built on them: `takeWhile`/`takeWhile1`, `foldMany`/`many`, and `nat
 point combinators are in `Grip.Byte`; the graded type and `fix` in `Grip.Graded`.
 -/
 
-open Necessity
+open Modality
 open Grade
 
 namespace Grip
 
-variable {g g' : Grade} {ge ge' gc gc' : Necessity} {α β : Type}
+variable {g g' : Grade} {ge ge' gc gc' : Modality} {α β : Type}
 
 /-- Scan forward while `f` holds. Total -- structural on the measure
 `arr.size - q` (each step advances one byte, bounded by `arr.size`). `@[specialize]` so
@@ -319,7 +319,7 @@ On failure the furthest offset is the current position. -/
 and strictly consumes (in bounds). Total -- structural on `arr.size - q`; the
 guard `q < q' ≤ arr.size` guarantees the measure drops. `@[specialize]` so the `step`
 and the element parser fuse into the loop when they are statically known. -/
-@[specialize] def foldFwd {ge : Necessity} {α β : Type} (step : β → α → β)
+@[specialize] def foldFwd {ge : Modality} {α β : Type} (step : β → α → β)
     (p : GParser ⟨ge, always⟩ α) (arr : ByteArray) (a : β) (q : Nat) : β × Nat :=
   match p.run arr q with
   | .ok x q' =>
@@ -329,7 +329,7 @@ termination_by arr.size - q
 decreasing_by (obtain ⟨h1, h2⟩ := _hq; omega)
 
 /-- `foldFwd` never rewinds. -/
-theorem foldFwd_ge {ge : Necessity} {α β : Type} (step : β → α → β) (p : GParser ⟨ge, always⟩ α)
+theorem foldFwd_ge {ge : Modality} {α β : Type} (step : β → α → β) (p : GParser ⟨ge, always⟩ α)
     (arr : ByteArray) (a : β) (q : Nat) : q ≤ (foldFwd step p arr a q).2 := by
   rw [foldFwd]
   split
@@ -343,7 +343,7 @@ termination_by arr.size - q
 decreasing_by omega
 
 /-- `foldFwd` stays within bounds when it starts within bounds (using the element's `bwit`). -/
-theorem foldFwd_le {ge : Necessity} {α β : Type} (step : β → α → β) (p : GParser ⟨ge, always⟩ α)
+theorem foldFwd_le {ge : Modality} {α β : Type} (step : β → α → β) (p : GParser ⟨ge, always⟩ α)
     (arr : ByteArray) (a : β) (q : Nat) (hq : q ≤ arr.size) :
     (foldFwd step p arr a q).2 ≤ arr.size := by
   rw [foldFwd]

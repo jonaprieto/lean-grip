@@ -36,7 +36,7 @@ mathlib. This uses prim-parser's own proven sub-package pattern: its `docbuild/`
 package requires the parent via `path = "../"`.
 
 1. `grip` (core). The parser, grades, erased soundness witnesses, and a small
-   hand-rolled `Necessity`/`Grade` algebra. Dependency: batteries only. This is
+   hand-rolled `Modality`/`Grade` algebra. Dependency: batteries only. This is
    what downstream libraries depend on.
 2. `grip-props` (properties, opt-in). The machine-checked metatheory:
    `LawfulGradedMonad` law instances, grade-soundness meta-theorems, the
@@ -56,7 +56,7 @@ grip/                     repo root = core package "grip"  (deps: batteries only
   lakefile.toml
   Grip.lean               public root, re-exports the modules below
   Grip/
-    Necessity.lean        3-valued never/possibly/always + sup/inf/ite/le + lemmas
+    Modality.lean        3-valued never/possibly/always + sup/inf/ite/le + lemmas
     Grade.lean            Grade = errors x consumes; mul(=max)/one/choice; named grades; consumptionWitness
     Error.lean            ParseError: byte offset -> line/col, source line + caret, label / <?>, expected-set merge
     Graded.lean           GParser g a: run (ByteArray -> Nat -> Option (a x Nat)) + erased cwit/ewit/swit; weaken; graded combinators; many-gate
@@ -86,17 +86,17 @@ No god modules. Each file is one concern. None should grow past a few hundred li
 
 ## Grade algebra, batteries-only
 
-prim-parser's `Grade` uses mathlib's `Monoid` and `Necessity` uses mathlib's `⊔`/`⊓`
+prim-parser's `Grade` uses mathlib's `Monoid` and `Modality` uses mathlib's `⊔`/`⊓`
 lattice. grip core hand-rolls all of it:
 
-- `Necessity` is a 3-constructor inductive `never | possibly | always`.
+- `Modality` is a 3-constructor inductive `never | possibly | always`.
 - `sup`, `inf`, `ite`, and `le` are plain `def`s. The handful of lemmas the witness
   proofs need (`max_always`, `max_never`, `min_always`, `min_never`, `sup_comm`, and
   friends) are proved by `cases`/`decide` on the finite type. No mathlib.
-- `Grade` is `{ errors : Necessity, consumes : Necessity }` with `mul` (= componentwise
+- `Grade` is `{ errors : Modality, consumes : Modality }` with `mul` (= componentwise
   max), `one` (= `⟨never, never⟩`, pure), and `choice`. Named grades: `conditional`,
   `flexible`, `fallible`, `pure`, `lookahead`, `empty`, `impossible`.
-- `consumptionWitness n m : Necessity → Prop` (`always ⇒ n<m`, `possibly ⇒ n≤m`,
+- `consumptionWitness n m : Modality → Prop` (`always ⇒ n<m`, `possibly ⇒ n≤m`,
   `never ⇒ n=m`) plus its `trans`, `ite_left`, `ite_right`, `rfl` helpers.
 
 The mathlib-facing `Monoid Grade`, `Max`, lattice instances, and the graded-monad law

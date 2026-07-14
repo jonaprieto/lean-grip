@@ -16,12 +16,12 @@ label. The total scanning loops are in `Grip.Scan`; the graded type, weakening, 
 `fix` are in `Grip.Graded`.
 -/
 
-open Necessity
+open Modality
 open Grade
 
 namespace Grip
 
-variable {g g' : Grade} {ge ge' gc gc' : Necessity} {α β : Type}
+variable {g g' : Grade} {ge ge' gc gc' : Modality} {α β : Type}
 
 /-- Consume nothing, never fail. -/
 @[inline] def GParser.pure (a : α) : GParser 1 α where
@@ -189,7 +189,7 @@ Furthest offset from either `x` or `y` propagates on failure. -/
     next e hx => exact absurd heq (by simp)
   ewit := by
     intro he arr q
-    simp only [grade_mul_errors, Necessity.max_always] at he
+    simp only [grade_mul_errors, Modality.max_always] at he
     rcases he with he | he
     · obtain ⟨e, he'⟩ := x.ewit he arr q
       exact ⟨e, by simp only [he']⟩
@@ -200,7 +200,7 @@ Furthest offset from either `x` or `y` propagates on failure. -/
       | error e => exact ⟨e, rfl⟩
   swit := by
     intro he arr q
-    simp only [grade_mul_errors, Necessity.max_never] at he
+    simp only [grade_mul_errors, Modality.max_never] at he
     obtain ⟨he1, he2⟩ := he
     cases hx : x.run arr q with
     | ok c p' =>
@@ -238,7 +238,7 @@ Furthest offset propagates on failure. -/
     next e hx => exact absurd heq (by simp)
   ewit := by
     intro he arr q
-    simp only [grade_mul_errors, Necessity.max_always] at he
+    simp only [grade_mul_errors, Modality.max_always] at he
     rcases he with he | he
     · obtain ⟨e, he'⟩ := x.ewit he arr q
       exact ⟨e, by simp only [he']⟩
@@ -249,7 +249,7 @@ Furthest offset propagates on failure. -/
       | error e => exact ⟨e, rfl⟩
   swit := by
     intro he arr q
-    simp only [grade_mul_errors, Necessity.max_never] at he
+    simp only [grade_mul_errors, Modality.max_never] at he
     obtain ⟨he1, he2⟩ := he
     cases hx : x.run arr q with
     | ok a p' =>
@@ -316,7 +316,7 @@ This is the megaparsec-style furthest-failure merge. -/
           · rw [if_neg h1, if_neg h2] at heq; exact absurd heq (by simp)
   ewit := by
     intro he arr q
-    simp only [Necessity.min_always] at he
+    simp only [Modality.min_always] at he
     obtain ⟨he1, he2⟩ := he
     obtain ⟨ex, hex⟩ := x.ewit he1 arr q
     obtain ⟨ey, hey⟩ := y.ewit he2 arr q
@@ -328,7 +328,7 @@ This is the megaparsec-style furthest-failure merge. -/
                by simp only [hex, hey, if_neg h1, if_neg h2]⟩
   swit := by
     intro he arr q
-    simp only [Necessity.min_never] at he
+    simp only [Modality.min_never] at he
     cases hx : x.run arr q with
     | ok a q' =>
       exact ⟨a, q', rfl⟩
@@ -377,7 +377,7 @@ Furthest offset propagates on failure. -/
     next e hx => exact absurd heq (by simp)
   ewit := by
     intro he arr q
-    simp only [grade_mul_errors, Necessity.max_always] at he
+    simp only [grade_mul_errors, Modality.max_always] at he
     rcases he with he | he
     · obtain ⟨e, he'⟩ := x.ewit he arr q
       exact ⟨e, by simp only [he']⟩
@@ -388,7 +388,7 @@ Furthest offset propagates on failure. -/
       | error e => exact ⟨e, rfl⟩
   swit := by
     intro he arr q
-    simp only [grade_mul_errors, Necessity.max_never] at he
+    simp only [grade_mul_errors, Modality.max_never] at he
     obtain ⟨he1, he2⟩ := he
     cases hx : x.run arr q with
     | ok fst p' =>
@@ -427,7 +427,7 @@ Furthest offset propagates on failure. -/
     next e hx => exact absurd heq (by simp)
   ewit := by
     intro he arr q
-    simp only [grade_mul_errors, Necessity.max_always] at he
+    simp only [grade_mul_errors, Modality.max_always] at he
     rcases he with he | he
     · obtain ⟨e, he'⟩ := x.ewit he arr q
       exact ⟨e, by simp only [he']⟩
@@ -438,7 +438,7 @@ Furthest offset propagates on failure. -/
       | error e => exact ⟨e, rfl⟩
   swit := by
     intro he arr q
-    simp only [grade_mul_errors, Necessity.max_never] at he
+    simp only [grade_mul_errors, Modality.max_never] at he
     obtain ⟨he1, he2⟩ := he
     cases hx : x.run arr q with
     | ok a p' =>

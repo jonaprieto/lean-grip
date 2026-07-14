@@ -170,7 +170,7 @@ them with `lake exe bench` and `sh bench/mkchart.sh`.
 
 grip took its central idea from
 [prim-parser](https://github.com/janmasrovira/prim-parser) by Jan Mas Rovira: a
-`Necessity`-graded monad, where each parser's type records whether it may error and whether
+`Modality`-graded monad, where each parser's type records whether it may error and whether
 it consumes input, and sequencing and choice combine those grades. That graded discipline,
 and the many-gate it enables, is prim-parser's contribution. grip carries it onto its own
 byte-level `ByteArray` core with erased soundness witnesses, and adds the `ParseResult`
