@@ -59,6 +59,30 @@ inductive Json where
   | obj  (kvs : List (String × Json))
   deriving Repr, BEq, Inhabited
 
+namespace Json
+
+/-- Build an integer value: `int n = num n 0`. -/
+@[inline] def int (n : Int) : Json := .num n 0
+
+/-- The integer value, if this number has no fractional part. Strict: only `exponent = 0`
+matches, so `20e-1` (parsed `num 20 1`, the value `2.0`) is not an integer, mirroring
+`Lean.JsonNumber`. -/
+def int? : Json → Option Int
+  | .num m 0 => some m
+  | _        => none
+
+/-- Look up a key in an object (first match); `none` for a non-object or missing key. -/
+def get? : Json → String → Option Json
+  | .obj kvs, k => (kvs.find? (·.1 == k)).map (·.2)
+  | _,       _  => none
+
+/-- Index into an array; `none` for a non-array or an out-of-range index. -/
+def at? : Json → Nat → Option Json
+  | .arr xs, i => xs[i]?
+  | _,       _ => none
+
+end Json
+
 namespace Decode
 
 /-- State threaded through `unescape`'s single left fold. -/
@@ -160,7 +184,7 @@ open Decode
     (GParser.seqR (GParser.satisfy Ascii.isDigit19)
       (GParser.seqR (GParser.takeWhile Ascii.isDigit) (GParser.pure ())))
 
-/-- A JSON number, decoded to `.int`/`.num`. The lexeme is captured verbatim and
+/-- A JSON number, decoded to `.num`. The lexeme is captured verbatim and
 decoded; leading-zero and trailing-garbage rejection come from the grammar and the
 top-level EOF check. -/
 private def number : GParser conditional Json :=
@@ -236,6 +260,55 @@ def parse (arr : ByteArray) : Except ParseError Json := parser.parse arr
 /-- Parse a complete JSON document from a `String`. -/
 def parse! (s : String) : Except ParseError Json := parser.parse s.toUTF8
 
+-- Serialization ----------------------------------------------------------
+
+namespace Json
+
+private def hexDigit (n : Nat) : Char := "0123456789abcdef".toList.getD n '0'
+
+/-- Escape a string body for JSON output: `"`, `\`, and control characters. Non-ASCII is
+emitted verbatim (valid UTF-8 JSON). -/
+def escape (s : String) : String :=
+  -- ponytail: naive `++` append, quadratic in the escaped length; fine for a serializer,
+  -- switch to a `String` builder if it ever shows up in a profile.
+  s.foldl (fun acc c =>
+    acc ++
+      (if c == '"' then "\\\""
+       else if c == '\\' then "\\\\"
+       else if c == '\n' then "\\n"
+       else if c == '\t' then "\\t"
+       else if c == '\r' then "\\r"
+       else if c == Char.ofNat 8 then "\\b"
+       else if c == Char.ofNat 12 then "\\f"
+       else if c.toNat < 0x20 then
+         String.ofList ['\\', 'u', '0', '0', hexDigit (c.toNat / 16), hexDigit (c.toNat % 16)]
+       else String.singleton c)) ""
+
+/-- Render an exact `num mantissa exponent` to a decimal literal, inserting the point
+`exponent` digits from the right (`num 25 1` → `"2.5"`, `num 5 3` → `"0.005"`). -/
+def renderNum (m : Int) (e : Nat) : String :=
+  if e == 0 then toString m
+  else
+    let ds := List.replicate (e + 1 - (toString m.natAbs).length) '0' ++ (toString m.natAbs).toList
+    let k := ds.length - e
+    (if m < 0 then "-" else "") ++ String.ofList (ds.take k) ++ "." ++ String.ofList (ds.drop k)
+
+/-- Serialize a value to compact RFC-8259 JSON (no insignificant whitespace). Round-trips
+through `parse` (the value, not necessarily the mantissa/exponent split). -/
+partial def render : Json → String
+  | .null       => "null"
+  | .bool true  => "true"
+  | .bool false => "false"
+  | .num m e    => renderNum m e
+  | .str s      => "\"" ++ escape s ++ "\""
+  | .arr xs     => "[" ++ String.intercalate "," (xs.map render) ++ "]"
+  | .obj kvs    => "{" ++ String.intercalate ","
+      (kvs.map fun kv => "\"" ++ escape kv.1 ++ "\":" ++ render kv.2) ++ "}"
+
+instance : ToString Json := ⟨render⟩
+
+end Json
+
 end Grip.Json
 
 /-! ### Sanity guards. -/
@@ -255,6 +328,17 @@ open Grip Grip.Json
 #guard (GParser.run? parser "2.5".toUTF8) == some (Json.num 25 1)
 #guard (GParser.run? parser "-2.5e3".toUTF8) == some (Json.num (-2500) 0)
 #guard (GParser.run? parser "5e-1".toUTF8) == some (Json.num 5 1)
+-- `int` smart constructor and strict `int?` extractor
+#guard Json.int 42 == Json.num 42 0
+#guard (Json.num 42 0).int? == some 42
+#guard (Json.num 25 1).int? == none
+#guard Json.null.int? == none
+-- accessors
+#guard (Json.obj [("a", Json.int 1)]).get? "a" == some (Json.int 1)
+#guard (Json.obj [("a", Json.int 1)]).get? "b" == none
+#guard Json.null.get? "a" == none
+#guard (Json.arr [Json.int 1, Json.int 2]).at? 1 == some (Json.int 2)
+#guard (Json.arr [Json.int 1]).at? 5 == none
 -- strings: escapes and \u decode
 #guard (GParser.run? parser "\"a\\nb\"".toUTF8) == some (Json.str "a\nb")
 #guard (GParser.run? parser "\"\\u0041\"".toUTF8) == some (Json.str "A")
@@ -273,5 +357,17 @@ open Grip Grip.Json
 #guard (GParser.run? parser "[1,]".toUTF8) == none          -- trailing comma
 #guard (GParser.run? parser "1 2".toUTF8) == none           -- trailing garbage
 #guard (GParser.run? parser "\"a\\q\"".toUTF8) == none      -- bad escape
+
+-- serialization: render is compact and round-trips through parse
+#guard toString (Json.num 25 1) == "2.5"
+#guard toString (Json.num 5 3) == "0.005"
+#guard toString (Json.num (-5) 1) == "-0.5"
+#guard toString (Json.int 42) == "42"
+#guard toString (Json.str "a\nb\"c") == "\"a\\nb\\\"c\""
+#guard toString (Json.arr [Json.int 1, Json.int 2]) == "[1,2]"
+#guard toString (Json.obj [("a", Json.bool true)]) == "{\"a\":true}"
+#guard
+  (let v := Json.obj [("a", Json.arr [Json.num 25 1, Json.null]), ("b", Json.str "x\ty")]
+   parse! (toString v) == .ok v)
 
 end
