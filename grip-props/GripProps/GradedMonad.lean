@@ -2,6 +2,12 @@
 Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
+
+Adapted from PrimParser/GradedMonad/Basic.lean in prim-parser by Jan Mas
+Rovira (https://github.com/janmasrovira/prim-parser, commit 4fb271f,
+2026-05-03): the GradedFunctor/GradedApplicative/GradedMonad and LawfulGraded*
+class hierarchy, with its field names, operators, and law statements. grip
+omits the graded-alternative classes it does not use.
 -/
 import Mathlib.Algebra.Group.Defs
 

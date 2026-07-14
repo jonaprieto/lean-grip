@@ -2,6 +2,13 @@
 Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
+
+Adapted from PrimParser/Properties.lean in prim-parser by Jan Mas Rovira
+(https://github.com/janmasrovira/prim-parser, commit 0a6016d, 2026-05-22):
+the LawfulGradedFunctor/Applicative/Monad instances for the concrete parser
+type and their proof strategy (funext, grade-case analysis, heterogeneous
+laws). The proofs are shorter here because grip's `run` is an unindexed
+function.
 -/
 import Grip
 import GripProps.GradedMonad

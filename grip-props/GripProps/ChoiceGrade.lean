@@ -2,6 +2,12 @@
 Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
+
+Inspired by prim-parser by Jan Mas Rovira
+(https://github.com/janmasrovira/prim-parser, PrimParser/Basic.lean, commit
+5a5ff0d, 2026-05-31): the `impossible` grade and its no-inhabitant meaning.
+grip's `impossible_uninhabited` proof is its own, resting on the `bwit` bounds
+witness rather than prim-parser's size-indexed `Text n`.
 -/
 import Grip
 

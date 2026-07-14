@@ -2,6 +2,12 @@
 Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
+
+Inspired by prim-parser by Jan Mas Rovira
+(https://github.com/janmasrovira/prim-parser, PrimParser/Basic.lean, commit
+5a5ff0d, 2026-05-31): the discipline of encoding consumption and error
+behaviour in a Grade index. The soundness theorems here are grip's own,
+lifting grip's erased cwit/ewit/swit witness fields to named propositions.
 -/
 import Grip
 
