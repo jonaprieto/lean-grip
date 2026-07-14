@@ -52,18 +52,18 @@ instances, and grades stay out of your way:
 
 ```lean
 import Grip
-open Grip
+open Grip GParser
 
 -- Parse a point like `(3,14)` into a pair of numbers.
 def point : Parser (Nat × Nat) := do
-  GParser.byteC '('
-  let x ← GParser.nat
-  GParser.byteC ','
-  let y ← GParser.nat
-  GParser.byteC ')'
+  byteC '('
+  let x ← nat
+  byteC ','
+  let y ← nat
+  byteC ')'
   return (x, y)
 
-#eval GParser.run? point "(3,14)".toUTF8   -- some (3, 14)
+#eval run? point "(3,14)".toUTF8   -- some (3, 14)
 ```
 
 **Graded style.** Keep the grade precise with `gdo` and the grade shows up in the type.
@@ -72,15 +72,15 @@ def point : Parser (Nat × Nat) := do
 ```lean
 -- One hex byte, e.g. "ff" -> 255. `gdo` sequences while tracking grades exactly.
 def hexByte : GParser conditional Nat := gdo
-  let hi ← GParser.satisfy Ascii.isHexDigit
-  let lo ← GParser.satisfy Ascii.isHexDigit
-  GParser.pure (16 * Ascii.hexValue hi + Ascii.hexValue lo)
+  let hi ← satisfy Ascii.isHexDigit
+  let lo ← satisfy Ascii.isHexDigit
+  pure (16 * Ascii.hexValue hi + Ascii.hexValue lo)
 
 -- `many` demands an always-consuming parser; `hexByte` is `conditional`, so this type-checks
 -- (`many (pure 0)` would not -- see [the gate](#the-gate)).
-def hexBytes : GParser flexible (List Nat) := GParser.many hexByte
+def hexBytes : GParser flexible (List Nat) := many hexByte
 
-#eval GParser.run? hexBytes "ff00a0".toUTF8   -- some [255, 0, 160]
+#eval run? hexBytes "ff00a0".toUTF8   -- some [255, 0, 160]
 ```
 
 The example parsers use these facilities throughout rather than hand-rolled byte math:
@@ -148,11 +148,11 @@ S-expression core is the whole idea in five lines:
 
 ```lean
 def sexp : GParser conditional Sexp :=
-  GParser.fix fun sexp =>
-    let atom := Sexp.atom <$> GParser.capture (GParser.takeWhile1 isAtomByte)
-    let list := GParser.byteC '(' *> GParser.ws *>
-      ((Sexp.list <$> GParser.many (sexp <* GParser.ws)) <* (GParser.ws *> GParser.byteC ')'))
-    GParser.ws *> GParser.dispatch fun b => if b == Ascii.lparen then list else atom
+  fix fun sexp =>
+    let atom := Sexp.atom <$> capture (takeWhile1 isAtomByte)
+    let list := byteC '(' *> ws *>
+      ((Sexp.list <$> many (sexp <* ws)) <* (ws *> byteC ')'))
+    ws *> dispatch fun b => if b == Ascii.lparen then list else atom
 ```
 
 ## JSON conformance
