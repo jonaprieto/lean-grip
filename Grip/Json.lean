@@ -57,14 +57,6 @@ inductive Json where
 
 namespace Decode
 
-/-- Value of a hex digit char (`0-9`, `a-f`, `A-F`); `0` for non-hex. -/
-private def hexVal (c : Char) : Nat :=
-  let n := c.toNat
-  if 48 ≤ n && n ≤ 57 then n - 48
-  else if 97 ≤ n && n ≤ 102 then n - 87
-  else if 65 ≤ n && n ≤ 70 then n - 55
-  else 0
-
 /-- State threaded through `unescape`'s single left fold. -/
 private structure UState where
   out   : String := ""
@@ -78,7 +70,7 @@ pair combined into one scalar. Assumes a grammar-validated body, so malformed in
 handled leniently rather than rejected. -/
 private def uStep (st : UState) (c : Char) : UState :=
   if st.uLeft > 0 then
-    let acc := st.uAcc * 16 + hexVal c
+    let acc := st.uAcc * 16 + Grip.Ascii.hexValue (UInt8.ofNat c.toNat)
     if st.uLeft == 1 then
       if st.hi ≠ 0 then
         let full := 0x10000 + (st.hi - 0xD800) * 0x400 + (acc - 0xDC00)
@@ -150,31 +142,19 @@ end Decode
 
 open Decode
 
--- Byte predicates (mirroring the strict validator) -----------------------
-
-/-- `'1'`..`'9'`. -/
-@[inline] private def isDigit19 (b : UInt8) : Bool := 49 ≤ b && b ≤ 57
-/-- Exponent marker `e`/`E`. -/
-@[inline] private def isExp (b : UInt8) : Bool := b == 101 || b == 69
-/-- Sign `+`/`-`. -/
-@[inline] private def isSign (b : UInt8) : Bool := b == 43 || b == 45
-
-/-- Skip insignificant whitespace. -/
-@[inline] private def ws : GParser flexible Nat := GParser.ws
-
 -- Leaf value parsers -----------------------------------------------------
 
 @[inline] private def frac : GParser conditional Nat :=
   GParser.seqR (GParser.ch '.') (GParser.takeWhile1 Ascii.isDigit)
 
 @[inline] private def expo : GParser conditional Nat :=
-  GParser.seqR (GParser.satisfy isExp)
-    (GParser.seqR (GParser.optional (GParser.satisfy isSign))
+  GParser.seqR (GParser.satisfy Ascii.isExp)
+    (GParser.seqR (GParser.optional (GParser.satisfy Ascii.isSign))
       (GParser.takeWhile1 Ascii.isDigit))
 
 @[inline] private def intPart : GParser conditional Unit :=
   GParser.alt (GParser.ch '0')
-    (GParser.seqR (GParser.satisfy isDigit19)
+    (GParser.seqR (GParser.satisfy Ascii.isDigit19)
       (GParser.seqR (GParser.takeWhile Ascii.isDigit) (GParser.pure ())))
 
 /-- A JSON number, decoded to `.int`/`.num`. The lexeme is captured verbatim and
@@ -204,32 +184,34 @@ private def jfalse : GParser conditional Json :=
 private def value : GParser conditional Json :=
   GParser.fix fun value =>
     let commaValue : GParser conditional Json :=
-      GParser.seqR ws (GParser.seqR (GParser.ch ',') (GParser.seqR ws value))
+      GParser.seqR GParser.ws (GParser.seqR (GParser.ch ',') (GParser.seqR GParser.ws value))
     let arrayBody : GParser flexible (List Json) :=
       GParser.alt
         (GParser.map2 (fun x xs => x :: xs) value (GParser.many commaValue))
         (GParser.pure [])
     let array : GParser conditional Json :=
       GParser.seqR (GParser.ch '[')
-        (GParser.seqR ws
-          (GParser.seqL (GParser.map Json.arr arrayBody) (GParser.seqR ws (GParser.ch ']'))))
+        (GParser.seqR GParser.ws
+          (GParser.seqL (GParser.map Json.arr arrayBody)
+            (GParser.seqR GParser.ws (GParser.ch ']'))))
     let pair : GParser conditional (String × Json) :=
       GParser.map2 (fun k v => (k, v)) jstr
-        (GParser.seqR ws (GParser.seqR (GParser.ch ':') (GParser.seqR ws value)))
+        (GParser.seqR GParser.ws (GParser.seqR (GParser.ch ':') (GParser.seqR GParser.ws value)))
     let commaPair : GParser conditional (String × Json) :=
-      GParser.seqR ws (GParser.seqR (GParser.ch ',') (GParser.seqR ws pair))
+      GParser.seqR GParser.ws (GParser.seqR (GParser.ch ',') (GParser.seqR GParser.ws pair))
     let objectBody : GParser flexible (List (String × Json)) :=
       GParser.alt
         (GParser.map2 (fun x xs => x :: xs) pair (GParser.many commaPair))
         (GParser.pure [])
     let object : GParser conditional Json :=
       GParser.seqR (GParser.ch '{')
-        (GParser.seqR ws
-          (GParser.seqL (GParser.map Json.obj objectBody) (GParser.seqR ws (GParser.ch '}'))))
+        (GParser.seqR GParser.ws
+          (GParser.seqL (GParser.map Json.obj objectBody)
+            (GParser.seqR GParser.ws (GParser.ch '}'))))
     -- A byte that starts no value: always fails (the mapped `null` is unreachable).
     let invalid : GParser conditional Json :=
       GParser.map (fun _ => Json.null) (GParser.satisfy (fun _ => false))
-    GParser.seqR ws
+    GParser.seqR GParser.ws
       (GParser.dispatch fun b =>
         if b == Ascii.lbrace then object
         else if b == Ascii.lbracket then array
@@ -240,13 +222,9 @@ private def value : GParser conditional Json :=
         else if Ascii.isDigit b || b == Ascii.dash then number
         else invalid)
 
-/-- End of input: succeeds (consuming nothing) exactly when no byte remains. -/
-@[inline] private def eof : GParser ⟨.possibly, .never⟩ Unit :=
-  GParser.notFollowedBy (GParser.satisfy (fun _ => true))
-
 /-- One complete JSON document: a value, optional trailing whitespace, then EOF (so
 trailing garbage is rejected). -/
-def parser : GParser conditional Json := GParser.seqL value (GParser.seqR ws eof)
+def parser : GParser conditional Json := GParser.seqL value (GParser.seqR GParser.ws GParser.eof)
 
 /-- Parse a complete JSON document from a `ByteArray`, returning the value or a
 positioned `ParseError`. -/

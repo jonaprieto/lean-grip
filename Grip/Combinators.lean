@@ -115,6 +115,11 @@ namespace GParser
     alt (map (fun _ => ([] : List α)) endp)
       (map2 (fun x xs => x :: xs) p rec)
 
+/-- End of input: succeed (consuming nothing) exactly when no byte remains. The dual of
+`notFollowedBy` applied to "any byte", used to reject trailing input after a top-level parse. -/
+@[inline] def eof : GParser ⟨possibly, never⟩ Unit :=
+  notFollowedBy (satisfy (fun _ => true))
+
 /-- Ordered choice is idempotent on the grade: choosing between two parsers of the same
 grade stays at that grade. -/
 private theorem choice_self (g : Grade) : Grade.choice g g = g := by
@@ -185,6 +190,8 @@ open Grip GParser
 #guard (run? (optional digit) "x".toUTF8) == some none
 #guard (run? (notFollowedBy digit) "x".toUTF8) == some ()
 #guard (run? (notFollowedBy digit) "5".toUTF8) == none
+#guard (run? eof "".toUTF8) == some ()
+#guard (run? eof "x".toUTF8) == none
 #guard (run? (manyTill letter (ch '.')) "abc.".toUTF8)
         == some [97, 98, 99]
 #guard (run? (chooseG (ch 'a') [ch 'b']) "b".toUTF8) == some ()
