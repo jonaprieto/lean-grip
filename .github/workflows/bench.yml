@@ -3,8 +3,11 @@ name: Benchmark
 # Builds the PR, runs `lake exe bench`, re-runs it on the PR's base commit, and posts a
 # PR-vs-base table as a single sticky comment (updated in place on every push, so the
 # comment always references the current head SHA). Runs automatically on each PR push; a
-# `/bench` comment from a trusted commenter re-runs it on demand. Adapted from the
-# prim-parser fork's bench workflow.
+# `/bench` comment from a trusted commenter re-runs it on demand.
+#
+# Parallel jobs: `meta` resolves the PR, then `grip` (the in-repo `lake exe bench` suite)
+# and `primparser` (the sibling deep-embedded framework this repo forks from, heavy because
+# it pulls mathlib) run concurrently. `comment` waits for both and posts the merged table.
 
 on:
   pull_request:
@@ -17,11 +20,15 @@ permissions:
   contents: read
   pull-requests: write
 
+concurrency:
+  group: bench-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  bench:
+  meta:
     # Auto on PR pushes; `/bench` re-run restricted to trusted commenters (it builds and
-    # runs PR code). Fork PRs get a read-only token on `pull_request`, so the comment step
-    # is guarded below to same-repo PRs.
+    # runs PR code). Fork PRs get a read-only token on `pull_request`, so the comment job
+    # is guarded to same-repo PRs.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'pull_request' ||
@@ -31,6 +38,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
+    outputs:
+      num: ${{ steps.pr.outputs.num }}
+      sha: ${{ steps.pr.outputs.sha }}
+      base: ${{ steps.pr.outputs.base }}
+      same_repo: ${{ steps.pr.outputs.same_repo }}
     steps:
       - name: React to trigger
         if: github.event_name == 'issue_comment'
@@ -61,9 +73,13 @@ jobs:
             echo "same_repo=$same_repo"
           } >> "$GITHUB_OUTPUT"
 
+  grip:
+    needs: meta
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ steps.pr.outputs.sha || github.sha }}
+          ref: ${{ needs.meta.outputs.sha || github.sha }}
           fetch-depth: 0
 
       # Cache the elan toolchain so a run does not re-download it (avoids the
@@ -91,30 +107,124 @@ jobs:
           lake exe bench > pr.txt 2>/dev/null || true
           echo "== PR ==" && cat pr.txt
           : > base.txt
-          if [ -n "${{ steps.pr.outputs.base }}" ]; then
-            git checkout -q "${{ steps.pr.outputs.base }}" -- Grip Grip.lean examples bench lakefile.lean lean-toolchain \
+          if [ -n "${{ needs.meta.outputs.base }}" ]; then
+            git checkout -q "${{ needs.meta.outputs.base }}" -- Grip Grip.lean examples bench lakefile.lean lean-toolchain \
               && lake build bench \
               && lake exe bench > base.txt 2>/dev/null \
               && { echo "== base ==" && cat base.txt; } \
               || echo "baseline bench failed; reporting PR only"
           fi
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grip-results
+          path: |
+            pr.txt
+            base.txt
+
+  primparser:
+    needs: meta
+    runs-on: ubuntu-latest
+    # Best-effort reference: never fail the workflow if the sibling build breaks.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.meta.outputs.sha || github.sha }}
+
+      - name: Cache elan toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.elan
+          key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}
+
+      # prim-parser (the deep-embedded G framework this repo forks from) lives in a sibling
+      # repo pinned here; its harness path-requires ../../../../prim-parser. The pinned rev
+      # must be reachable in the source repo: set repo variables PRIMPARSER_REPO /
+      # PRIMPARSER_REV to point at a pushed commit (the harness needs prim-parser code that
+      # is not on the public janmasrovira/prim-parser default branch). If the rev is not
+      # found, the job skips and the comment simply omits the prim-parser rows.
+      - name: Checkout prim-parser (pinned)
+        id: pp
+        env:
+          PP_REPO: ${{ vars.PRIMPARSER_REPO || 'https://github.com/janmasrovira/prim-parser.git' }}
+          PP_REV: ${{ vars.PRIMPARSER_REV || '97f120cdc9219c29d8de9e438a55c7a85e7e8a6b' }}
+        run: |
+          PP="$GITHUB_WORKSPACE/../prim-parser"
+          rm -rf "$PP"
+          git clone --no-checkout "$PP_REPO" "$PP" || { echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          git -C "$PP" fetch -q origin "$PP_REV" 2>/dev/null || true
+          if git -C "$PP" checkout -q "$PP_REV" 2>/dev/null; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::prim-parser rev $PP_REV not found in $PP_REPO; skipping prim-parser rows. Set repo vars PRIMPARSER_REPO / PRIMPARSER_REV to a pushed commit."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache prim-parser mathlib build
+        if: steps.pp.outputs.ok == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/mathlib
+            ${{ github.workspace }}/../prim-parser/.lake
+            bench/cross-lang/prim-parser/.lake
+          key: primparser-${{ runner.os }}-${{ vars.PRIMPARSER_REV || '97f120cdc9219c29d8de9e438a55c7a85e7e8a6b' }}
+
+      - name: Build and run prim-parser harness
+        if: steps.pp.outputs.ok == 'true'
+        run: |
+          cd bench/cross-lang/prim-parser
+          lake exe cache get
+          lake build
+          : > "$GITHUB_WORKSPACE/primparser.txt"
+          for f in canada.json citm_catalog.json twitter.json; do
+            .lake/build/bin/gripjson "$GITHUB_WORKSPACE/bench/data/$f" \
+              >> "$GITHUB_WORKSPACE/primparser.txt"
+          done
+          cat "$GITHUB_WORKSPACE/primparser.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: primparser-results
+          path: primparser.txt
+          if-no-files-found: ignore
+
+  comment:
+    needs: [meta, grip, primparser]
+    # Run even if primparser failed; post only for same-repo PRs (fork PRs get a read-only token).
+    if: always() && needs.meta.outputs.num && needs.meta.outputs.same_repo == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: grip-results
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: primparser-results
+
       - name: Format results
         run: |
+          # prim-parser is a fixed external reference (independent of this PR's grip code),
+          # so its rows go only into the PR column; the base column shows "-" for them.
+          [ -f primparser.txt ] && cat primparser.txt >> pr.txt || true
           {
             echo '<!-- bench -->'
-            echo "### Benchmark results (full \`lake exe bench\` suite)"
+            echo "### Benchmark results (full \`lake exe bench\` suite + prim-parser)"
             echo ""
-            echo "PR \`${{ steps.pr.outputs.sha || github.sha }}\` vs base \`${{ steps.pr.outputs.base }}\` -- best-of-20 ms, lower is better. Δ = PR vs base."
+            echo "PR \`${{ needs.meta.outputs.sha }}\` vs base \`${{ needs.meta.outputs.base }}\` -- best-of-20 ms, lower is better. Δ = PR vs base."
             echo ""
-            echo "JSON rows are per input file: \`grip\`/\`std.parsec\`/\`hand\` are leaf-count validators, \`grip.json\`/\`lean.json\` are the DOM-vs-DOM value builders."
+            echo "JSON rows are per input file: \`grip\`/\`std.parsec\`/\`hand\` are leaf-count validators, \`grip.json\`/\`lean.json\` are the DOM-vs-DOM value builders, \`prim-parser\` is the sibling deep-embedded framework (validator, pinned \`97f120c\`, reference only)."
             echo ""
             # Key each row by parser + input file so the per-file JSON DOM-vs-DOM rows
             # (grip.json/lean.json x canada/citm/twitter) are kept, not collapsed. Single-file
             # benches (sexp, lambda, ...) have a `size=`/`count=` second field and key on $1.
             awk '
               function key() { return ($2 ~ /^(size|count)=/) ? $1 : ($1 " " $2) }
-              function getms(  i, a) { for (i = 1; i <= NF; i++) if ($i ~ /^(ms|parse_ms)=/) { split($i, a, "="); return a[2] } return "" }
+              function getms(  i, a) { for (i = 1; i <= NF; i++) if ($i ~ /^(ms|parse_ms|best_ms)=/) { split($i, a, "="); return a[2] } return "" }
               FNR == NR { m = getms(); if (m != "") { n = key(); if (!(n in seen)) { ord[++k] = n; seen[n] = 1 }; pr[n] = m }; next }
               { m = getms(); if (m != "") base[key()] = m }
               END {
@@ -129,16 +239,16 @@ jobs:
                 }
               }' pr.txt base.txt
             echo ""
-            echo "_Cross-language parsers (Rust nom, Haskell) run in the separate \`bench-crosslang\` workflow. prim-parser is excluded from CI: its harness path-requires a sibling \`research/prim-parser\` checkout; run it locally for that comparison._"
+            echo "_Cross-language parsers (Rust nom, Haskell) run in the separate \`bench-crosslang\` workflow._"
           } > body.md
           cat body.md >> "$GITHUB_STEP_SUMMARY"
 
       # Sticky comment: --edit-last updates the bot's existing comment in place (so it
       # tracks the head SHA printed in the body), --create-if-none posts the first one.
-      # Skipped for fork PRs, whose `pull_request` token cannot write comments.
+      # -R is required: this job does not check out the repo, so gh cannot infer it from a
+      # local git remote.
       - name: Post comment
-        if: steps.pr.outputs.num && steps.pr.outputs.same_repo == 'true'
-        run: gh pr comment "${{ steps.pr.outputs.num }}" --body-file body.md --edit-last --create-if-none
+        run: gh pr comment "${{ needs.meta.outputs.num }}" -R "${{ github.repository }}" --body-file body.md --edit-last --create-if-none
 
       - name: React done
         if: github.event_name == 'issue_comment'
