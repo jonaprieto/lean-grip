@@ -30,11 +30,19 @@ protected abbrev P := SimpleParser String.Slice Char
 @[inline] def ws : L4pJsonChar.P Unit :=
   dropMany (tokenFilter isWs)
 
-/-- Skip a string: consume '"', scan chars until next '"', consume it.
-    Escape-naive: scan to next '"'. -/
+/-- Escape-aware string body: skip chars until an unescaped `"`, treating `\` as escaping the
+    next char (so `\"` does not end the string). Needed for citm/twitter, which contain `\"`. -/
+partial def skipStrBody : L4pJsonChar.P Unit := do
+  let c ← anyToken
+  if c == '"' then return ()
+  else if c == '\\' then do let _ ← anyToken; skipStrBody
+  else skipStrBody
+
+/-- Skip a string: consume the opening '"', then the escape-aware body (which consumes the
+    closing '"'). -/
 def skipStr : L4pJsonChar.P Unit := do
   drop 1 (token '"')
-  drop 1 (dropUntil (token '"') anyToken)
+  skipStrBody
 
 mutual
 
@@ -45,7 +53,7 @@ protected partial def value : L4pJsonChar.P Nat := do
   if c == '{' then L4pJsonChar.object
   else if c == '[' then L4pJsonChar.array
   else if c == '"' then do
-    drop 1 (dropUntil (token '"') anyToken)
+    skipStrBody
     return 1
   else if c == 't' || c == 'f' || c == 'n' then do
     dropMany (tokenFilter isAlpha)
@@ -129,13 +137,14 @@ def bestMs (reps : Nat) (act : Nat → Nat) : IO Float := do
     if i == 0 || dt < best then best := dt
   return best
 
-def main : IO Unit := do
-  -- Read as String (Char-level parser operates on String)
-  let src ← IO.FS.readFile "/Users/jonaprieto/research/grip/bench/data/canada.json"
+def main (args : List String) : IO Unit := do
+  -- Read as String (Char-level parser operates on String). Dataset path is argv[1].
+  let file := args.getD 0 "/Users/jonaprieto/research/grip/bench/data/canada.json"
+  let base := (System.FilePath.mk file).fileName.getD file
+  let src ← IO.FS.readFile file
   let count := parseL4p src
-  IO.println s!"count={count}"
-  if count != 111130 then
-    IO.eprintln s!"ERROR: expected 111130 but got {count}"
+  if count == 0 then
+    IO.eprintln s!"ERROR: parse failed on {base}"
     return
   let ms ← bestMs 20 (fun i => parseL4p (barrierStr i src))
-  IO.println s!"lean4-parser (char-level, foldl, v4.28.0) best_ms={ms}"
+  IO.println s!"lean4-parser {base} count={count} best_ms={ms}"
