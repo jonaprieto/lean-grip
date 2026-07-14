@@ -134,7 +134,9 @@ string costs a single `fromUTF8?` copy rather than capture-then-copy. -/
 def decodeStringBytes (arr : ByteArray) (start stop : Nat) : String :=
   let s := start + 1
   let e := stop - 1
-  let body := (String.fromUTF8? (arr.extract s e)).getD ""
+  -- The input is the UTF-8 of a `String`, so the quote-delimited body is valid UTF-8 and
+  -- `fromUTF8!` never panics; this skips the `Option` that `fromUTF8?` allocates per string.
+  let body := String.fromUTF8! (arr.extract s e)
   if arr.foldl (fun a b => a || b == 92) false s e then unescape body else body
 
 /-- State threaded through `decodeNumber`'s single fold over the whole lexeme. -/
