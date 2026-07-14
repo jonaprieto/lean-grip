@@ -14,12 +14,12 @@ Ready-made byte parsers (`ws`, `digit`, `oneOf`, ...) and higher-order combinato
 or at the `Parser` (fallible) face where it depends on runtime data. Batteries-only.
 -/
 
-open Necessity
+open Modality
 open Grip.Ascii
 
 namespace Grip
 
-variable {α β γ : Type} {g g₁ g₂ : Grade} {ge : Necessity}
+variable {α β γ : Type} {g g₁ g₂ : Grade} {ge : Modality}
 
 namespace GParser
 

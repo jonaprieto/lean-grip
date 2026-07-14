@@ -12,7 +12,7 @@ import Grip.Error
 
 `GParser g α` is a `run : ByteArray -> Nat -> ParseResult α` (`ok value pos | error e`,
 one heap object per successful step, no reified tree) plus three *erased* `Prop`
-witnesses tying the static `Grade` (error x consumption `Necessity`) to that runtime:
+witnesses tying the static `Grade` (error x consumption `Modality`) to that runtime:
 
 - `cwit`: a success advances the offset exactly as `consumes` claims,
 - `ewit`: an `always`-error grade never succeeds (every input yields `.error k`),
@@ -26,7 +26,7 @@ This module has the type, the grade-weakening coercion, and the total, fuel-boun
 `Grip.Scan`. Ported from `prim-parser/PrimParser/Byte.lean`. No mathlib.
 -/
 
-open Necessity
+open Modality
 open Grade
 
 namespace Grip
@@ -58,17 +58,17 @@ structure GParser (g : Grade) (α : Type) where
   `⟨never, always⟩` uninhabited outright, with no external hypothesis (see `grip-props`). -/
   bwit : ∀ {arr q a q'}, q ≤ arr.size → run arr q = .ok a q' → q' ≤ arr.size
 
-variable {g g' : Grade} {ge ge' gc gc' : Necessity} {α β : Type}
+variable {g g' : Grade} {ge ge' gc gc' : Modality} {α β : Type}
 
 /-! ### Grade-algebra witness helper lemmas -/
 
 /-- Chain two consumption witnesses across a shared midpoint. Used by the sequencing
 combinators in `Grip.Byte`. -/
-theorem cw_seq {c0 c1 : Necessity} {q r s : Nat}
+theorem cw_seq {c0 c1 : Modality} {q r s : Nat}
     (w0 : consumptionWitness q r c0) (w1 : consumptionWitness r s c1) :
     consumptionWitness q s (max c0 c1) := by
   have h := consumptionWitness.trans w1 w0
-  rwa [Necessity.sup_comm] at h
+  rwa [Modality.sup_comm] at h
 
 /-- A success rules out the `always`-error grade (via `ewit`). -/
 theorem GParser.errors_ne_always {g : Grade} {α} (p : GParser g α) {arr q a q'}

@@ -225,7 +225,7 @@ theorem guarded_map {β γ : Type} {gg : Grade} (φ : β → γ)
 
 /-- `alt` preserves guardedness: acceptance of the choice is decided by the two branches, which
 agree at `q`; the error-merge of a double failure is still a failure. -/
-theorem guarded_alt {β : Type} {ge gc : Necessity}
+theorem guarded_alt {β : Type} {ge gc : Modality}
     (x y : GParser conditional α → GParser ⟨ge, gc⟩ β)
     (hx : Guarded x) (hy : Guarded y) :
     Guarded (fun rec => GParser.alt (x rec) (y rec)) := by
