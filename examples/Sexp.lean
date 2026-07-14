@@ -52,8 +52,8 @@ def sexp : GParser conditional Sexp :=
     let elements : GParser flexible (List Sexp) :=
       GParser.many (sexp <* GParser.ws)               -- each element eats its trailing ws
     let list : GParser conditional Sexp :=
-      GParser.byteC '(' *> GParser.ws *>
-        ((Sexp.list <$> elements) <* (GParser.ws *> GParser.byteC ')'))
+      GParser.ch '(' *> GParser.ws *>
+        ((Sexp.list <$> elements) <* (GParser.ws *> GParser.ch ')'))
     GParser.ws *> GParser.dispatch fun b => if b == Ascii.lparen then list else atom
 
 /-- Parse one S-expression from `arr`, or `none` on failure. -/

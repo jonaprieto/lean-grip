@@ -56,7 +56,7 @@ open Grip
 /-- A `.frac` fragment: `.` then one or more digits. Fails hard if `.` is not
 followed by a digit (so `1.` is rejected). -/
 @[inline] private def frac : GParser conditional Nat :=
-  GParser.seqR (GParser.byteC '.') (GParser.takeWhile1 Ascii.isDigit)
+  GParser.seqR (GParser.ch '.') (GParser.takeWhile1 Ascii.isDigit)
 
 /-- An exponent fragment: `[eE]` `[+-]?` digits. Fails hard if no digit follows. -/
 @[inline] private def expo : GParser conditional Nat :=
@@ -66,7 +66,7 @@ followed by a digit (so `1.` is rejected). -/
 
 /-- The integer part: `0` alone, or `[1-9]` then more digits. -/
 @[inline] private def intPart : GParser conditional Unit :=
-  GParser.alt (GParser.byteC '0')
+  GParser.alt (GParser.ch '0')
     (GParser.seqR (GParser.satisfy isDigit19)
       (GParser.seqR (GParser.takeWhile Ascii.isDigit) (GParser.pure ())))
 
@@ -74,7 +74,7 @@ followed by a digit (so `1.` is rejected). -/
 lone trailing token (`1 2`) are rejected by the top-level EOF check, not here. -/
 @[inline] private def number : GParser conditional Nat :=
   (fun _ => 1) <$>
-    (GParser.seqR (GParser.optional (GParser.byteC '-'))
+    (GParser.seqR (GParser.optional (GParser.ch '-'))
       (GParser.seqL intPart
         (GParser.seqR (GParser.optional frac) (GParser.optional expo))))
 
@@ -89,28 +89,28 @@ replacing the old per-byte `foldMany` over a string-char combinator. -/
 private def value : GParser conditional Nat :=
   GParser.fix fun value =>
     let commaValue : GParser conditional Nat :=
-      GParser.seqR ws (GParser.seqR (GParser.byteC ',') (GParser.seqR ws value))
+      GParser.seqR ws (GParser.seqR (GParser.ch ',') (GParser.seqR ws value))
     let arrayBody : GParser flexible Nat :=
       GParser.alt
         (GParser.map2 (· + ·) value (GParser.foldMany (· + ·) 0 commaValue))
         (GParser.pure 0)
     let array : GParser conditional Nat :=
-      GParser.seqR (GParser.byteC '[')
+      GParser.seqR (GParser.ch '[')
         (GParser.seqR ws
-          (GParser.seqL arrayBody (GParser.seqR ws (GParser.byteC ']'))))
+          (GParser.seqL arrayBody (GParser.seqR ws (GParser.ch ']'))))
     let pair : GParser conditional Nat :=
       GParser.seqR jstring
-        (GParser.seqR ws (GParser.seqR (GParser.byteC ':') (GParser.seqR ws value)))
+        (GParser.seqR ws (GParser.seqR (GParser.ch ':') (GParser.seqR ws value)))
     let commaPair : GParser conditional Nat :=
-      GParser.seqR ws (GParser.seqR (GParser.byteC ',') (GParser.seqR ws pair))
+      GParser.seqR ws (GParser.seqR (GParser.ch ',') (GParser.seqR ws pair))
     let objectBody : GParser flexible Nat :=
       GParser.alt
         (GParser.map2 (· + ·) pair (GParser.foldMany (· + ·) 0 commaPair))
         (GParser.pure 0)
     let object : GParser conditional Nat :=
-      GParser.seqR (GParser.byteC '{')
+      GParser.seqR (GParser.ch '{')
         (GParser.seqR ws
-          (GParser.seqL objectBody (GParser.seqR ws (GParser.byteC '}'))))
+          (GParser.seqL objectBody (GParser.seqR ws (GParser.ch '}'))))
     -- Fallthrough for a byte that starts no value: always fails (the mapped `0` is unreachable).
     let invalid : GParser conditional Nat :=
       (fun _ => 0) <$> GParser.satisfy (fun _ => false)

@@ -56,11 +56,11 @@ open Grip GParser
 
 -- Parse a point like `(3,14)` into a pair of numbers.
 def point : Parser (Nat × Nat) := do
-  byteC '('
+  ch '('
   let x ← nat
-  byteC ','
+  ch ','
   let y ← nat
-  byteC ')'
+  ch ')'
   return (x, y)
 
 #eval run? point "(3,14)".toUTF8   -- some (3, 14)
@@ -150,8 +150,8 @@ S-expression core is the whole idea in five lines:
 def sexp : GParser conditional Sexp :=
   fix fun sexp =>
     let atom := Sexp.atom <$> capture (takeWhile1 isAtomByte)
-    let list := byteC '(' *> ws *>
-      ((Sexp.list <$> many (sexp <* ws)) <* (ws *> byteC ')'))
+    let list := ch '(' *> ws *>
+      ((Sexp.list <$> many (sexp <* ws)) <* (ws *> ch ')'))
     ws *> dispatch fun b => if b == Ascii.lparen then list else atom
 ```
 
