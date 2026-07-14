@@ -2,6 +2,12 @@
 Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
+
+The grammar and `atom`/`list` structure follow Examples/SExp.lean in
+prim-parser by Jan Mas Rovira (https://github.com/janmasrovira/prim-parser,
+commit 30d0ad8, 2026-05-08). grip's representation and dispatch differ: a
+flat `List Sexp` rather than cons-pairs, and `dispatch` on the leading byte
+rather than a backtracking `<|>`.
 -/
 import Grip
 
