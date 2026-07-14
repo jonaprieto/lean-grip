@@ -2,6 +2,12 @@
 Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
+
+Inspired by prim-parser by Jan Mas Rovira
+(https://github.com/janmasrovira/prim-parser, PrimParser/Basic.lean, commit
+5a5ff0d, 2026-05-31): the goal of a total `fix` without `partial`. prim-parser
+gets it by size-indexing on `Text n`; grip gets it by grade-bounded fuel. The
+`fix_advances` theorem is grip's own consequence of that clamp.
 -/
 import Grip
 
@@ -10,7 +16,7 @@ import Grip
 
 prim-parser's `fix` is kernel-total by size-indexing its input (`Text n`): the recursion is
 well-founded on the length index, so a non-productive body is caught as a premature failure
-rather than a loop. See `PrimParser/Productivity.lean`.
+rather than a loop. See `PrimParser/Basic.lean`.
 
 grip keeps the flat, fast core -- `run` is `ByteArray → Nat → ParseResult α`, with no length
 in the type -- and still gets kernel totality, by a different route. `GParser.fix` recurses on
