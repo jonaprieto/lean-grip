@@ -17,7 +17,9 @@ The core is in. That means the byte primitives, the `Parser`/graded `GParser` sp
 `Monad`/`Alternative`/`MonadExcept`, `gdo`, the always-consume `many` gate, `fix` for
 recursion, first-byte `dispatch`, `capture` for building syntax trees, and a positioned
 `ParseError` with labels and a caret. The machine-checked metatheory lives in `grip-props`.
-Verso docs are a later milestone.
+API documentation is generated from the docstrings by
+[doc-gen4](https://github.com/leanprover/doc-gen4) and published to
+[GitHub Pages](https://jonaprieto.github.io/grip/).
 
 Two batteries-only helper modules sit on top. `Grip.Ascii` gives you named byte
 predicates (`isWs`, `isDigit`, `isHexDigit`, ...), delimiter constants (`quote`, `comma`,
@@ -42,25 +44,43 @@ git = "https://github.com/jonaprieto/grip"
 rev = "main"
 ```
 
-A parser is a `GParser g α` (graded) or the ungraded `Parser α`. Combinators run over a
-`ByteArray`. `run?` gives you back an `Option`; `parse` gives you a positioned
-`ParseError`:
+A parser is the ungraded `Parser α` (= `GParser fallible α`) or a graded `GParser g α`.
+Combinators run over a `ByteArray`; `run?` returns an `Option`, `parse` a positioned `ParseError`.
+
+**Ordinary monad style.** Write at `Parser` with plain `do` and the `Monad`/`Alternative`
+instances, and grades stay out of your way:
 
 ```lean
 import Grip
 open Grip
 
--- A run of one or more digits; the result is the count of bytes consumed.
--- `conditional` = always consumes on success, may error. `Ascii.isDigit` is a
--- named byte predicate from `Grip.Ascii` -- no magic `48 ≤ b && b ≤ 57` literals.
-def digits : GParser conditional Nat :=
-  GParser.takeWhile1 Ascii.isDigit
+-- Parse a point like `(3,14)` into a pair of numbers.
+def point : Parser (Nat × Nat) := do
+  GParser.byteC '('
+  let x ← GParser.nat
+  GParser.byteC ','
+  let y ← GParser.nat
+  GParser.byteC ')'
+  return (x, y)
 
-#eval GParser.run? digits "2026".toUTF8   -- some 4
-#eval GParser.run? digits "x".toUTF8      -- none
+#eval GParser.run? point "(3,14)".toUTF8   -- some (3, 14)
+```
 
--- Or lean on `Grip.Combinators` directly: `digit` is the byte parser, and the
--- operators/vocabulary compose it -- e.g. `ws *> digit` skips leading spaces.
+**Graded style.** Keep the grade precise with `gdo` and the grade shows up in the type.
+`conditional` means "consumes on success, may fail"; `flexible` means "never fails, may consume":
+
+```lean
+-- One hex byte, e.g. "ff" -> 255. `gdo` sequences while tracking grades exactly.
+def hexByte : GParser conditional Nat := gdo
+  let hi ← GParser.satisfy Ascii.isHexDigit
+  let lo ← GParser.satisfy Ascii.isHexDigit
+  GParser.pure (16 * Ascii.hexValue hi + Ascii.hexValue lo)
+
+-- `many` demands an always-consuming parser; `hexByte` is `conditional`, so this type-checks
+-- (`many (pure 0)` would not -- see [the gate](#the-gate)).
+def hexBytes : GParser flexible (List Nat) := GParser.many hexByte
+
+#eval GParser.run? hexBytes "ff00a0".toUTF8   -- some [255, 0, 160]
 ```
 
 The example parsers use these facilities throughout rather than hand-rolled byte math:

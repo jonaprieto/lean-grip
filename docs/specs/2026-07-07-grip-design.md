@@ -273,13 +273,13 @@ Parse canada.json. Target: the byte core ties or beats attoparsec (~19.5 ms) and
 lean4-parser. Report `parse_ms` in the hyperfine harness. Speed is a gate, not a
 nice-to-have.
 
-## Documentation (Verso, deferred)
+## Documentation (doc-gen4)
 
-The gist did not request Verso; the user did. Verso is Lean's doc-authoring system and
-would be a third Lake package with its own toolchain-version constraint. It is deferred
-to Milestone 3 so it never blocks the CI-green-from-commit-1 guarantee. Before wiring
-it, confirm a Verso tag compatible with Lean v4.28.0. M0 through M2 ship a plain README
-plus Apache-header doc-comments on every combinator, as the gist requires.
+API documentation is generated from the docstrings by doc-gen4 (the generator behind the
+mathlib docs site) and published to GitHub Pages. doc-gen4 is a dev-only Lake dependency, gated
+behind `-Kenv=dev` and built with `lake -R -Kenv=dev build Grip:docs`, so a plain `require grip`
+never pulls it and the core stays batteries-only. Verso, Lean's system for authored manuals, is a
+possible later addition; it is a different thing from the API reference doc-gen4 gives.
 
 ## Non-goals (do not build)
 
@@ -302,7 +302,7 @@ Full plan up front, each milestone kept minimal, focused signed commits.
   `parse_ms` that clears the bar, README benchmarks plus chart. Prove nothing yet.
 - M2 props. `grip-props` with `LawfulGradedMonad` instances, grade-soundness
   meta-theorems, totality-not-productivity, choice-grade impossibility.
-- M3 docs. Verso, once a v4.28.0-compatible tag is confirmed.
+- M3 docs. doc-gen4 API site on GitHub Pages (dev-gated Lake dependency).
 
 ## Commit and CI discipline
 
