@@ -210,6 +210,15 @@ and the many-gate it enables, is prim-parser's contribution. grip carries it ont
 byte-level `ByteArray` core with erased soundness witnesses, and adds the `ParseResult`
 result type, first-byte `dispatch`, and the `@[specialize]` scan loops.
 
+## How this was built
+
+The idea behind grip is mine: a byte parser whose type records whether it can fail
+and whether it consumes input. I called it `GParser`. From there, most of the code
+was written by an LLM (Anthropic's Claude): the combinators, the examples, the
+benchmarks, and the `grip-props` proofs. The graded core comes from prim-parser (see
+above). The combinator names follow megaparsec, and a few other pieces borrow from
+parsers I have used before.
+
 ## License
 
 Apache-2.0.
