@@ -127,18 +127,6 @@ private def uStep (st : UState) (c : Char) : UState :=
 /-- Decode the escapes in a JSON string body (no surrounding quotes). -/
 def unescape (s : String) : String := (s.foldl uStep {}).out
 
-/-- Decode a validated string literal spanning `arr[start .. stop)` (both quotes included)
-straight from the input bytes: strip the quotes, build the body `String` once, and unescape
-only if a backslash is present. No `capture` `String` is materialized first, so a plain
-string costs a single `fromUTF8?` copy rather than capture-then-copy. -/
-def decodeStringBytes (arr : ByteArray) (start stop : Nat) : String :=
-  let s := start + 1
-  let e := stop - 1
-  -- The input is the UTF-8 of a `String`, so the quote-delimited body is valid UTF-8 and
-  -- `fromUTF8!` never panics; this skips the `Option` that `fromUTF8?` allocates per string.
-  let body := String.fromUTF8! (arr.extract s e)
-  if arr.foldl (fun a b => a || b == 92) false s e then unescape body else body
-
 /-- State threaded through `decodeNumber`'s single fold over the whole lexeme. -/
 private structure NState where
   mant    : Nat := 0     -- integer and fractional digits as one natural
@@ -179,6 +167,128 @@ end Decode
 
 open Decode
 
+-- Fused string literal: escape-aware scan + decode in one pass ------------
+
+/-- The offset just past a valid `\`-escape whose backslash is at `q` (`arr[q] == 92`), or
+`none` for a malformed one: a simple escape (`\" \\ \/ \b \f \n \r \t`) advances 2, a
+`\uXXXX` advances 6. Isolated from `scanStr` so the scan loop stays flat. -/
+@[inline] def escEnd (arr : ByteArray) (q : Nat) : Option Nat :=
+  if h1 : q + 1 < arr.size then
+    if arr[q + 1] == 34 || arr[q + 1] == 92 || arr[q + 1] == 47 || arr[q + 1] == 98
+        || arr[q + 1] == 102 || arr[q + 1] == 110 || arr[q + 1] == 114 || arr[q + 1] == 116 then
+      some (q + 2)
+    else if arr[q + 1] == 117 then
+      if h2 : q + 5 < arr.size then
+        if isHexByte arr[q + 2] && isHexByte arr[q + 3] && isHexByte arr[q + 4]
+            && isHexByte arr[q + 5] then some (q + 6)
+        else none
+      else none
+    else none
+  else none
+
+theorem escEnd_gt (arr : ByteArray) (q q' : Nat) (h : escEnd arr q = some q') : q < q' := by
+  rw [escEnd] at h
+  split at h
+  · split at h
+    · simp only [Option.some.injEq] at h; omega
+    · split at h
+      · split at h
+        · split at h
+          · simp only [Option.some.injEq] at h; omega
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+theorem escEnd_le (arr : ByteArray) (q q' : Nat) (h : escEnd arr q = some q') :
+    q' ≤ arr.size := by
+  rw [escEnd] at h
+  split at h
+  · rename_i h1
+    split at h
+    · simp only [Option.some.injEq] at h; omega
+    · split at h
+      · split at h
+        · rename_i h2 _
+          split at h
+          · simp only [Option.some.injEq] at h; omega
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
+/-- Scan a strict RFC-8259 string body and produce the decoded `String` in one pass. `q0` is
+the opening-quote index and `q` the current scan position; `esc` accumulates whether any `\`
+was seen. On the closing quote the body `arr[q0+1 .. q)` is built once (a single `fromUTF8!`
+copy) and unescaped only when `esc`, so there is no second backslash pass and no intermediate
+`capture`/escape-flag allocation. Escapes are validated by `escEnd`, keeping this loop flat.
+Total (structural on `arr.size - q`). -/
+@[specialize] def scanStr (arr : ByteArray) (q0 q : Nat) (esc : Bool) : ParseResult String :=
+  if h : q < arr.size then
+    if arr[q] == 34 then
+      let body := String.fromUTF8! (arr.extract (q0 + 1) q)
+      .ok (if esc then unescape body else body) (q + 1)
+    else if arr[q] == 92 then
+      match hE : escEnd arr q with
+      | some q' => scanStr arr q0 q' true
+      | none    => .error ⟨q, []⟩
+    else if arr[q] < 32 then .error ⟨q, []⟩
+    else scanStr arr q0 (q + 1) esc
+  else .error ⟨q, []⟩
+termination_by arr.size - q
+decreasing_by
+  · exact Nat.sub_lt_sub_left h (escEnd_gt arr q q' hE)
+  · omega
+
+/-- `scanStr` strictly advances past its current position on success. -/
+theorem scanStr_gt (arr : ByteArray) (q0 q q' : Nat) (esc : Bool) (a : String)
+    (h : scanStr arr q0 q esc = .ok a q') : q < q' := by
+  rw [scanStr] at h
+  split at h
+  · rename_i hq
+    split at h
+    · simp only [ParseResult.ok.injEq] at h; omega
+    · split at h
+      · split at h
+        · next q'' hE =>
+            have := escEnd_gt arr q q'' hE
+            have := scanStr_gt arr q0 q'' q' true a h
+            omega
+        · exact absurd h (by simp)
+      · split at h
+        · exact absurd h (by simp)
+        · have := scanStr_gt arr q0 (q + 1) q' esc a h; omega
+  · exact absurd h (by simp)
+termination_by arr.size - q
+decreasing_by
+  all_goals
+    first
+      | omega
+      | exact Nat.sub_lt_sub_left ‹q < arr.size› (escEnd_gt arr q _ ‹escEnd arr q = some _›)
+
+/-- `scanStr` stays within bounds on success. -/
+theorem scanStr_le (arr : ByteArray) (q0 q q' : Nat) (esc : Bool) (a : String)
+    (h : scanStr arr q0 q esc = .ok a q') : q' ≤ arr.size := by
+  rw [scanStr] at h
+  split at h
+  · rename_i hq
+    split at h
+    · simp only [ParseResult.ok.injEq] at h; omega
+    · split at h
+      · split at h
+        · next q'' hE => exact scanStr_le arr q0 q'' q' true a h
+        · exact absurd h (by simp)
+      · split at h
+        · exact absurd h (by simp)
+        · exact scanStr_le arr q0 (q + 1) q' esc a h
+  · exact absurd h (by simp)
+termination_by arr.size - q
+decreasing_by
+  all_goals
+    first
+      | omega
+      | exact Nat.sub_lt_sub_left ‹q < arr.size› (escEnd_gt arr q _ ‹escEnd arr q = some _›)
+
 -- Leaf value parsers -----------------------------------------------------
 
 @[inline] private def frac : GParser conditional Nat :=
@@ -203,10 +313,30 @@ private def number : GParser conditional Json :=
       (GParser.seqL intPart
         (GParser.seqR (GParser.optional frac) (GParser.optional expo))))
 
-/-- A validated JSON string literal, decoded to its `String` contents from the consumed
-byte range (no `capture` `String`). -/
-private def jstr : GParser conditional String :=
-  GParser.captureWith decodeStringBytes GParser.stringLit
+/-- A validated JSON string literal decoded to its `String` contents in a single scan. The
+escape-aware body scan reports whether any `\` occurred, so `unescape` runs only when it
+must and there is no separate backslash pass over the body. -/
+@[inline] private def jstr : GParser conditional String where
+  run := fun arr q =>
+    if h : q < arr.size then
+      (if arr[q] == 34 then scanStr arr q (q + 1) false else .error ⟨q, []⟩)
+    else .error ⟨q, []⟩
+  cwit := by
+    intro arr q a q' heq
+    split at heq
+    · split at heq
+      · have := scanStr_gt arr q (q + 1) q' false a heq; omega
+      · exact absurd heq (by simp)
+    · exact absurd heq (by simp)
+  ewit := by intro he; exact absurd he (by decide)
+  swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' hq heq
+    split at heq
+    · split at heq
+      · exact scanStr_le arr q (q + 1) q' false a heq
+      · exact absurd heq (by simp)
+    · exact absurd heq (by simp)
 
 private def jstring : GParser conditional Json := GParser.map Json.str jstr
 private def jnull  : GParser conditional Json :=
