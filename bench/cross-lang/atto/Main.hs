@@ -1,4 +1,4 @@
--- Attoparsec JSON leaf-scalar counter benchmark
+-- Attoparsec JSON leaf-scalar counter benchmark (STRICT RFC-8259)
 -- Counts: numbers, strings, true/false/null each = 1 leaf
 -- Object keys are NOT counted (only values)
 -- No DOM/tree built; count is accumulated directly as Int
@@ -13,6 +13,8 @@ import qualified Data.ByteString            as BS
 import           System.Clock               (Clock(Monotonic), getTime, toNanoSecs)
 import           Control.Exception          (evaluate)
 import           Data.IORef
+import           System.Environment         (getArgs)
+import           System.FilePath            (takeFileName)
 
 -- | Skip ASCII whitespace: space, tab, newline, carriage-return
 skipWS :: A.Parser ()
@@ -28,39 +30,77 @@ jsonValue = do
   skipWS
   w <- A.peekWord8'
   case w of
-    0x22 -> jsonString          -- '"'
-    0x7B -> jsonObject          -- '{'
-    0x5B -> jsonArray           -- '['
-    0x74 -> jsonTrue            -- 't'
-    0x66 -> jsonFalse           -- 'f'
-    0x6E -> jsonNull            -- 'n'
-    _    -> jsonNumber          -- digit or '-'
+    0x22 -> jsonString   -- '"'
+    0x7B -> jsonObject   -- '{'
+    0x5B -> jsonArray    -- '['
+    0x74 -> jsonTrue     -- 't'
+    0x66 -> jsonFalse    -- 'f'
+    0x6E -> jsonNull     -- 'n'
+    _    -> jsonNumber   -- digit or '-'
 
--- | Parse a JSON string (escape-naive: just scan to next '"')
--- Returns 1 (the string is one leaf scalar)
+-- | Strict string parser: bulk-scan safe runs, branch on '"' or '\', reject < 0x20
 jsonString :: A.Parser Int
 jsonString = do
-  _ <- A.word8 0x22            -- opening '"'
-  A.skipWhile (/= 0x22)        -- skip until closing '"'
-  _ <- A.word8 0x22            -- closing '"'
-  return 1
+  _ <- A.word8 0x22   -- opening '"'
+  go
+  where
+    -- Bulk-skip bytes that are safe: >= 0x20, not '"' (0x22), not '\' (0x5C)
+    go = do
+      A.skipWhile isSafe          -- consume a run of safe bytes (may be empty)
+      w <- A.anyWord8             -- must be '"', '\', or a control byte
+      case w of
+        0x22 -> return 1          -- closing '"', done
+        0x5C -> do                -- backslash: validate escape
+          esc <- A.anyWord8
+          case esc of
+            0x22 -> go            -- \"
+            0x5C -> go            -- \\
+            0x2F -> go            -- \/
+            0x62 -> go            -- \b
+            0x66 -> go            -- \f
+            0x6E -> go            -- \n
+            0x72 -> go            -- \r
+            0x74 -> go            -- \t
+            0x75 -> do            -- \uXXXX: exactly 4 hex digits
+              _ <- A.satisfy isHex
+              _ <- A.satisfy isHex
+              _ <- A.satisfy isHex
+              _ <- A.satisfy isHex
+              go
+            _    -> fail "invalid escape"
+        _ -> fail "unescaped control character"  -- w < 0x20 (only remaining case)
+    isSafe w = w >= 0x20 && w /= 0x22 && w /= 0x5C
+    isHex b  = (b >= 0x30 && b <= 0x39)  -- 0-9
+            || (b >= 0x41 && b <= 0x46)  -- A-F
+            || (b >= 0x61 && b <= 0x66)  -- a-f
 
--- | Parse a JSON number (integer or float, with optional leading '-')
--- Returns 1
+-- | Strict number parser per RFC 8259
+-- -? (0 | [1-9][0-9]*) (.[0-9]+)? ([eE][+-]?[0-9]+)?
+-- Rejects: 00, 1., 1e, +1, lone -
 jsonNumber :: A.Parser Int
 jsonNumber = do
-  -- optional minus
-  _ <- A.option () (A.word8 0x2D >> return ())  -- '-'
-  -- integer part: must have at least one digit
-  _ <- A.takeWhile1 isDigit
-  -- optional fractional part
+  _ <- A.option 0x30 (A.word8 0x2D)  -- optional '-'
+  -- integer part
+  first <- A.anyWord8
+  if first == 0x30
+    then do
+      -- leading zero: next char must NOT be a digit
+      next <- A.peekWord8
+      case next of
+        Just d | d >= 0x30 && d <= 0x39 -> fail "leading zero in number"
+        _ -> return ()
+    else do
+      if first >= 0x31 && first <= 0x39
+        then A.skipWhile isDigit   -- [1-9][0-9]*
+        else fail "expected digit in number"
+  -- optional fractional part: '.' followed by at least one digit
   _ <- A.option () $ do
-    _ <- A.word8 0x2E  -- '.'
+    _ <- A.word8 0x2E
     _ <- A.takeWhile1 isDigit
     return ()
-  -- optional exponent
+  -- optional exponent: [eE][+-]?[0-9]+
   _ <- A.option () $ do
-    _ <- A.satisfy (\x -> x == 0x65 || x == 0x45)  -- 'e' or 'E'
+    _ <- A.satisfy (\x -> x == 0x65 || x == 0x45)
     _ <- A.option () (A.satisfy (\x -> x == 0x2B || x == 0x2D) >> return ())
     _ <- A.takeWhile1 isDigit
     return ()
@@ -70,33 +110,24 @@ jsonNumber = do
 
 -- | Parse "true" keyword
 jsonTrue :: A.Parser Int
-jsonTrue = do
-  _ <- A.string "true"
-  return 1
+jsonTrue = A.string "true" >> return 1
 
 -- | Parse "false" keyword
 jsonFalse :: A.Parser Int
-jsonFalse = do
-  _ <- A.string "false"
-  return 1
+jsonFalse = A.string "false" >> return 1
 
 -- | Parse "null" keyword
 jsonNull :: A.Parser Int
-jsonNull = do
-  _ <- A.string "null"
-  return 1
+jsonNull = A.string "null" >> return 1
 
 -- | Parse a JSON array; return sum of element leaf counts
 jsonArray :: A.Parser Int
 jsonArray = do
   _ <- A.word8 0x5B       -- '['
   skipWS
-  -- check for empty array
-  isEmpty <- A.option False $ do
-    _ <- A.word8 0x5D     -- ']'
-    return True
-  if isEmpty
-    then return 0
+  w <- A.peekWord8'
+  if w == 0x5D
+    then A.anyWord8 >> return 0   -- empty array ']'
     else do
       !first <- jsonValue
       !rest  <- accumulateCommaList 0
@@ -110,12 +141,9 @@ jsonObject :: A.Parser Int
 jsonObject = do
   _ <- A.word8 0x7B       -- '{'
   skipWS
-  -- check for empty object
-  isEmpty <- A.option False $ do
-    _ <- A.word8 0x7D     -- '}'
-    return True
-  if isEmpty
-    then return 0
+  w <- A.peekWord8'
+  if w == 0x7D
+    then A.anyWord8 >> return 0   -- empty object '}'
     else do
       !first <- keyValue
       !rest  <- accumulateCommaKV 0
@@ -137,11 +165,10 @@ keyValue = do
 accumulateCommaList :: Int -> A.Parser Int
 accumulateCommaList !acc = do
   skipWS
-  hasComma <- A.option False $ do
-    _ <- A.word8 0x2C     -- ','
-    return True
-  if hasComma
+  w <- A.peekWord8'
+  if w == 0x2C
     then do
+      _ <- A.anyWord8     -- consume ','
       !v <- jsonValue
       accumulateCommaList (acc + v)
     else return acc
@@ -150,11 +177,10 @@ accumulateCommaList !acc = do
 accumulateCommaKV :: Int -> A.Parser Int
 accumulateCommaKV !acc = do
   skipWS
-  hasComma <- A.option False $ do
-    _ <- A.word8 0x2C     -- ','
-    return True
-  if hasComma
+  w <- A.peekWord8'
+  if w == 0x2C
     then do
+      _ <- A.anyWord8     -- consume ','
       !v <- keyValue
       accumulateCommaKV (acc + v)
     else return acc
@@ -170,44 +196,37 @@ nowNS = toNanoSecs <$> getTime Monotonic
 
 main :: IO ()
 main = do
-  let path = "/Users/jonaprieto/research/grip/bench/data/canada.json"
-  bs <- BS.readFile path  -- read entire file into memory before timing
+  args <- getArgs
+  path <- case args of
+    (p:_) -> return p
+    []    -> error "Usage: atto-bench <path-to-json>"
+
+  let basename = takeFileName path
+  bs <- BS.readFile path  -- preload entire file into memory
 
   -- warm-up / correctness check
-  case parseJSON bs of
+  n0 <- case parseJSON bs of
     Left err -> error $ "Parse error (warmup): " ++ err
-    Right n  ->
-      if n /= 111130
-        then error $ "Wrong count! Got " ++ show n ++ " but expected 111130"
-        else return ()
+    Right n  -> return n
 
-  -- best-of-20 timing.
-  -- We use an IORef to store the ByteString so GHC cannot float
-  -- `parseJSON bs` into a CAF computed once outside the loop.
+  -- best-of-20 timing
   bsRef <- newIORef bs
-  let runs = 20 :: Int
 
   let doRun :: IO Integer
       doRun = do
-        -- Read bs via IORef so optimizer cannot cache the parse result.
         input <- readIORef bsRef
         t0 <- nowNS
-        -- Force the Int result fully before stopping the clock.
         !n <- case A.parseOnly (jsonValue <* skipWS <* A.endOfInput) input of
                 Left  err -> error $ "Parse error in run: " ++ err
                 Right x   -> evaluate x
-        -- Use n to prevent the optimizer from eliding the call.
         _ <- evaluate n
         t1 <- nowNS
         return (t1 - t0)
 
-  times <- mapM (\_ -> doRun) [1..runs]
+  times <- mapM (\_ -> doRun) [1..20 :: Int]
   let bestNS = minimum times
   let bestMS = fromIntegral bestNS / 1.0e6 :: Double
 
-  -- final result (use the warmup count which we know is 111130)
-  case parseJSON bs of
-    Left  err -> error $ "Final parse error: " ++ err
-    Right n   -> do
-      putStrLn $ "count=" ++ show n
-      putStrLn $ "best_ms=" ++ show bestMS
+  putStrLn $ "attoparsec " ++ basename
+          ++ " count=" ++ show n0
+          ++ " best_ms=" ++ show bestMS

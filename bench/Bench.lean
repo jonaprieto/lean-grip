@@ -364,34 +364,27 @@ def main (args : List String) : IO Unit := do
     let src ← IO.FS.readBinFile file
     IO.println s!"count={parseJson src}"
     return
-  -- JSON on canada.json: the main number, compared against lean4-parser.
-  let jsonSrc ← IO.FS.readBinFile "bench/data/canada.json"
-  let jsonCount := parseJson jsonSrc
-  let jsonMs ← bestMs 20 (fun i => parseJson (barrier i jsonSrc))
-  IO.println s!"count={jsonCount} parse_ms={jsonMs}"
-  -- Cross-library reference on the same file/machine/toolchain: Lean's built-in
-  -- Json.parse (builds a full DOM, so it does more than grip's validator).
-  let jsonStr ← IO.FS.readFile "bench/data/canada.json"
-  let ljMs ← bestMs 20 (fun i => parseLeanJson (barrierStr i jsonStr))
-  IO.println s!"lean.json parse_ms={ljMs}"
-  -- Cross-library reference: Lean's standard combinator library on the same task.
-  let spCount := parseStdParsec jsonSrc
-  let spMs ← bestMs 20 (fun i => parseStdParsec (barrier i jsonSrc))
-  IO.println s!"std.parsec count={spCount} parse_ms={spMs}"
-  -- Same task, no combinators: the hand-written Lean scanner (the runtime floor).
-  let handCount := parseHand jsonSrc
-  let handMs ← bestMs 20 (fun i => parseHand (barrier i jsonSrc))
-  IO.println s!"hand count={handCount} parse_ms={handMs}"
-  -- Challenging JSON datasets (nativejson-benchmark): citm_catalog (object/key/nesting-heavy)
-  -- and twitter (string/Unicode/escape-heavy). grip vs Std.Internal.Parsec, both escape-aware.
-  for (name, file) in [("citm", "bench/data/citm_catalog.json"),
+  -- Per-dataset Lean matrix over the three nativejson-benchmark files: canada (number-heavy),
+  -- citm_catalog (object/key-heavy), twitter (string/escape-heavy). grip, Std.Internal.Parsec,
+  -- and the hand scanner do the identical strict validate-and-count (same leaf count per file);
+  -- Lean.Json builds a full DOM (heavier task -- its count is not a leaf count). Each line is
+  -- `<lib> <dataset> count=<n> ms=<best-of-20>`; cross-language rows are in bench/cross-lang/.
+  for (name, file) in [("canada", "bench/data/canada.json"),
+                       ("citm", "bench/data/citm_catalog.json"),
                        ("twitter", "bench/data/twitter.json")] do
     let src ← IO.FS.readBinFile file
+    let str ← IO.FS.readFile file
     let gc := parseJson src
     let gm ← bestMs 20 (fun i => parseJson (barrier i src))
+    IO.println s!"grip {name} count={gc} ms={gm}"
     let sc := parseStdParsec src
     let sm ← bestMs 20 (fun i => parseStdParsec (barrier i src))
-    IO.println s!"{name}: grip count={gc} ms={gm} | std.parsec count={sc} ms={sm}"
+    IO.println s!"std.parsec {name} count={sc} ms={sm}"
+    let hc := parseHand src
+    let hm ← bestMs 20 (fun i => parseHand (barrier i src))
+    IO.println s!"hand {name} count={hc} ms={hm}"
+    let lm ← bestMs 20 (fun i => parseLeanJson (barrierStr i str))
+    IO.println s!"lean.json {name} ms={lm} (DOM build, count not comparable)"
   -- TOML on a real file: a vendored Cargo.lock (count = number of [[package]] tables).
   let tomlSrc ← IO.FS.readBinFile "bench/data/cargo.lock"
   -- The remaining example parsers on generated inputs.
