@@ -31,15 +31,6 @@ namespace Grip.Examples.Json
 
 open Grip
 
--- Byte predicates -------------------------------------------------------
-
-/-- `'1'`..`'9'`. -/
-@[inline] private def isDigit19 (b : UInt8) : Bool := 49 ≤ b && b ≤ 57
-/-- Exponent marker `e`/`E`. -/
-@[inline] private def isExp (b : UInt8) : Bool := b == 101 || b == 69
-/-- Sign `+`/`-`. -/
-@[inline] private def isSign (b : UInt8) : Bool := b == 43 || b == 45
-
 -- Leaf parsers (non-recursive) ------------------------------------------
 
 /-- Skip insignificant whitespace. -/
@@ -60,14 +51,14 @@ followed by a digit (so `1.` is rejected). -/
 
 /-- An exponent fragment: `[eE]` `[+-]?` digits. Fails hard if no digit follows. -/
 @[inline] private def expo : GParser conditional Nat :=
-  GParser.seqR (GParser.satisfy isExp)
-    (GParser.seqR (GParser.optional (GParser.satisfy isSign))
+  GParser.seqR (GParser.satisfy Ascii.isExp)
+    (GParser.seqR (GParser.optional (GParser.satisfy Ascii.isSign))
       (GParser.takeWhile1 Ascii.isDigit))
 
 /-- The integer part: `0` alone, or `[1-9]` then more digits. -/
 @[inline] private def intPart : GParser conditional Unit :=
   GParser.alt (GParser.ch '0')
-    (GParser.seqR (GParser.satisfy isDigit19)
+    (GParser.seqR (GParser.satisfy Ascii.isDigit19)
       (GParser.seqR (GParser.takeWhile Ascii.isDigit) (GParser.pure ())))
 
 /-- A JSON number: `-? int frac? exp?`; leaf count 1. Leading-zero (`01`) and a
@@ -125,16 +116,11 @@ private def value : GParser conditional Nat :=
         else if Ascii.isDigit b || b == Ascii.dash then number
         else invalid)
 
-/-- End of input: succeeds (consuming nothing) exactly when no byte remains.
-`satisfy` fails only at end, so `notFollowedBy` of it marks EOF. -/
-@[inline] private def eof : GParser ⟨.possibly, .never⟩ Unit :=
-  GParser.notFollowedBy (GParser.satisfy (fun _ => true))
-
 /-- Parse one complete JSON document: a value, then optional trailing whitespace,
 then end of input. Full consumption is enforced here (neither `run?` nor `parse`
 checks it), which is what rejects trailing garbage. -/
 def json : Parser Nat :=
-  GParser.weakenFallible (GParser.seqL value (GParser.seqR ws eof))
+  GParser.weakenFallible (GParser.seqL value (GParser.seqR ws GParser.eof))
 
 -- Acceptance guards -------------------------------------------------------
 
