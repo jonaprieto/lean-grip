@@ -5,7 +5,7 @@ Authors: Jonathan Cubides
 -/
 
 /-!
-# Grip.Error -- parse error payload and pretty-printer
+# Grip.Error: parse error payload and pretty-printer
 
 `Err` is the error value carried by the core parser on failure.  It records the
 furthest byte offset reached and the set of labels that were expected there.
@@ -13,7 +13,7 @@ furthest byte offset reached and the set of labels that were expected there.
 `ParseError` is the user-facing error produced by `GParser.parse`; it adds
 1-based `line` and `col` computed from the source bytes.
 
-Nothing in this file imports from `Grip` -- only core Lean / Batteries.
+Nothing in this file imports from `Grip`; only core Lean / Batteries.
 -/
 
 namespace Grip
