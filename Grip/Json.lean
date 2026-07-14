@@ -55,8 +55,8 @@ inductive Json where
   | bool (b : Bool)
   | num  (mantissa : Int) (exponent : Nat)
   | str  (s : String)
-  | arr  (xs : List Json)
-  | obj  (kvs : List (String × Json))
+  | arr  (xs : Array Json)
+  | obj  (kvs : Array (String × Json))
   deriving Repr, BEq, Inhabited
 
 namespace Json
@@ -290,20 +290,22 @@ private def value : GParser conditional Json :=
           -- `value` skips its own leading whitespace, so no `ws` before it after `:` / `,`.
           let pair : GParser conditional (String × Json) :=
             GParser.map2 (fun k v => (k, v)) jstr (GParser.seqR (wsByte Ascii.colon) value)
-          let objectBody : GParser flexible (List (String × Json)) :=
+          let objectBody : GParser flexible (Array (String × Json)) :=
             GParser.alt
-              (GParser.map2 (fun x xs => x :: xs) pair
-                (GParser.many (GParser.seqR (wsByte Ascii.comma) (GParser.seqR GParser.ws pair))))
-              (GParser.pure [])
+              (GParser.bind pair (fun p =>
+                GParser.foldMany (fun (a : Array (String × Json)) x => a.push x) #[p]
+                  (GParser.seqR (wsByte Ascii.comma) (GParser.seqR GParser.ws pair))))
+              (GParser.pure #[])
           GParser.seqR (GParser.ch '{')
             (GParser.seqR GParser.ws
               (GParser.seqL (GParser.map Json.obj objectBody) (wsByte Ascii.rbrace)))
         else if b == Ascii.lbracket then
-          let arrayBody : GParser flexible (List Json) :=
+          let arrayBody : GParser flexible (Array Json) :=
             GParser.alt
-              (GParser.map2 (fun x xs => x :: xs) value
-                (GParser.many (GParser.seqR (wsByte Ascii.comma) value)))
-              (GParser.pure [])
+              (GParser.bind value (fun x =>
+                GParser.foldMany (fun (a : Array Json) e => a.push e) #[x]
+                  (GParser.seqR (wsByte Ascii.comma) value)))
+              (GParser.pure #[])
           GParser.seqR (GParser.ch '[')
             (GParser.seqL (GParser.map Json.arr arrayBody) (wsByte Ascii.rbracket))
         else if b == Ascii.quote then jstring
@@ -366,9 +368,9 @@ partial def render : Json → String
   | .bool false => "false"
   | .num m e    => renderNum m e
   | .str s      => "\"" ++ escape s ++ "\""
-  | .arr xs     => "[" ++ String.intercalate "," (xs.map render) ++ "]"
+  | .arr xs     => "[" ++ String.intercalate "," (xs.toList.map render) ++ "]"
   | .obj kvs    => "{" ++ String.intercalate ","
-      (kvs.map fun kv => "\"" ++ escape kv.1 ++ "\":" ++ render kv.2) ++ "}"
+      (kvs.toList.map fun kv => "\"" ++ escape kv.1 ++ "\":" ++ render kv.2) ++ "}"
 
 instance : ToString Json := ⟨render⟩
 
@@ -399,24 +401,24 @@ open Grip Grip.Json
 #guard (Json.num 25 1).int? == none
 #guard Json.null.int? == none
 -- accessors
-#guard (Json.obj [("a", Json.int 1)]).get? "a" == some (Json.int 1)
-#guard (Json.obj [("a", Json.int 1)]).get? "b" == none
+#guard (Json.obj #[("a", Json.int 1)]).get? "a" == some (Json.int 1)
+#guard (Json.obj #[("a", Json.int 1)]).get? "b" == none
 #guard Json.null.get? "a" == none
-#guard (Json.arr [Json.int 1, Json.int 2]).at? 1 == some (Json.int 2)
-#guard (Json.arr [Json.int 1]).at? 5 == none
+#guard (Json.arr #[Json.int 1, Json.int 2]).at? 1 == some (Json.int 2)
+#guard (Json.arr #[Json.int 1]).at? 5 == none
 -- strings: escapes and \u decode
 #guard (GParser.run? parser "\"a\\nb\"".toUTF8) == some (Json.str "a\nb")
 #guard (GParser.run? parser "\"\\u0041\"".toUTF8) == some (Json.str "A")
 #guard (GParser.run? parser "\"\\uD834\\uDD1E\"".toUTF8) == some (Json.str "𝄞")
 -- containers
 #guard (GParser.run? parser "[1,2,3]".toUTF8)
-        == some (Json.arr [Json.num 1 0, Json.num 2 0, Json.num 3 0])
-#guard (GParser.run? parser "[]".toUTF8) == some (Json.arr [])
+        == some (Json.arr #[Json.num 1 0, Json.num 2 0, Json.num 3 0])
+#guard (GParser.run? parser "[]".toUTF8) == some (Json.arr #[])
 #guard (GParser.run? parser "[ 1 , 2 ]".toUTF8)               -- whitespace around array elements
-        == some (Json.arr [Json.num 1 0, Json.num 2 0])
-#guard (GParser.run? parser "{}".toUTF8) == some (Json.obj [])
+        == some (Json.arr #[Json.num 1 0, Json.num 2 0])
+#guard (GParser.run? parser "{}".toUTF8) == some (Json.obj #[])
 #guard (GParser.run? parser "  { \"a\" : true , \"b\" : [1] }  ".toUTF8)
-        == some (Json.obj [("a", Json.bool true), ("b", Json.arr [Json.num 1 0])])
+        == some (Json.obj #[("a", Json.bool true), ("b", Json.arr #[Json.num 1 0])])
 -- strict RFC-8259 rejections
 #guard (GParser.run? parser "01".toUTF8) == none            -- leading zero
 #guard (GParser.run? parser "1.".toUTF8) == none            -- trailing dot
@@ -431,10 +433,10 @@ open Grip Grip.Json
 #guard toString (Json.num (-5) 1) == "-0.5"
 #guard toString (Json.int 42) == "42"
 #guard toString (Json.str "a\nb\"c") == "\"a\\nb\\\"c\""
-#guard toString (Json.arr [Json.int 1, Json.int 2]) == "[1,2]"
-#guard toString (Json.obj [("a", Json.bool true)]) == "{\"a\":true}"
+#guard toString (Json.arr #[Json.int 1, Json.int 2]) == "[1,2]"
+#guard toString (Json.obj #[("a", Json.bool true)]) == "{\"a\":true}"
 #guard
-  (let v := Json.obj [("a", Json.arr [Json.num 25 1, Json.null]), ("b", Json.str "x\ty")]
+  (let v := Json.obj #[("a", Json.arr #[Json.num 25 1, Json.null]), ("b", Json.str "x\ty")]
    parse! (toString v) == .ok v)
 
 end
