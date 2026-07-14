@@ -1,196 +1,175 @@
-# grip benchmark results
+# grip JSON benchmark
 
-Input: `bench/data/canada.json` (~2.1 MB, the standard nativejson-benchmark GeoJSON file).
-Machine: Apple Silicon, arm64-darwin. Toolchain: `leanprover/lean4:v4.28.0`, native C.
+grip is a byte-level parser-combinator library for Lean 4 that carries a static grade on every
+parser and a machine-checked soundness proof (see `grip-props/`). This file measures it against
+other parser-combinator libraries on one fixed task, plus a hand-written scanner (the runtime
+floor) and two different-model references.
 
-**grip is a grammar-strict RFC-8259 validator.** It rejects malformed numbers (`00`, `1e`,
-`1.`), bad string escapes, and trailing garbage after a value. The two in-repo Lean baselines
-(`StdParsecJson`, `HandScanner`) were rewritten to match the same grammar, so those three-way
-comparisons are same-task. The cross-language parsers (`nom`, `attoparsec`) remain loose
-shape-only scanners -- they accept tokens the grammar forbids -- so grip's gap to them is
-conservative: a strict competitor would only be slower. On the valid benchmark files all parsers
-still report count **111130**.
+## Task
 
-**Method.** Best-of-20 wall time via `IO.monoNanosNow`, self-timed, input preloaded, with a
-`@[noinline]` barrier so the parse cannot be hoisted past the timer. The cross-language parsers
-(`bench/cross-lang/`) use the equivalent method in their own runtime.
+Strict RFC-8259 validate and count leaf scalars, no DOM. Every parser rejects malformed numbers
+(`00`, `1.`, `1e`), bad string escapes, unescaped control bytes, and trailing garbage, then
+returns a leaf count: number / string / keyword = 1, object keys not counted, arrays and objects
+sum their children. On the three files every same-task row returns the identical count, the
+correctness gate:
 
-**Machine state matters; compare ratios.** All Lean rows in each table were measured in the same
-session, back to back, so the **ratios between parsers are the reliable, state-invariant
-quantity**; read them, not the absolute milliseconds.
+| file                | bytes  | leaves | character |
+|---------------------|-------:|-------:|-----------|
+| `canada.json`       | 2.1 MB | 111130 | ~99% numbers |
+| `citm_catalog.json` | 1.6 MB |  16390 | objects, keys, nesting |
+| `twitter.json`      | 616 KB |  11600 | strings, Unicode, escapes |
 
-## JSONTestSuite conformance
+The shared task definition each harness implements is `bench/cross-lang/TASK.md`.
 
-grip is a grammar-strict RFC-8259 validator and a JSONTestSuite `parsers/` entry
-(`parsers/test_grip.sh`, exit 0/1). Against the vendored `test_parsing/` corpus
-(`lake exe conformance`):
+## Method
 
-    y: 95/95 accepted · n: 186/186 rejected (allow-accept 0) · i: 31 accepted / 4 rejected · excluded: 2
+Best-of-20, input preloaded into memory, timing excludes I/O, a barrier (`@[noinline]` /
+`black_box` / `Sys.opaque_identity` / an `IO.Ref` sink) prevents the compiler eliding the parse.
+The Lean rows are timed in-process by `bench/Bench.lean` (prim-parser by its own harness, same
+technique); each cross-language harness times itself in its own runtime. Numbers are one session.
 
-Grammar-strict ceiling (documented non-goals): invalid-UTF-8 `n_` files are accepted (no UTF-8
-validation) and deep-nesting `n_` files are excluded (the recursive `fix` is stack-bounded, not
-trampolined). See `docs/specs/2026-07-13-json-conformance-design.md`. Reproduce grip's verdicts
-under the official driver with `test/run-jsontestsuite.sh`.
+Machine: Apple Silicon (arm64-darwin), Darwin 25.2. **Every toolchain is native arm64**: Lean
+v4.28.0, Rust 1.95, OCaml 5.3.0, and GHC 9.14.1 (installed via arm64 Homebrew; the Haskell rows
+are not emulated).
 
-## Against other Lean parsers (same toolchain, same task)
+Cross-runtime rows are context, not a controlled comparison: garbage collection, reference
+counting, and value boxing differ per runtime. The controlled comparison is the Lean rows (grip,
+Std.Parsec, prim-parser, hand), all native arm64 on the same toolchain.
 
-| parser                                | ms    | grip / it | work             | notes                                               |
-|---------------------------------------|------:|----------:|------------------|-----------------------------------------------------|
-| hand-written scanner (no combinators) |  5.3  |   3.81x   | validate + count | grammar-strict; `bench/Bench.lean` `HandScanner`    |
-| `Std.Internal.Parsec` (std)           | 22.2  |   0.91x   | validate + count | grammar-strict; byte-level std combinators          |
-| **grip (combinators)**                | 20.2  |   1.00x   | validate + count | grammar-strict; `examples/Json.lean`, grades + soundness |
-| `Lean.Json` (built-in)               | ~72   |   --      | full DOM build   | builds a tree -- a *different, heavier task*        |
+## Same-task results (ms, lower is better)
 
-The clean comparison is **`Std.Internal.Parsec`**, Lean's own standard combinator library:
-byte-level, same toolchain, same grammar-strict validate-and-count task, identical 111130 count.
-grip is **marginally ahead** -- 0.91x its time -- carrying static grades and machine-checked
-soundness that `Std.Parsec` does not, at **no measurable speed cost** (and ahead by a wider
-margin on the string-heavy files below).
+Each row is a strict validator, non-allocating (no per-element list or `Vec`), bulk-scans string
+bodies, and returns the leaf counts above. Sorted by `canada`.
 
-**Hand-scanner floor.** The strict hand-scanner runs at ~5.3 ms, making grip ~3.8x slower --
-a larger gap than the 1.54x reported in the prior loose-scanner era. This is not a grip
-regression. The old loose scanner was ~16.5 ms; the new strict scanner is ~5.3 ms because it
-inlines byte checks directly rather than passing a per-byte closure (`scanWhile a (· != 34)`),
-and it validates strictly. grip itself is unchanged (~20 ms on AC). The runtime floor got faster
-(a better-written strict scanner), which honestly reveals grip's combinator overhead: one
-`ParseResult` allocation per combinator step and `GParser` struct dispatch that the specializer
-does not reach. grip is not slower; the floor is better.
+| parser                                  | canada | citm  | twitter | runtime      |
+|-----------------------------------------|-------:|------:|--------:|--------------|
+| nom (Rust)                              |   1.70 |  1.24 |    0.49 | rustc 1.95   |
+| hand-written scanner (Lean, no combinators) | 5.12 | 2.93 | 1.23 | Lean v4.28.0 |
+| megaparsec (Haskell)                    |   9.86 |  4.45 |    1.72 | GHC 9.14.1   |
+| attoparsec (Haskell)                    |  12.76 |  5.07 |    2.01 | GHC 9.14.1   |
+| **grip** (Lean)                         |  19.38 |  7.73 |    2.88 | Lean v4.28.0 |
+| Std.Internal.Parsec (Lean)              |  21.34 | 11.17 |    4.89 | Lean v4.28.0 |
+| angstrom (OCaml)                        |  39.04 | 12.56 |    3.79 | OCaml 5.3.0  |
+| prim-parser (Lean, deep-embedded)       |  71.01 | 32.29 |   10.89 | Lean v4.28.0 |
 
-An earlier version of this file claimed grip was "1.7x faster" than `Std.Internal.Parsec`. That
-was an artifact of an unfair `Std.Parsec` implementation using `many (satisfy _)`, which builds
-and discards an `Array` per token. Replacing that with non-allocating `skipWhile` roughly halved
-its time and erased the gap.
+Versions: attoparsec 0.14.4, megaparsec 9.8.1, nom 7.1.3, angstrom 0.16.1; prim-parser is the
+sibling `research/prim-parser` `G` (Graded) framework. Each uses its own library's idiomatic
+combinators; none builds a DOM.
 
-`Lean.Json` is the built-in and builds a full DOM, strictly more work than validate-and-count,
-so it is not a controlled comparison; it is shown for reference, not as a grip "win".
+## Reading the numbers
 
-## Beyond canada.json: the rest of the nativejson suite
+grip is a mid-pack combinator parser, and the fastest one in the Lean set.
 
-canada.json is ~99% numbers, so it exercises number scanning and array folding but little else.
-The other two standard nativejson-benchmark files stress the parts it does not: `citm_catalog.json`
-(1.7 MB, object/key/nesting-heavy) and `twitter.json` (632 KB, string/Unicode/escape-heavy). Both
-contain escaped quotes (`\"`), so both grip and the `Std.Internal.Parsec` reference validate
-string bodies strictly. grip scans a string literal in a single validated pass
-(`GParser.stringLit`: a total escape-aware scanner that validates `\uXXXX` and rejects unescaped
-control bytes, in the same spirit as the built-in loose `takeStringBody`); Std.Parsec uses a
-direct recursive `any`-based scan. Both parsers are grammar-strict and return the identical leaf
-count on each file (grip and Std.Parsec agree with `jq`'s `[.. | scalars] | length`), so it is
-the same task.
+**Lean, same toolchain (the controlled set).** grip is the fastest combinator parser in Lean. It
+beats `Std.Internal.Parsec` on every file (~1.1x canada, ~1.45x citm, ~1.7x twitter -- first-byte
+`dispatch` and the single-pass `stringLit` scanner), and it beats **prim-parser, its own
+predecessor, by ~3.6x** (19.4 vs 71.0 on canada). prim-parser's `G` framework is a deep-embedded,
+reified combinator GADT interpreted at run time; grip is a shallow embedding -- each combinator is
+a direct function over `ByteArray → Nat → ParseResult`, with no reified tree to walk. That
+representation difference is the gap. grip sits ~3.8x above the hand-written Lean floor (5.12 ms),
+which is the combinator overhead over raw byte recursion in the same runtime.
 
-| file       | leaves | grip ms | Std.Parsec ms | grip vs Std.Parsec |
-|------------|-------:|--------:|--------------:|--------------------|
-| canada     | 111130 |  ~20.2  |     ~22.2     | grip ~1.10x faster |
-| citm       |  16390 |   ~8.1  |     ~11.8     | grip ~1.46x faster |
-| twitter    |  11600 |   ~3.0  |      ~5.1     | grip ~1.70x faster |
+**Cross-language combinator libraries.** Both mature Haskell libraries beat grip on native arm64:
+megaparsec (9.86) and attoparsec (12.76). angstrom (OCaml, 39.0) is slower than grip, ~3x
+attoparsec, even after removing its per-array list allocation and switching to bulk string
+scanning -- its per-combinator overhead dominates. Strict-eval native FP does not by itself make a
+combinator library fast.
 
-grip is **faster than `Std.Internal.Parsec` across the whole suite**: ~1.1x on number-heavy
-canada, and ~1.5-1.7x on the object- and string-heavy files, where grip's first-byte `dispatch`
-and single-pass `stringLit` scanner beat Std.Parsec's per-byte monadic navigation. twitter --
-once grip's worst case at ~2x *behind*, when the string body was a per-byte `foldMany` combinator
--- is now grip's best ratio after that path was replaced with the `stringLit` scanner (see
-"Validated string scanner" below). (Measured back to back in one session; read the ratios.)
+**Runtime floor.** nom (Rust) is ~11x grip on canada and leads every file. That gap is the
+systems-language runtime (borrowed slices, no boxing, no reference counting), not the combinator
+model; it holds across datasets.
 
-## Cross-language context (different runtimes; prior measurements)
+**What grip offers.** grip is the fastest combinator parser in Lean and the only one here that
+carries a static grade on every parser (the compile-time consumption/error contract), a
+machine-checked soundness proof, and a kernel-total `fix`. It is beaten only by Rust (runtime) and
+by two mature Haskell combinator libraries; it beats Lean's `Std.Internal.Parsec`, OCaml's
+angstrom, and its own deep-embedded predecessor.
 
-Measured previously on this machine, same task, same file (`bench/cross-lang/`). These parsers
-are **loose shape-only scanners** (nom and attoparsec accept tokens the RFC-8259 grammar forbids);
-grip is grammar-strict, so the comparison is conservative for grip. No Rust/Haskell toolchain is
-present in this repo for re-measurement; the figures below are prior measurements, not from this
-bench run.
+## Different model / task (context only)
 
-| parser                | ms    | grip / it | runtime                              |
-|-----------------------|------:|----------:|--------------------------------------|
-| Rust `nom`            |  2.57 |  ~9.9x    | rustc 1.95, `fold_many0`, byte-level, loose |
-| Haskell `attoparsec`  | 22.7  |  ~1.1x    | GHC 9.10.1, byte-level, no DOM, loose      |
-| grip                  | 25.4  |  1.00x    | Lean v4.28.0, grammar-strict               |
+Not the same-task comparison -- shown for completeness.
 
-grip is **level with attoparsec** (~1.1x, both combinator parsers) and about **10x off Rust
-`nom`**. The nom gap is the Lean-versus-Rust runtime floor (reference counting, bounds-checked
-indexing, no borrowed slices), not the combinator model. Because nom and attoparsec are loose
-scanners, a strict Rust/Haskell counterpart would only be slower; the shown gap overstates grip's
-disadvantage. These are different-runtime context, not a controlled comparison.
+| parser                    | canada | citm | twitter | note                                             |
+|---------------------------|-------:|-----:|--------:|--------------------------------------------------|
+| lean4-parser (Lean, char) | 103.0  | 66.7 |   17.9  | `Char`-level (decodes UTF-8 per token); its byte mode is broken on v4.28.0 (fixed only in v4.32) |
+| Lean.Json (Lean, DOM)     |  69.4  |  5.7 |    4.0  | builds a full `Lean.Json` tree -- strictly more work than validate-and-count |
+
+lean4-parser (fgdorais, rev `d8428e2`) is `Char`-level here because its `ByteSlice` backend
+back-tracks incorrectly on v4.28.0; decoding UTF-8 to `Char` per token is most of its cost.
+`Lean.Json` is the built-in DOM parser -- on object-heavy citm it beats grip's validator, but it
+is doing a different, heavier job.
+
+## Fairness
+
+Every same-task harness: (1) validates the RFC grammar (rejects bad numbers / escapes / control
+bytes / trailing garbage); (2) is non-allocating -- no `sepBy` / `separated_list` / `sep_by1`
+building a throwaway container per array; (3) bulk-scans safe string runs then branches on
+escapes (the fast idiom grip, nom, and the hand scanner all use); (4) returns the identical
+counts; (5) parses the grammar with the *library's own combinators*, not a hand-rolled byte
+scanner. Four issues were fixed while assembling this table:
+
+- angstrom's `sep_by1` built an int list per array -> non-allocating fold.
+- the attoparsec / megaparsec string bodies validated byte-by-byte -> bulk `takeWhile` + escape branch.
+- the Haskell rows were first measured under Rosetta (x86_64) -> re-measured on native arm64 GHC.
+- the prim-parser harness was first a **hand-written byte scanner** (raw `arr[i]!` recursion,
+  touching prim-parser only for whitespace) -> rewritten as a real `G`-framework combinator parser
+  (`gJson`, `starFold`, `grecur`, `satisfy`/`takeWhile1`). That correction moved prim-parser from a
+  spurious 8 ms (a hand scanner in disguise) to its true 71 ms.
+
+## Reproduce
+
+```
+lake exe bench                                     # Lean rows (grip, Std.Parsec, hand, Lean.Json)
+cd bench/cross-lang/nom         && cargo run --release -- <file>
+cd bench/cross-lang/atto        && cabal run atto-bench -- <file>
+cd bench/cross-lang/megaparsec  && cabal run megaparsec-bench -- <file>
+cd bench/cross-lang/angstrom    && dune exec ./main.exe -- <file>
+cd bench/cross-lang/lean4-parser && lake build && .lake/build/bin/L4pBench <file>
+cd bench/cross-lang/prim-parser && lake exe cache get && lake build && .lake/build/bin/gripjson <file>
+```
+
+`<file>` is one of `bench/data/{canada.json,citm_catalog.json,twitter.json}`. The prim-parser
+harness path-requires the sibling `research/prim-parser` repo and pulls mathlib from the prebuilt
+cache (`lake exe cache get`); its `.lake` is large and git-ignored. On arm64 macOS install native
+GHC with `brew install ghc cabal-install` so the Haskell rows are not run under Rosetta.
 
 ## Where grip's time goes
 
-The same leaf-count parse, several ways, on canada.json (all count 111130). The grip rows are
-grip's own optimization history (each an on-AC representation change, the grade algebra unchanged
-throughout); the floor rows are current measurements from this session.
+The same parse, several ways, on canada.json (all count 111130):
 
-| approach                                     | parse_ms | note                                          |
-|----------------------------------------------|---------:|-----------------------------------------------|
-| Rust `nom` (byte-level, `fold_many0`)        |    ~2.6  | monomorphized, borrowed slices, no boxing; loose |
-| hand-written Lean scanner (no combinators)   |    ~5.3  | grammar-strict; Lean runtime floor (RC, bounds checks) |
-| **grip today** (scan loops specialized)      |  ~19.7 (this run) / ~20 (AC) | combinators; predicate monomorphized in-loop |
-| grip before `@[specialize]`                  |  ~34 (AC) | scan predicate called indirectly per byte     |
-| grip before single-constructor result        |  ~40 (AC) | two heap objects per step (`Except` + `Prod`) |
+| approach                                   | canada ms | note                                          |
+|--------------------------------------------|----------:|-----------------------------------------------|
+| nom (Rust)                                 |     ~1.7  | borrowed slices, no boxing, no RC             |
+| hand-written Lean scanner (no combinators) |     ~5.1  | the Lean runtime floor                        |
+| **grip today**                             |    ~19    | combinators; scan loops specialized, single-pass string scanner |
+| grip before `@[specialize]` scan loops     |    ~34    | per-byte predicate called indirectly          |
+| grip before single-constructor result      |    ~40    | two heap objects per step (`Except` + `Prod`) |
+| prim-parser (deep-embedded `G`)            |    ~71    | reified combinator GADT interpreted at run time |
 
-- `Except`+`Prod` to one constructor (~40 to ~34, AC): a success now allocates one object.
-- `@[specialize]` the scan loops (~34 to ~20, AC): the per-byte predicate was the dominant cost,
-  called indirectly once per byte. Monomorphizing it into the loop recovered that, with no CPS
-  and no redesign; the combinator model stayed intact.
-- grip vs hand-written Lean (~3.7x this run): the residue is one `ParseResult` object per
-  combinator step and the `GParser` struct and closure dispatch the specializer does not reach.
-  The floor is now faster (strict inline byte checks vs the old closure-based loose scanner),
-  which honestly reveals more overhead than the prior 1.54x figure. grip did not regress.
-- hand-written Lean vs nom (~2x here): the Lean runtime floor. That part is the language.
+grip's own optimization history (grade algebra unchanged throughout):
 
-grip is a competitive combinator parser -- level with Lean's own `Std.Internal.Parsec` on
-number-heavy input and with Haskell's `attoparsec` on the same task -- that additionally
-validates the full RFC-8259 grammar and keeps machine-checked soundness at no measurable speed
-cost versus Std.Parsec. A systems-language library like `nom` is still ~10x faster; that gap is
-the runtime, not the design.
+- **Single-constructor result** (`Except Err (α × Nat)` to `ParseResult α`): one heap object per
+  success, not two. ~40 to ~34 ms.
+- **`@[specialize]` the scan loops**: the per-byte predicate was called indirectly once per byte;
+  monomorphizing it into the loop recovered that. ~34 to ~20 ms.
+- **First-byte `dispatch`**: peek the leading byte and jump to the branch instead of an `alt`
+  chain that failed a keyword scan on every number. ~18% on canada.
+- **Single-pass string scanner** (`GParser.stringLit`): replaced a per-byte `foldMany` string
+  body with one total escape-aware scanner; twitter ~10 to ~3 ms, citm ~13.6 to ~8.1 ms.
 
-## First-byte dispatch
-
-The JSON value parser used to be `alt keyword (alt number (alt string (alt array object)))`.
-canada.json is about 99% numbers, so every value first failed a keyword scan, a wasted sub-parse
-plus an error allocation, before it reached the number branch. Replacing the `alt` chain with
-`GParser.dispatch` (peek the leading byte, jump straight to the branch) removed that per-node
-waste, about 18% on AC.
-
-## Single-constructor result
-
-The core result used to be `Except Err (α × Nat)`, so a successful step allocated an `Except.ok`
-wrapping a `Prod`, two heap objects. Collapsing it to `ParseResult α = ok value offset | error e`
-makes a success a single object, ~40 to ~34 ms on AC. Every combinator, the witnesses, and the
-`grip-props` metatheory were ported with no loss of features and no new `sorry`.
-
-## Specialize the scan loops
-
-The largest single win. `scanFwd`/`foldFwd`/`natFwd` are the tight inner loops; as plain `def`s
-their function arguments (the byte predicate, the fold step) were closures called indirectly once
-per byte across 2 MB. Marking them `@[specialize]` (and `@[inline]` on `weaken`/`weakenFallible`)
-lets Lean monomorphize a statically-known predicate straight into the loop, so the per-byte call
-disappears: ~34 to ~20 ms on AC, about 40%. A one-word attribute, the combinator model intact.
-
-## Validated string scanner
-
-The strict JSON string used to be `byteC '"' *> foldMany strChar *> byteC '"'` -- a per-byte
-combinator (`strChar = unescaped <|> "\\"-escape`) folded over the body. On string/escape-heavy
-input that per-byte dispatch dominated: twitter ran ~10 ms, about 2x *behind* `Std.Internal.Parsec`.
-Replacing the body with `GParser.stringLit` -- a single total, escape-aware scanner in
-`Grip/Scan.lean` (validates `\uXXXX`, rejects unescaped control bytes; `conditional` grade with the
-same four soundness witnesses as `takeWhile1`) -- collapsed that to one pass: twitter ~10 to ~3.0 ms
-(now ~1.7x *ahead* of Std.Parsec), citm ~13.6 to ~8.1 ms, canada unchanged (few strings).
-Conformance is unchanged (95/95 accept, 186/186 reject) -- the scanner validates the identical
-grammar the combinator did. The grade algebra and metatheory are untouched: `stringLit` is a new
-leaf primitive proved sound like the existing scanners, no `sorry`, `grip-props` still green.
+grip sits ~3.8x above the hand-written Lean floor (the combinator overhead in the same runtime)
+and ~3.6x below prim-parser's reified `G` interpreter -- the shallow-versus-deep embedding choice
+is the dominant factor between the two Lean combinator libraries.
 
 ## All example parsers
 
-`lake exe bench` times every example parser, best-of-20. JSON runs on canada.json and TOML on a
-real `Cargo.lock` (vendored under `bench/data/`); the rest run on inputs generated at startup.
-These are grip-only throughput (its combinators across recursive, line-oriented, and nested
-grammars), not cross-library comparisons. Figures below are from this run.
+`lake exe bench` also times the other example grammars on generated inputs (grip-only throughput,
+not a cross-library comparison):
 
-| parser | input                    | count  |  ms   |
-|--------|--------------------------|-------:|------:|
-| json   | canada.json, 2.1 MB      | 111130 | ~19.7 |
-| sexp   | 200 KB, 50k atoms        |  50000 |  ~5.0 |
-| lambda | 100 KB application       |    ok  |  ~3.8 |
-| http   | 80 KB, 10k headers       |  10000 |  ~1.1 |
-| toml   | cargo.lock, 72 KB        |    307 |  ~0.8 |
-| yaml   | 90 KB, 30k scalars       |  30001 |  ~4.5 |
-
-Update the Lean rows by running `lake exe bench`. The cross-language rows (`bench/cross-lang/`)
-require a machine with Rust and GHC toolchains and must be updated separately.
+| parser | input                | count  |  ms  |
+|--------|----------------------|-------:|-----:|
+| sexp   | 200 KB, 50k atoms    |  50000 | ~5.0 |
+| lambda | 100 KB application   |    ok  | ~3.8 |
+| http   | 80 KB, 10k headers   |  10000 | ~1.1 |
+| toml   | cargo.lock, 72 KB    |    307 | ~0.8 |
+| yaml   | 90 KB, 30k scalars   |  30001 | ~4.5 |

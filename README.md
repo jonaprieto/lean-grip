@@ -9,7 +9,7 @@ the type checker rejects it up front.
 [![CI](https://github.com/jonaprieto/grip/actions/workflows/ci.yml/badge.svg)](https://github.com/jonaprieto/grip/actions/workflows/ci.yml)
 [![Lean](https://img.shields.io/badge/Lean-v4.28.0-blue)](lean-toolchain)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
-[![canada.json](https://img.shields.io/badge/canada.json-~20ms%20(14x%20vs%20lean4--parser)-blue)](bench/RESULTS.md)
+[![JSON benchmark](https://img.shields.io/badge/canada.json-~19ms%20%2F%202.1MB-blue)](bench/RESULTS.md)
 
 ## Status
 
@@ -139,11 +139,13 @@ def sexp : GParser conditional Sexp :=
 
 grip is a parser-combinator library: composable grammars that read clearly, with a
 compile-time consumption guarantee (the [gate](#the-gate)) and machine-checked soundness.
-It is also fast. On canada.json it runs level with Haskell's attoparsec and within about
-1.5x of a hand-written Lean byte scanner, so the ergonomics rarely cost you anything. A
-bespoke scanner or a systems-language library like Rust's `nom` will still beat it on raw
-throughput; go there when the last few milliseconds matter more than grammar clarity and
-the many-gate safety. The numbers are in [bench/RESULTS.md](bench/RESULTS.md).
+It is a mid-pack combinator parser, and the fastest one in Lean. On canada.json (2.1 MB) it
+parses in ~19 ms -- faster than Lean's own `Std.Internal.Parsec`, OCaml's angstrom, and its
+deep-embedded predecessor prim-parser, but slower than Haskell's attoparsec and megaparsec and
+~11x slower than Rust's `nom`. What it gives you that none of the faster ones do is a compile-time
+consumption guarantee (the [gate](#the-gate)), a machine-checked soundness proof, and a
+kernel-total `fix`. Full per-dataset numbers across eight parsers are in
+[bench/RESULTS.md](bench/RESULTS.md).
 
 ## Benchmarks
 
@@ -154,11 +156,14 @@ scanner.
 
 ![canada.json parse time](bench/results.svg)
 
-Both validating, grip comes in roughly 14x faster than lean4-parser and lands next to
-Haskell's attoparsec. The exact numbers, the methodology, the optimization path, and the
-cross-language comparison (`Lean.Json`, Rust's `nom`, a hand-written Lean scanner) all live
-in [bench/RESULTS.md](bench/RESULTS.md), which is the single source of truth. Regenerate
-them with `lake exe bench` and `sh bench/mkchart.sh`.
+All rows validate strictly and return the same leaf count, on native arm64 toolchains. grip is the
+fastest combinator parser in Lean -- it beats `Std.Internal.Parsec`, OCaml's angstrom, and its
+predecessor prim-parser -- but is beaten by Haskell's attoparsec and megaparsec and (by ~11x)
+Rust's `nom`; it trades that raw speed for grades, soundness, and total recursion. Per-dataset
+numbers across attoparsec, megaparsec, nom, angstrom, prim-parser, `Std.Internal.Parsec`,
+`Lean.Json`, and lean4-parser, the methodology, and the optimization path live in
+[bench/RESULTS.md](bench/RESULTS.md), the single source of truth. Regenerate the Lean rows with
+`lake exe bench` and the cross-language rows from `bench/cross-lang/`.
 
 ## Packages
 
