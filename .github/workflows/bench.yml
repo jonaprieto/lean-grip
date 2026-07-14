@@ -138,6 +138,13 @@ jobs:
           path: ~/.elan
           key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}
 
+      # Put elan/lake on PATH (installs elan on a cache miss). Without this the harness
+      # build fails with `lake: command not found`.
+      - uses: leanprover/lean-action@v1
+        with:
+          build: false
+          test: false
+
       # prim-parser (the deep-embedded G framework this repo forks from) lives in a sibling
       # repo pinned here; its harness path-requires ../../../../prim-parser. The pinned rev
       # must be reachable in the source repo: set repo variables PRIMPARSER_REPO /
