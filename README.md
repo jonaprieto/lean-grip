@@ -115,7 +115,7 @@ in CI:
 
 | file | grammar |
 |------|---------|
-| [Json.lean](examples/Json.lean)     | byte-level JSON (the benchmark)  |
+| [Json.lean](examples/Json.lean)     | byte-level JSON, RFC-8259 conformant (the benchmark) |
 | [Sexp.lean](examples/Sexp.lean)     | S-expressions                    |
 | [Lambda.lean](examples/Lambda.lean) | untyped lambda calculus          |
 | [Http.lean](examples/Http.lean)     | HTTP request line + headers      |
@@ -135,6 +135,17 @@ def sexp : GParser conditional Sexp :=
     GParser.ws *> GParser.dispatch fun b => if b == Ascii.lparen then list else atom
 ```
 
+## JSON conformance
+
+The [JSON example](examples/Json.lean) is a grammar-strict RFC-8259 validator, not a benchmark
+toy. It rejects malformed numbers (`00`, `1e`, `1.`), bad string escapes, unescaped control bytes,
+and trailing garbage. The vendored [nst/JSONTestSuite](https://github.com/nst/JSONTestSuite) corpus
+runs as a CI gate (`lake exe conformance`): **95/95** `y_` files accepted, **186/186** `n_` files
+rejected. grip is also a JSONTestSuite `parsers/` entry (`parsers/test_grip.sh`), runnable under the
+official `run_tests.py` via `test/run-jsontestsuite.sh`. The grammar-strict ceiling is documented:
+no UTF-8 byte validation, and deeply nested inputs are not stack-safe (the recursive `fix` is
+bounded by input length, not trampolined).
+
 ## When to reach for grip
 
 grip is a parser-combinator library: composable grammars that read clearly, with a
@@ -151,10 +162,8 @@ kernel-total `fix`. Full per-dataset numbers across eight parsers are in
 
 Parsing canada.json (~2.1 MB, the standard nativejson-benchmark GeoJSON file), best-of-20,
 self-timed. grip's parser is [`examples/Json.lean`](examples/Json.lean), built entirely
-from grip combinators (`fix`, `dispatch`, `foldMany`, `takeWhile1`), not a hand-rolled
-scanner.
-
-![canada.json parse time](bench/results.svg)
+from grip combinators (`fix`, `dispatch`, `foldMany`, `takeWhile1`, `stringLit`), not a
+hand-rolled scanner.
 
 All rows validate strictly and return the same leaf count, on native arm64 toolchains. grip is the
 fastest combinator parser in Lean -- it beats `Std.Internal.Parsec`, OCaml's angstrom, and its
