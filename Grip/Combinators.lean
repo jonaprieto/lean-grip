@@ -2,6 +2,11 @@
 Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
+
+Inspired by prim-parser by Jan Mas Rovira
+(https://github.com/janmasrovira/prim-parser): the grade-tracking combinator
+style and the guardedness gate on `many`. The combinators themselves follow
+the standard megaparsec/parsec vocabulary.
 -/
 import Grip.Parser
 import Grip.Ascii
