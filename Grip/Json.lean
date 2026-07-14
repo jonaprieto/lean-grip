@@ -3,13 +3,17 @@ Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
 
-The inductive `Json` value and the char-dispatched recursive descent are adapted
-from Examples/Json.lean in prim-parser by Jan Mas Rovira
-(https://github.com/janmasrovira/prim-parser): the six-constructor value type and
-the peek-then-branch shape. grip's version keeps the strict RFC-8259 grammar of
-`Grip.Examples.Json`, splits numbers into exact `Int` / `Float`, and decodes string
-escapes; it builds values with `GParser.capture` over the byte core rather than a
-size-indexed vector.
+The inductive `Json` value type and the peek-then-branch (char-dispatched) recursive
+descent are adapted from Examples/Json.lean in prim-parser by Jan Mas Rovira
+(https://github.com/janmasrovira/prim-parser, commit d34c6f0, 2026-07-04): the
+constructor shape and the dispatch-on-first-character structure.
+
+The number representation follows Lean's `Lean.Data.Json.JsonNumber`: a number is an
+exact `mantissa * 10 ^ (-exponent)` with `mantissa : Int` and `exponent : Nat`, so no
+value is rounded (unlike a `Float`).
+
+grip keeps the strict RFC-8259 grammar of `Grip.Examples.Json` and builds values with
+`GParser.capture` over the flat byte core, rather than prim-parser's size-indexed vector.
 -/
 
 import Grip
@@ -28,9 +32,9 @@ zeros (`01`), trailing dots (`1.`), bare exponents (`1e`), trailing commas, bad
 escapes and trailing garbage are all rejected. Each grammar arm additionally builds a
 value:
 
-- numbers are captured (`GParser.capture`) as their verbatim lexeme and decoded to
-  `.int` when they are integer-valued, or `.num` (a `Float`, via `Float.ofScientific`
-  on the mantissa and base-10 exponent) when a fraction or exponent is present;
+- numbers are captured (`GParser.capture`) as their verbatim lexeme and decoded to an
+  exact `.num mantissa exponent` (the value `mantissa * 10 ^ (-exponent)`); no `Float`
+  is involved, so no value is rounded;
 - strings are captured and their escapes decoded (`\n`, `\"`, `\uXXXX`, and UTF-16
   surrogate pairs);
 - arrays and objects recurse through `GParser.fix`.
@@ -43,13 +47,13 @@ namespace Grip.Json
 
 open Grip
 
-/-- A JSON value. Numbers split into exact `int` (integer literals) and `num` (a
-`Float`, for literals with a fraction or exponent), so integers keep full precision. -/
+/-- A JSON value. A number is the exact rational `num mantissa exponent`, denoting
+`mantissa * 10 ^ (-exponent)` with `mantissa : Int` and `exponent : Nat` (Lean's
+`JsonNumber` shape); an integer literal `n` is `num n 0`. Nothing is rounded. -/
 inductive Json where
   | null
   | bool (b : Bool)
-  | int  (i : Int)
-  | num  (n : Float)
+  | num  (mantissa : Int) (exponent : Nat)
   | str  (s : String)
   | arr  (xs : List Json)
   | obj  (kvs : List (String × Json))
@@ -124,19 +128,18 @@ private def nStep (st : NState) (c : Char) : NState :=
     else if st.phase == 1 then { st with mant := st.mant * 10 + d, fracLen := st.fracLen + 1 }
     else { st with expVal := st.expVal * 10 + d }
 
-/-- Decode a validated JSON number lexeme: `.int` when integer-valued, else `.num`
-(a `Float` from the mantissa and base-10 exponent, exact up to `Float` rounding). -/
+/-- Decode a validated JSON number lexeme to an exact `.num mantissa exponent`. A
+nonnegative base-10 exponent is folded into the mantissa (so `2e3` is `num 2000 0`),
+keeping `exponent : Nat`; a negative one becomes the exponent (`2.5` is `num 25 1`). -/
 def decodeNumber (s : String) : Json :=
   let cs := s.toList
-  if cs.any (fun c => c == '.' || c == 'e' || c == 'E') then
-    let neg := cs.headD ' ' == '-'
-    let body := if neg then cs.drop 1 else cs
-    let st := body.foldl nStep {}
-    let decExp : Int := (if st.expNeg then -(st.expVal : Int) else (st.expVal : Int)) - st.fracLen
-    let f := Float.ofScientific st.mant (decExp < 0) decExp.natAbs
-    Json.num (if neg then -f else f)
-  else
-    Json.int (s.toInt?.getD 0)
+  let neg := cs.headD ' ' == '-'
+  let body := if neg then cs.drop 1 else cs
+  let st := body.foldl nStep {}
+  let mant : Int := if neg then -(st.mant : Int) else st.mant
+  let decExp : Int := (if st.expNeg then -(st.expVal : Int) else (st.expVal : Int)) - st.fracLen
+  if decExp ≥ 0 then Json.num (mant * (10 ^ decExp.toNat)) 0
+  else Json.num mant (-decExp).toNat
 
 end Decode
 
@@ -242,25 +245,27 @@ open Grip Grip.Json
 #guard (GParser.run? parser "null".toUTF8) == some Json.null
 #guard (GParser.run? parser "true".toUTF8) == some (Json.bool true)
 #guard (GParser.run? parser "false".toUTF8) == some (Json.bool false)
--- integers keep full precision, signs handled
-#guard (GParser.run? parser "42".toUTF8) == some (Json.int 42)
-#guard (GParser.run? parser "-42".toUTF8) == some (Json.int (-42))
-#guard (GParser.run? parser "0".toUTF8) == some (Json.int 0)
--- fraction / exponent / signs => Float
-#guard (GParser.run? parser "2.5".toUTF8) == some (Json.num 2.5)
-#guard (GParser.run? parser "-2.5e3".toUTF8) == some (Json.num (-2500.0))
-#guard (GParser.run? parser "5e-1".toUTF8) == some (Json.num 0.5)
+-- integers are `num n 0`, full bignum precision, signs handled
+#guard (GParser.run? parser "42".toUTF8) == some (Json.num 42 0)
+#guard (GParser.run? parser "-42".toUTF8) == some (Json.num (-42) 0)
+#guard (GParser.run? parser "0".toUTF8) == some (Json.num 0 0)
+#guard (GParser.run? parser "123456789012345678901234567890".toUTF8)
+        == some (Json.num 123456789012345678901234567890 0)
+-- fraction / exponent / signs => exact mantissa * 10^(-exponent), no rounding
+#guard (GParser.run? parser "2.5".toUTF8) == some (Json.num 25 1)
+#guard (GParser.run? parser "-2.5e3".toUTF8) == some (Json.num (-2500) 0)
+#guard (GParser.run? parser "5e-1".toUTF8) == some (Json.num 5 1)
 -- strings: escapes and \u decode
 #guard (GParser.run? parser "\"a\\nb\"".toUTF8) == some (Json.str "a\nb")
 #guard (GParser.run? parser "\"\\u0041\"".toUTF8) == some (Json.str "A")
 #guard (GParser.run? parser "\"\\uD834\\uDD1E\"".toUTF8) == some (Json.str "𝄞")
 -- containers
 #guard (GParser.run? parser "[1,2,3]".toUTF8)
-        == some (Json.arr [Json.int 1, Json.int 2, Json.int 3])
+        == some (Json.arr [Json.num 1 0, Json.num 2 0, Json.num 3 0])
 #guard (GParser.run? parser "[]".toUTF8) == some (Json.arr [])
 #guard (GParser.run? parser "{}".toUTF8) == some (Json.obj [])
 #guard (GParser.run? parser "  { \"a\" : true , \"b\" : [1] }  ".toUTF8)
-        == some (Json.obj [("a", Json.bool true), ("b", Json.arr [Json.int 1])])
+        == some (Json.obj [("a", Json.bool true), ("b", Json.arr [Json.num 1 0])])
 -- strict RFC-8259 rejections
 #guard (GParser.run? parser "01".toUTF8) == none            -- leading zero
 #guard (GParser.run? parser "1.".toUTF8) == none            -- trailing dot
