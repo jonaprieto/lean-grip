@@ -53,10 +53,10 @@ def term : GParser conditional Term :=
     let var : GParser conditional Term :=
       Term.var <$> GParser.capture (GParser.takeWhile1 Ascii.isAlpha)
     let paren : GParser conditional Term :=                        -- '(' term ')'
-      GParser.byteC '(' *> ((GParser.ws *> term) <* (GParser.ws *> GParser.byteC ')'))
+      GParser.ch '(' *> ((GParser.ws *> term) <* (GParser.ws *> GParser.ch ')'))
     let lam : GParser conditional Term :=                          -- '\' var '.' term
-      GParser.byteC '\\' *>
-        (Term.lam <$> name <*> (GParser.ws *> GParser.byteC '.' *> GParser.ws *> term))
+      GParser.ch '\\' *>
+        (Term.lam <$> name <*> (GParser.ws *> GParser.ch '.' *> GParser.ws *> term))
     let atom : GParser conditional Term :=
       GParser.ws *> GParser.dispatch fun b =>
         if b == Ascii.lparen then paren else if b == Ascii.backslash then lam else var

@@ -256,7 +256,7 @@ theorem scanStrLit_le (arr : ByteArray) (q q' : Nat) (h : scanStrLit arr q = som
 
 /-- A validated JSON string literal `"..."` in one scan, returning the number of bytes
 consumed (both quotes included). Fails on a malformed literal (see `scanStrBody`). This is the
-strict, single-pass counterpart to `byteC '"' *> takeStringBody *> byteC '"'`: it validates
+strict, single-pass counterpart to `ch '"' *> takeStringBody *> ch '"'`: it validates
 escapes and rejects control bytes without per-byte combinator dispatch. On failure the furthest
 offset is the current position. -/
 @[inline] def GParser.stringLit : GParser conditional Nat where
