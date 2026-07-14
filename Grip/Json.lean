@@ -224,10 +224,10 @@ private def value : GParser conditional Json :=
     GParser.seqR GParser.ws
       (GParser.dispatch fun b =>
         if b == Ascii.lbrace then
+          -- `value` skips its own leading whitespace, so no `ws` before it after `:` / `,`.
           let pair : GParser conditional (String × Json) :=
             GParser.map2 (fun k v => (k, v)) jstr
-              (GParser.seqR GParser.ws
-                (GParser.seqR (GParser.ch ':') (GParser.seqR GParser.ws value)))
+              (GParser.seqR GParser.ws (GParser.seqR (GParser.ch ':') value))
           let objectBody : GParser flexible (List (String × Json)) :=
             GParser.alt
               (GParser.map2 (fun x xs => x :: xs) pair
@@ -243,12 +243,11 @@ private def value : GParser conditional Json :=
             GParser.alt
               (GParser.map2 (fun x xs => x :: xs) value
                 (GParser.many (GParser.seqR GParser.ws
-                  (GParser.seqR (GParser.ch ',') (GParser.seqR GParser.ws value)))))
+                  (GParser.seqR (GParser.ch ',') value))))
               (GParser.pure [])
           GParser.seqR (GParser.ch '[')
-            (GParser.seqR GParser.ws
-              (GParser.seqL (GParser.map Json.arr arrayBody)
-                (GParser.seqR GParser.ws (GParser.ch ']'))))
+            (GParser.seqL (GParser.map Json.arr arrayBody)
+              (GParser.seqR GParser.ws (GParser.ch ']')))
         else if b == Ascii.quote then jstring
         else if b == 116 then jtrue
         else if b == 102 then jfalse
@@ -355,6 +354,8 @@ open Grip Grip.Json
 #guard (GParser.run? parser "[1,2,3]".toUTF8)
         == some (Json.arr [Json.num 1 0, Json.num 2 0, Json.num 3 0])
 #guard (GParser.run? parser "[]".toUTF8) == some (Json.arr [])
+#guard (GParser.run? parser "[ 1 , 2 ]".toUTF8)               -- whitespace around array elements
+        == some (Json.arr [Json.num 1 0, Json.num 2 0])
 #guard (GParser.run? parser "{}".toUTF8) == some (Json.obj [])
 #guard (GParser.run? parser "  { \"a\" : true , \"b\" : [1] }  ".toUTF8)
         == some (Json.obj [("a", Json.bool true), ("b", Json.arr [Json.num 1 0])])
