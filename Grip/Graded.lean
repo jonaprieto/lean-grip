@@ -8,7 +8,7 @@ import Grip.Grade
 import Grip.Error
 
 /-!
-# Grip.Graded -- the graded byte-parser type
+# Grip.Graded: the graded byte-parser type
 
 `GParser g α` is a `run : ByteArray -> Nat -> ParseResult α` (`ok value pos | error e`,
 one heap object per successful step, no reified tree) plus three *erased* `Prop`
@@ -47,10 +47,10 @@ structure GParser (g : Grade) (α : Type) where
   `never ⇒ q=q'`). -/
   cwit : ∀ {arr q a q'}, run arr q = .ok a q' → consumptionWitness q q' g.consumes
   /-- Error soundness, must-fail direction: a grade claiming `always`-error never
-  succeeds -- for every input there exists a furthest failure `e`. -/
+  succeeds: for every input there exists a furthest failure `e`. -/
   ewit : g.errors = always → ∀ arr q, ∃ e : Err, run arr q = .error e
   /-- Error soundness, must-succeed direction: a grade claiming `never`-error always
-  succeeds -- for every input there exist a value `a` and next offset `q'`. -/
+  succeeds: for every input there exist a value `a` and next offset `q'`. -/
   swit : g.errors = never → ∀ arr q, ∃ a q', run arr q = .ok a q'
   /-- Bounds soundness: a success that starts in bounds ends in bounds
   (`q ≤ arr.size ⇒ q' ≤ arr.size`). Erased, proof-irrelevant. This is the invariant every
@@ -133,15 +133,15 @@ to the whole parser so recursive grammars can be written from combinators. The
 self-reference is `conditional` (always-consuming), so a well-behaved grammar shrinks
 the input before each recursive call.
 
-grip's byte core is not size-indexed -- `run` is `ByteArray → Nat → ParseResult`, with no
-length in the type -- so the kernel cannot see the offset measure `arr.size - q` decrease
+grip's byte core is not size-indexed: `run` is `ByteArray → Nat → ParseResult`, with no
+length in the type, so the kernel cannot see the offset measure `arr.size - q` decrease
 through the opaque transformer `f`. Rather than fall back to `partial def`, `fix` recurses on
 an explicit fuel (`GParser.fixFuel`), structurally decreasing, with the fuel set to the bytes
 remaining (`arr.size - q + 1`). A runtime clamp downgrades any non-advancing success to a
 failure, so every self-*success* advances the offset; the productive nesting depth is
 therefore bounded by the bytes remaining and the chosen fuel never truncates a guarded
 grammar. A left-recursive body (one that reaches its recursive call without consuming)
-exhausts the fuel and fails -- kernel-total, in place of the `partial` loop it would once have
+exhausts the fuel and fails: kernel-total, in place of the `partial` loop it would once have
 been. This makes grip total throughout; see `grip-props/Productivity.lean`. -/
 
 /-- Clamp a raw result so a success that did not advance past `q` becomes a failure at
@@ -155,7 +155,7 @@ without unfolding the fuel recursion. -/
 because the clamp forces every self-*success* to advance the offset, the productive nesting
 depth is bounded by the bytes remaining, so the `arr.size - q + 1` fuel `fix` supplies never
 truncates a guarded grammar. Fuel exhaustion is reached only by a left-recursive (non-advancing)
-body and returns a failure -- the same outcome the clamp already forces for a non-advancing
+body and returns a failure: the same outcome the clamp already forces for a non-advancing
 success, except kernel-total rather than a `partial` loop. -/
 @[specialize] def GParser.fixFuel (f : GParser conditional α → GParser conditional α) :
     Nat → ByteArray → Nat → ParseResult α
