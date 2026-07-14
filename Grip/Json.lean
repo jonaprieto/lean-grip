@@ -127,25 +127,32 @@ private def uStep (st : UState) (c : Char) : UState :=
 /-- Decode the escapes in a JSON string body (no surrounding quotes). -/
 def unescape (s : String) : String := (s.foldl uStep {}).out
 
-/-- Strip the surrounding quotes of a captured string literal, then decode its escapes. -/
+/-- Strip the surrounding quotes of a captured string literal, then decode its escapes.
+Folds `uStep` directly over a `String.Slice` of the quote-stripped body, so there is no
+`List Char` round-trip and no separate unescape pass. When the body has no backslash (the
+common case) it is a single `toString` memcpy instead of a char-by-char rebuild. -/
 def decodeString (raw : String) : String :=
-  unescape (String.ofList ((raw.toList.drop 1).dropLast))
+  let body := raw.toSlice.drop 1 |>.dropEnd 1
+  if body.contains '\\' then (body.foldl uStep {}).out
+  else body.toString
 
-/-- State threaded through `decodeNumber`'s fold over the (sign-stripped) lexeme. -/
+/-- State threaded through `decodeNumber`'s single fold over the whole lexeme. -/
 private structure NState where
   mant    : Nat := 0     -- integer and fractional digits as one natural
   fracLen : Nat := 0     -- number of fractional digits
   phase   : Nat := 0     -- 0 = integer part, 1 = fraction, 2 = exponent
+  mantNeg : Bool := false
   expNeg  : Bool := false
   expVal  : Nat := 0
 
-/-- One step of the float decode. `+`/`-` only occur in the exponent (the leading sign
-is stripped before the fold). -/
+/-- One step of the float decode. A `-` is the mantissa sign in phase 0 and the exponent
+sign in phase 2; `+` only occurs in the exponent. -/
 private def nStep (st : NState) (c : Char) : NState :=
   if c == '.' then { st with phase := 1 }
   else if c == 'e' || c == 'E' then { st with phase := 2 }
   else if c == '+' then st
-  else if c == '-' then { st with expNeg := true }
+  else if c == '-' then
+    (if st.phase == 2 then { st with expNeg := true } else { st with mantNeg := true })
   else
     let d := c.toNat - 48
     if st.phase == 0 then { st with mant := st.mant * 10 + d }
@@ -154,13 +161,11 @@ private def nStep (st : NState) (c : Char) : NState :=
 
 /-- Decode a validated JSON number lexeme to an exact `.num mantissa exponent`. A
 nonnegative base-10 exponent is folded into the mantissa (so `2e3` is `num 2000 0`),
-keeping `exponent : Nat`; a negative one becomes the exponent (`2.5` is `num 25 1`). -/
+keeping `exponent : Nat`; a negative one becomes the exponent (`2.5` is `num 25 1`).
+Folds `nStep` over a `String.Slice` in one pass — no `List Char` round-trip. -/
 def decodeNumber (s : String) : Json :=
-  let cs := s.toList
-  let neg := cs.headD ' ' == '-'
-  let body := if neg then cs.drop 1 else cs
-  let st := body.foldl nStep {}
-  let mant : Int := if neg then -(st.mant : Int) else st.mant
+  let st := s.toSlice.foldl nStep {}
+  let mant : Int := if st.mantNeg then -(st.mant : Int) else st.mant
   let decExp : Int := (if st.expNeg then -(st.expVal : Int) else (st.expVal : Int)) - st.fracLen
   if decExp ≥ 0 then Json.num (mant * (10 ^ decExp.toNat)) 0
   else Json.num mant (-decExp).toNat
