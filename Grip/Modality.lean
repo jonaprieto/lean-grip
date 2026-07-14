@@ -2,6 +2,11 @@
 Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
+
+Adapted from PrimParser/Necessity.lean in prim-parser by Jan Mas Rovira
+(https://github.com/janmasrovira/prim-parser, commit 029a4a1, 2026-05-17):
+the same three-valued modality (never < possibly < always), re-implemented
+here Batteries-only, without the mathlib order/lattice hierarchy.
 -/
 
 /-!
