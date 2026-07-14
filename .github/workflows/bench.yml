@@ -1,11 +1,14 @@
 name: Benchmark
 
-# A `/bench` comment on a PR (from a trusted commenter) builds the PR, runs `lake exe
-# bench`, re-runs it on the PR's base commit, and posts a PR-vs-base table as a comment.
-# issue_comment workflows always run the copy on the default branch, so this only takes
-# effect once merged to main. Adapted from the prim-parser fork's bench workflow.
+# Builds the PR, runs `lake exe bench`, re-runs it on the PR's base commit, and posts a
+# PR-vs-base table as a single sticky comment (updated in place on every push, so the
+# comment always references the current head SHA). Runs automatically on each PR push; a
+# `/bench` comment from a trusted commenter re-runs it on demand. Adapted from the
+# prim-parser fork's bench workflow.
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
   workflow_dispatch:
@@ -16,9 +19,12 @@ permissions:
 
 jobs:
   bench:
-    # Trusted commenters only: this builds and runs PR code.
+    # Auto on PR pushes; `/bench` re-run restricted to trusted commenters (it builds and
+    # runs PR code). Fork PRs get a read-only token on `pull_request`, so the comment step
+    # is guarded below to same-repo PRs.
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'pull_request' ||
       (github.event.issue.pull_request &&
        contains(github.event.comment.body, '/bench') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
@@ -35,12 +41,25 @@ jobs:
 
       - name: Resolve PR head and base
         id: pr
-        if: github.event_name == 'issue_comment'
+        if: github.event_name != 'workflow_dispatch'
         run: |
-          num=${{ github.event.issue.number }}
-          echo "num=$num" >> "$GITHUB_OUTPUT"
-          echo "sha=$(gh api "repos/${{ github.repository }}/pulls/$num" -q .head.sha)" >> "$GITHUB_OUTPUT"
-          echo "base=$(gh api "repos/${{ github.repository }}/pulls/$num" -q .base.sha)" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            num=${{ github.event.pull_request.number }}
+            sha=${{ github.event.pull_request.head.sha }}
+            base=${{ github.event.pull_request.base.sha }}
+            same_repo=${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          else
+            num=${{ github.event.issue.number }}
+            sha=$(gh api "repos/${{ github.repository }}/pulls/$num" -q .head.sha)
+            base=$(gh api "repos/${{ github.repository }}/pulls/$num" -q .base.sha)
+            same_repo=true
+          fi
+          {
+            echo "num=$num"
+            echo "sha=$sha"
+            echo "base=$base"
+            echo "same_repo=$same_repo"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v5
         with:
@@ -73,7 +92,7 @@ jobs:
           echo "== PR ==" && cat pr.txt
           : > base.txt
           if [ -n "${{ steps.pr.outputs.base }}" ]; then
-            git checkout -q "${{ steps.pr.outputs.base }}" -- Grip Grip.lean examples bench lakefile.toml lean-toolchain \
+            git checkout -q "${{ steps.pr.outputs.base }}" -- Grip Grip.lean examples bench lakefile.lean lean-toolchain \
               && lake build bench \
               && lake exe bench > base.txt 2>/dev/null \
               && { echo "== base ==" && cat base.txt; } \
@@ -84,17 +103,22 @@ jobs:
         run: |
           {
             echo '<!-- bench -->'
-            echo "### Benchmark results (canada.json + example parsers)"
+            echo "### Benchmark results (full \`lake exe bench\` suite)"
             echo ""
             echo "PR \`${{ steps.pr.outputs.sha || github.sha }}\` vs base \`${{ steps.pr.outputs.base }}\` -- best-of-20 ms, lower is better. Δ = PR vs base."
             echo ""
+            echo "JSON rows are per input file: \`grip\`/\`std.parsec\`/\`hand\` are leaf-count validators, \`grip.json\`/\`lean.json\` are the DOM-vs-DOM value builders."
+            echo ""
+            # Key each row by parser + input file so the per-file JSON DOM-vs-DOM rows
+            # (grip.json/lean.json x canada/citm/twitter) are kept, not collapsed. Single-file
+            # benches (sexp, lambda, ...) have a `size=`/`count=` second field and key on $1.
             awk '
-              function name() { if ($0 ~ /^count=/) return "json"; if ($1 == "lean.json") return "lean.json"; return $1 }
+              function key() { return ($2 ~ /^(size|count)=/) ? $1 : ($1 " " $2) }
               function getms(  i, a) { for (i = 1; i <= NF; i++) if ($i ~ /^(ms|parse_ms)=/) { split($i, a, "="); return a[2] } return "" }
-              FNR == NR { m = getms(); if (m != "") { n = name(); if (!(n in seen)) { ord[++k] = n; seen[n] = 1 }; pr[n] = m }; next }
-              { m = getms(); if (m != "") base[name()] = m }
+              FNR == NR { m = getms(); if (m != "") { n = key(); if (!(n in seen)) { ord[++k] = n; seen[n] = 1 }; pr[n] = m }; next }
+              { m = getms(); if (m != "") base[key()] = m }
               END {
-                print "| parser | PR ms | base ms | Δ |"
+                print "| benchmark | PR ms | base ms | Δ |"
                 print "|---|--:|--:|--:|"
                 for (i = 1; i <= k; i++) {
                   n = ord[i]
@@ -104,11 +128,16 @@ jobs:
                   printf "| %s | %.2f | %s | %s |\n", n, pr[n], bm, d
                 }
               }' pr.txt base.txt
+            echo ""
+            echo "_Cross-language parsers (Rust nom, Haskell) run in the separate \`bench-crosslang\` workflow. prim-parser is excluded from CI: its harness path-requires a sibling \`research/prim-parser\` checkout; run it locally for that comparison._"
           } > body.md
           cat body.md >> "$GITHUB_STEP_SUMMARY"
 
+      # Sticky comment: --edit-last updates the bot's existing comment in place (so it
+      # tracks the head SHA printed in the body), --create-if-none posts the first one.
+      # Skipped for fork PRs, whose `pull_request` token cannot write comments.
       - name: Post comment
-        if: steps.pr.outputs.num
+        if: steps.pr.outputs.num && steps.pr.outputs.same_repo == 'true'
         run: gh pr comment "${{ steps.pr.outputs.num }}" --body-file body.md --edit-last --create-if-none
 
       - name: React done
