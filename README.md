@@ -170,10 +170,10 @@ bounded by input length, not trampolined).
 
 grip is a parser-combinator library: composable grammars that read clearly, with a
 compile-time consumption guarantee (the [gate](#the-gate)) and machine-checked soundness.
-It is a mid-pack combinator parser, and the fastest one in Lean. On canada.json (2.1 MB) it
-parses in ~19 ms -- faster than Lean's own `Std.Internal.Parsec`, OCaml's angstrom, and its
+It sits mid-pack among combinator parsers. On canada.json (2.1 MB) it parses in ~19 ms --
+in our benchmarks faster than Lean's own `Std.Internal.Parsec`, OCaml's angstrom, and its
 deep-embedded predecessor prim-parser, but slower than Haskell's attoparsec and megaparsec and
-~11x slower than Rust's `nom`. What it gives you that none of the faster ones do is a compile-time
+~11x slower than Rust's `nom`. What it adds that the faster libraries don't is a compile-time
 consumption guarantee (the [gate](#the-gate)), a machine-checked soundness proof, and a
 kernel-total `fix`. Full per-dataset numbers across eight parsers are in
 [bench/RESULTS.md](bench/RESULTS.md).
@@ -185,10 +185,10 @@ self-timed. grip's parser is [`examples/Json.lean`](examples/Json.lean), built e
 from grip combinators (`fix`, `dispatch`, `foldMany`, `takeWhile1`, `stringLit`), not a
 hand-rolled scanner.
 
-All rows validate strictly and return the same leaf count, on native arm64 toolchains. grip is the
-fastest combinator parser in Lean -- it beats `Std.Internal.Parsec`, OCaml's angstrom, and its
-predecessor prim-parser -- but is beaten by Haskell's attoparsec and megaparsec and (by ~11x)
-Rust's `nom`; it trades that raw speed for grades, soundness, and total recursion. Per-dataset
+All rows validate strictly and return the same leaf count, on native arm64 toolchains. In these
+benchmarks grip is faster than `Std.Internal.Parsec`, OCaml's angstrom, and its predecessor
+prim-parser, but slower than Haskell's attoparsec and megaparsec and (by ~11x) Rust's `nom`;
+it trades raw speed for grades, soundness, and total recursion. Per-dataset
 numbers across attoparsec, megaparsec, nom, angstrom, prim-parser, `Std.Internal.Parsec`,
 `Lean.Json`, and lean4-parser, the methodology, and the optimization path live in
 [bench/RESULTS.md](bench/RESULTS.md), the single source of truth. Regenerate the Lean rows with
@@ -212,12 +212,13 @@ result type, first-byte `dispatch`, and the `@[specialize]` scan loops.
 
 ## How this was built
 
-The idea behind grip is mine: a byte parser whose type records whether it can fail
-and whether it consumes input. I called it `GParser`. From there, most of the code
-was written by an LLM (Anthropic's Claude): the combinators, the examples, the
-benchmarks, and the `grip-props` proofs. The graded core comes from prim-parser (see
-above). The combinator names follow megaparsec, and a few other pieces borrow from
-parsers I have used before.
+The idea was simple, and not obviously going to work: take prim-parser's graded
+discipline (see above) -- a parser whose type records whether it can fail and whether
+it consumes input -- and push it onto a byte-level core to see if it held up. It looked
+promising, so I built it out with an LLM (Anthropic's Claude) to find out. Most of the
+code here came from that: the combinators, the examples, the benchmarks, and the
+`grip-props` proofs. The combinator names follow megaparsec, and a few pieces of the
+examples are adapted from prim-parser's own.
 
 ## License
 

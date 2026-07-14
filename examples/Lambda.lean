@@ -2,6 +2,14 @@
 Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
+
+Adapted from Examples/Lambda.lean in prim-parser by Jan Mas Rovira
+(https://github.com/janmasrovira/prim-parser, commit 30d0ad8, 2026-05-08):
+the `Term` inductive (`var`/`lam`/`app`), the grammar decomposition (`fix`
+over term; atom = var or parenthesised term; application as a left fold of
+atoms; a backslash-lambda rule), and the `takeWhile1 isAlpha` identifier
+helper. grip rewrites these onto its byte API -- `dispatch` on the leading
+byte instead of `<|>`, and explicit `ws` instead of `lexeme`.
 -/
 import Grip
 
