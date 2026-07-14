@@ -19,8 +19,8 @@ open Grip
 
 namespace Grip.Grade
 
-/-- `Necessity` join is associative. -/
-private theorem max_assoc (a b c : Necessity) : max (max a b) c = max a (max b c) := by
+/-- `Modality` join is associative. -/
+private theorem max_assoc (a b c : Modality) : max (max a b) c = max a (max b c) := by
   cases a <;> cases b <;> cases c <;> rfl
 
 /-- `Grade` is a monoid under sequential composition (`mul` = componentwise join,

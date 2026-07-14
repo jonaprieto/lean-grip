@@ -4,27 +4,27 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
 -/
 
-import Grip.Necessity
+import Grip.Modality
 
 /-!
 # Grade
 
 Parser grade algebra for grip: `structure Grade` (tracking error and consumption
-`Necessity`), the named grades, `Grade.mul`/`Grade.choice`, and
+`Modality`), the named grades, `Grade.mul`/`Grade.choice`, and
 `consumptionWitness` with its composition lemmas.
 
 No mathlib. `Monoid`/`Lattice` instances for `Grade` belong in grip-props.
 -/
 
-open Necessity
+open Modality
 
 /-- A parser's static grade: whether it may/must produce errors and
     whether it may/must consume input. -/
 structure Grade where
   /-- Whether the parser may/must error: `never`, `possibly`, or `always`. -/
-  errors   : Necessity
+  errors   : Modality
   /-- Whether the parser may/must consume input: `never`, `possibly`, or `always`. -/
-  consumes : Necessity
+  consumes : Modality
   deriving DecidableEq, Repr
 
 namespace Grade
@@ -111,11 +111,11 @@ export Grade (conditional flexible fallible pure lookahead empty impossible)
 
 -- Consumption witness ----------------------------------------------------
 
-/-- Relates remaining size `n` and result size `m` according to a `Necessity` grade:
+/-- Relates remaining size `n` and result size `m` according to a `Modality` grade:
     - `always`   requires strict decrease (`n < m`, i.e. at least one token consumed)
     - `possibly`  allows `≤` (consumed some or none)
     - `never`    requires equality (no input consumed) -/
-abbrev consumptionWitness (n m : Nat) : Necessity → Prop
+abbrev consumptionWitness (n m : Nat) : Modality → Prop
   | always   => n < m
   | possibly => n ≤ m
   | never    => n = m
@@ -124,7 +124,7 @@ namespace consumptionWitness
 
 /-- A reflexive witness holds for any grade `a ≤ possibly`
     (i.e. `a ≠ always`), since no input has been consumed. -/
-@[simp] theorem rfl {n : Nat} {a : Necessity} (h : a ≤ possibly) :
+@[simp] theorem rfl {n : Nat} {a : Modality} (h : a ≤ possibly) :
     consumptionWitness n n a := by
   cases a
   · -- never: n = n
@@ -137,39 +137,39 @@ namespace consumptionWitness
 /-- Transitivity: chain two witnesses through a common midpoint.
     If `gc` witnesses `(n2, n1)` and `gc'` witnesses `(n3, n2)`,
     then `max gc gc'` witnesses `(n3, n1)`. -/
-theorem trans {gc gc' : Necessity} {n1 n2 n3 : Nat}
+theorem trans {gc gc' : Modality} {n1 n2 n3 : Nat}
     (w1 : consumptionWitness n2 n1 gc)
     (w2 : consumptionWitness n3 n2 gc')
     : consumptionWitness n3 n1 (max gc gc') := by
-  -- Bridge `max` to `Necessity.sup` (the `Max` instance body), then unfold
+  -- Bridge `max` to `Modality.sup` (the `Max` instance body), then unfold
   -- `sup` using equation lemmas after making both grade arguments concrete.
-  have max_sup : ∀ a b : Necessity, max a b = Necessity.sup a b := by intros; rfl
+  have max_sup : ∀ a b : Modality, max a b = Modality.sup a b := by intros; rfl
   cases gc <;> cases gc' <;>
-    simp only [consumptionWitness, max_sup, Necessity.sup] at * <;>
+    simp only [consumptionWitness, max_sup, Modality.sup] at * <;>
     omega
 
 /-- If the error grade `ge'` is at most `possibly` (i.e. `ge' ≠ always`),
     a consumption witness for the second branch `gc'` lifts to a witness for
     the `ite`-computed consumption `ge'.ite gc gc'`. -/
-theorem ite_left {ge' gc gc' : Necessity} {n m : Nat}
+theorem ite_left {ge' gc gc' : Modality} {n m : Nat}
     (c : ge' ≤ possibly)
     (w : consumptionWitness n m gc')
     : consumptionWitness n m (ge'.ite gc gc') := by
-  -- After full case-split, `simp_all` reduces `Necessity.ite` and
+  -- After full case-split, `simp_all` reduces `Modality.ite` and
   -- `consumptionWitness` to arithmetic goals; `omega` closes the rest.
   cases ge' <;> cases gc <;> cases gc' <;>
     first | exact absurd c (by decide)
-          | (simp_all [Necessity.ite, consumptionWitness]; try omega)
+          | (simp_all [Modality.ite, consumptionWitness]; try omega)
 
 /-- If the error grade `ge'` is at least `possibly` (i.e. `ge' ≠ never`),
     a consumption witness for the first branch `gc` lifts to a witness for
     the `ite`-computed consumption `ge'.ite gc gc'`. -/
-theorem ite_right {ge' gc gc' : Necessity} {n m : Nat}
+theorem ite_right {ge' gc gc' : Modality} {n m : Nat}
     (c : possibly ≤ ge')
     (w : consumptionWitness n m gc)
     : consumptionWitness n m (ge'.ite gc gc') := by
   cases ge' <;> cases gc <;> cases gc' <;>
     first | exact absurd c (by decide)
-          | (simp_all [Necessity.ite, consumptionWitness]; try omega)
+          | (simp_all [Modality.ite, consumptionWitness]; try omega)
 
 end consumptionWitness
