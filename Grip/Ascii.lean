@@ -22,6 +22,8 @@ specific whitespace byte, or `isBlank` for just space and tab. -/
 @[inline] def isBlank (b : UInt8) : Bool := b == 32 || b == 9
 /-- Decimal digit `0`-`9`. -/
 @[inline] def isDigit (b : UInt8) : Bool := 48 ≤ b && b ≤ 57
+/-- Nonzero decimal digit `1`-`9`. -/
+@[inline] def isDigit19 (b : UInt8) : Bool := 49 ≤ b && b ≤ 57
 /-- Uppercase ASCII letter `A`-`Z`. -/
 @[inline] def isUpper (b : UInt8) : Bool := 65 ≤ b && b ≤ 90
 /-- Lowercase ASCII letter `a`-`z`. -/
@@ -35,6 +37,10 @@ specific whitespace byte, or `isBlank` for just space and tab. -/
   isDigit b || (97 ≤ b && b ≤ 102) || (65 ≤ b && b ≤ 70)
 /-- Octal digit `0`-`7`. -/
 @[inline] def isOctDigit (b : UInt8) : Bool := 48 ≤ b && b ≤ 55
+/-- Exponent marker `e` or `E`. -/
+@[inline] def isExp (b : UInt8) : Bool := b == 101 || b == 69
+/-- Sign byte `+` or `-`. -/
+@[inline] def isSign (b : UInt8) : Bool := b == 43 || b == 45
 /-- Control byte: `0x00`-`0x1F` or `0x7F` (DEL). -/
 @[inline] def isControl (b : UInt8) : Bool := b ≤ 31 || b == 127
 /-- Printable ASCII: space through `~`. -/
@@ -113,6 +119,9 @@ open Grip.Ascii
 #guard isWs 65 == false
 #guard (isDigit 47 == false) && (isDigit 48 == true)
 #guard (isDigit 57 == true) && (isDigit 58 == false)
+#guard (isDigit19 48 == false) && (isDigit19 49 == true) && (isDigit19 57 == true)
+#guard (isExp 101 && isExp 69 && !isExp 100) == true
+#guard (isSign 43 && isSign 45 && !isSign 42) == true
 #guard (isHexDigit 0x39 && isHexDigit 0x61 && isHexDigit 0x46) == true
 #guard isHexDigit 0x67 == false
 #guard (isAlpha 65 && isAlpha 122 && isAlphaNum 48) == true

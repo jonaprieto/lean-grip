@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
 -/
 import Json
+import Grip.Json
 import Sexp
 import Lambda
 import Http
@@ -80,6 +81,21 @@ for context on the same toolchain and machine. -/
 @[noinline] def parseLeanJson (s : String) : Nat :=
   match Lean.Json.parse s with
   | .ok _    => 1
+  | .error _ => 0
+
+/-- Count leaf nodes of a `Grip.Json.Json` tree (number/string/keyword = 1, containers sum
+their children), forcing the whole DOM. Matches the validators' leaf count for a sanity
+cross-check. -/
+partial def jsonLeaves : Grip.Json.Json → Nat
+  | .null | .bool _ | .num _ _ | .str _ => 1
+  | .arr xs  => xs.foldl (fun a j => a + jsonLeaves j) 0
+  | .obj kvs => kvs.foldl (fun a kv => a + jsonLeaves kv.2) 0
+
+/-- Fair DOM-vs-DOM peer to `parseLeanJson`: grip's value-producing `Grip.Json.parser`
+builds the same kind of tree `Lean.Json.parse` does. Returns the forced leaf count. -/
+@[noinline] def parseGripJson (arr : ByteArray) : Nat :=
+  match Grip.Json.parser.run arr 0 with
+  | .ok j _  => jsonLeaves j
   | .error _ => 0
 
 /-- String barrier, mirroring `barrier` for the `String`-input `Lean.Json` driver. -/
@@ -385,6 +401,10 @@ def main (args : List String) : IO Unit := do
     IO.println s!"hand {name} count={hc} ms={hm}"
     let lm ← bestMs 20 (fun i => parseLeanJson (barrierStr i str))
     IO.println s!"lean.json {name} ms={lm} (DOM build, count not comparable)"
+    -- Fair DOM-vs-DOM: grip.json and lean.json both build a value tree.
+    let gjc := parseGripJson src
+    let gjm ← bestMs 20 (fun i => parseGripJson (barrier i src))
+    IO.println s!"grip.json {name} count={gjc} ms={gjm} (DOM build)"
   -- TOML on a real file: a vendored Cargo.lock (count = number of [[package]] tables).
   let tomlSrc ← IO.FS.readBinFile "bench/data/cargo.lock"
   -- The remaining example parsers on generated inputs.
