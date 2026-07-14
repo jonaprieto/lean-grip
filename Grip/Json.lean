@@ -218,44 +218,44 @@ private def jfalse : GParser conditional Json :=
 
 private def value : GParser conditional Json :=
   GParser.fix fun value =>
-    let commaValue : GParser conditional Json :=
-      GParser.seqR GParser.ws (GParser.seqR (GParser.ch ',') (GParser.seqR GParser.ws value))
-    let arrayBody : GParser flexible (List Json) :=
-      GParser.alt
-        (GParser.map2 (fun x xs => x :: xs) value (GParser.many commaValue))
-        (GParser.pure [])
-    let array : GParser conditional Json :=
-      GParser.seqR (GParser.ch '[')
-        (GParser.seqR GParser.ws
-          (GParser.seqL (GParser.map Json.arr arrayBody)
-            (GParser.seqR GParser.ws (GParser.ch ']'))))
-    let pair : GParser conditional (String × Json) :=
-      GParser.map2 (fun k v => (k, v)) jstr
-        (GParser.seqR GParser.ws (GParser.seqR (GParser.ch ':') (GParser.seqR GParser.ws value)))
-    let commaPair : GParser conditional (String × Json) :=
-      GParser.seqR GParser.ws (GParser.seqR (GParser.ch ',') (GParser.seqR GParser.ws pair))
-    let objectBody : GParser flexible (List (String × Json)) :=
-      GParser.alt
-        (GParser.map2 (fun x xs => x :: xs) pair (GParser.many commaPair))
-        (GParser.pure [])
-    let object : GParser conditional Json :=
-      GParser.seqR (GParser.ch '{')
-        (GParser.seqR GParser.ws
-          (GParser.seqL (GParser.map Json.obj objectBody)
-            (GParser.seqR GParser.ws (GParser.ch '}'))))
-    -- A byte that starts no value: always fails (the mapped `null` is unreachable).
-    let invalid : GParser conditional Json :=
-      GParser.map (fun _ => Json.null) (GParser.satisfy (fun _ => false))
+    -- The container sub-parsers reference `value`, so `fix` rebuilds them on every entry.
+    -- Building them inside the taken dispatch arm (not eagerly before the dispatch) means a
+    -- leaf value (string/number/keyword) constructs no array/object machinery at all.
     GParser.seqR GParser.ws
       (GParser.dispatch fun b =>
-        if b == Ascii.lbrace then object
-        else if b == Ascii.lbracket then array
+        if b == Ascii.lbrace then
+          let pair : GParser conditional (String × Json) :=
+            GParser.map2 (fun k v => (k, v)) jstr
+              (GParser.seqR GParser.ws
+                (GParser.seqR (GParser.ch ':') (GParser.seqR GParser.ws value)))
+          let objectBody : GParser flexible (List (String × Json)) :=
+            GParser.alt
+              (GParser.map2 (fun x xs => x :: xs) pair
+                (GParser.many (GParser.seqR GParser.ws
+                  (GParser.seqR (GParser.ch ',') (GParser.seqR GParser.ws pair)))))
+              (GParser.pure [])
+          GParser.seqR (GParser.ch '{')
+            (GParser.seqR GParser.ws
+              (GParser.seqL (GParser.map Json.obj objectBody)
+                (GParser.seqR GParser.ws (GParser.ch '}'))))
+        else if b == Ascii.lbracket then
+          let arrayBody : GParser flexible (List Json) :=
+            GParser.alt
+              (GParser.map2 (fun x xs => x :: xs) value
+                (GParser.many (GParser.seqR GParser.ws
+                  (GParser.seqR (GParser.ch ',') (GParser.seqR GParser.ws value)))))
+              (GParser.pure [])
+          GParser.seqR (GParser.ch '[')
+            (GParser.seqR GParser.ws
+              (GParser.seqL (GParser.map Json.arr arrayBody)
+                (GParser.seqR GParser.ws (GParser.ch ']'))))
         else if b == Ascii.quote then jstring
         else if b == 116 then jtrue
         else if b == 102 then jfalse
         else if b == 110 then jnull
         else if Ascii.isDigit b || b == Ascii.dash then number
-        else invalid)
+        -- A byte that starts no value: always fails (the mapped `null` is unreachable).
+        else GParser.map (fun _ => Json.null) (GParser.satisfy (fun _ => false)))
 
 /-- One complete JSON document: a value, optional trailing whitespace, then EOF (so
 trailing garbage is rejected). -/
