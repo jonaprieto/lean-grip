@@ -218,38 +218,94 @@ private def jfalse : GParser conditional Json :=
 
 -- Recursive value via `fix` ----------------------------------------------
 
+/-- Skip leading whitespace, then first-byte dispatch, fused into one primitive. Versus
+`seqR ws (dispatch …)` this avoids allocating (and discarding) `ws`'s byte count and the
+extra combinator indirection on every value entry. Grade `conditional`: the dispatched
+parser consumes, and whitespace only advances the offset further. -/
+@[inline] private def wsDispatch (select : UInt8 → GParser conditional Json) :
+    GParser conditional Json where
+  run := fun arr q =>
+    let p := scanFwd arr Ascii.isWs q
+    if _ : p < arr.size then (select arr[p]).run arr p else .error ⟨p, []⟩
+  cwit := by
+    intro arr q a q' heq
+    simp only [] at heq
+    split at heq
+    · have hge := scanFwd_ge arr Ascii.isWs q
+      have hc := (select _).cwit heq
+      omega
+    · exact absurd heq (by simp)
+  ewit := by intro he; exact absurd he (by decide)
+  swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' hq heq
+    simp only [] at heq
+    split at heq
+    · have hle := scanFwd_le arr Ascii.isWs q hq
+      exact (select _).bwit hle heq
+    · exact absurd heq (by simp)
+
+/-- Skip leading whitespace, then match the single byte `b`, consuming it. Fused so a
+structural token (`:`, `,`, `]`, `}`) after whitespace costs one scan and one compare with
+no discarded `ws` count allocation. -/
+@[inline] private def wsByte (b : UInt8) : GParser conditional Unit where
+  run := fun arr q =>
+    let p := scanFwd arr Ascii.isWs q
+    if _ : p < arr.size then
+      (if arr[p] == b then .ok () (p + 1) else .error ⟨p, []⟩)
+    else .error ⟨p, []⟩
+  cwit := by
+    intro arr q a q' heq
+    simp only [] at heq
+    split at heq
+    · split at heq
+      · have hge := scanFwd_ge arr Ascii.isWs q
+        simp only [ParseResult.ok.injEq] at heq
+        obtain ⟨_, rfl⟩ := heq
+        omega
+      · exact absurd heq (by simp)
+    · exact absurd heq (by simp)
+  ewit := by intro he; exact absurd he (by decide)
+  swit := by intro he; exact absurd he (by decide)
+  bwit := by
+    intro arr q a q' hq heq
+    simp only [] at heq
+    split at heq
+    · rename_i hb
+      split at heq
+      · simp only [ParseResult.ok.injEq] at heq
+        obtain ⟨_, rfl⟩ := heq
+        omega
+      · exact absurd heq (by simp)
+    · exact absurd heq (by simp)
+
 private def value : GParser conditional Json :=
   GParser.fix fun value =>
     -- The container sub-parsers reference `value`, so `fix` rebuilds them on every entry.
     -- Building them inside the taken dispatch arm (not eagerly before the dispatch) means a
     -- leaf value (string/number/keyword) constructs no array/object machinery at all.
-    GParser.seqR GParser.ws
-      (GParser.dispatch fun b =>
+    wsDispatch
+      (fun b =>
         if b == Ascii.lbrace then
           -- `value` skips its own leading whitespace, so no `ws` before it after `:` / `,`.
           let pair : GParser conditional (String × Json) :=
-            GParser.map2 (fun k v => (k, v)) jstr
-              (GParser.seqR GParser.ws (GParser.seqR (GParser.ch ':') value))
+            GParser.map2 (fun k v => (k, v)) jstr (GParser.seqR (wsByte Ascii.colon) value)
           let objectBody : GParser flexible (List (String × Json)) :=
             GParser.alt
               (GParser.map2 (fun x xs => x :: xs) pair
-                (GParser.many (GParser.seqR GParser.ws
-                  (GParser.seqR (GParser.ch ',') (GParser.seqR GParser.ws pair)))))
+                (GParser.many (GParser.seqR (wsByte Ascii.comma) (GParser.seqR GParser.ws pair))))
               (GParser.pure [])
           GParser.seqR (GParser.ch '{')
             (GParser.seqR GParser.ws
-              (GParser.seqL (GParser.map Json.obj objectBody)
-                (GParser.seqR GParser.ws (GParser.ch '}'))))
+              (GParser.seqL (GParser.map Json.obj objectBody) (wsByte Ascii.rbrace)))
         else if b == Ascii.lbracket then
           let arrayBody : GParser flexible (List Json) :=
             GParser.alt
               (GParser.map2 (fun x xs => x :: xs) value
-                (GParser.many (GParser.seqR GParser.ws
-                  (GParser.seqR (GParser.ch ',') value))))
+                (GParser.many (GParser.seqR (wsByte Ascii.comma) value)))
               (GParser.pure [])
           GParser.seqR (GParser.ch '[')
-            (GParser.seqL (GParser.map Json.arr arrayBody)
-              (GParser.seqR GParser.ws (GParser.ch ']')))
+            (GParser.seqL (GParser.map Json.arr arrayBody) (wsByte Ascii.rbracket))
         else if b == Ascii.quote then jstring
         else if b == 116 then jtrue
         else if b == 102 then jfalse
