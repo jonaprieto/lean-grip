@@ -1,0 +1,67 @@
+name: bench-crosslang
+
+# Regression-guards the cross-language JSON benchmark harnesses: builds each and asserts it
+# still returns the expected leaf counts (canada 111130, citm 16390, twitter 11600) -- the same
+# correctness gate as bench/cross-lang/TASK.md. Counts are architecture-independent, so this runs
+# on the default ubuntu runner; it does NOT measure timings (those need the native-arm64 setup
+# described in bench/RESULTS.md). Not on every push -- three language toolchains are heavy.
+#
+# prim-parser is intentionally excluded: its harness path-requires the sibling research/prim-parser
+# repo and pulls mathlib, neither available from this repo's CI.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'   # weekly, Monday 06:00 UTC
+
+jobs:
+  crosslang:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rust (nom)
+        run: |
+          cd bench/cross-lang/nom
+          cargo build --release
+          bin=./target/release/nom-bench
+          for f in canada:111130 citm_catalog:16390 twitter:11600; do
+            file="${f%%:*}"; want="${f##*:}"
+            out=$("$bin" "$GITHUB_WORKSPACE/bench/data/$file.json")
+            echo "$out"
+            grep -q "count=$want " <<<"$out" || { echo "nom $file count != $want"; exit 1; }
+          done
+
+      - uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.10.1'
+
+      - name: Haskell (attoparsec, megaparsec)
+        run: |
+          for d in atto megaparsec; do
+            ( cd "bench/cross-lang/$d" && cabal build )
+            bin=$(cd "bench/cross-lang/$d" && cabal list-bin all)
+            for f in canada:111130 citm_catalog:16390 twitter:11600; do
+              file="${f%%:*}"; want="${f##*:}"
+              out=$("$bin" "$GITHUB_WORKSPACE/bench/data/$file.json")
+              echo "$out"
+              grep -q "count=$want " <<<"$out" || { echo "$d $file count != $want"; exit 1; }
+            done
+          done
+
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: '5.3'
+
+      - name: OCaml (angstrom)
+        run: |
+          opam install -y angstrom
+          cd bench/cross-lang/angstrom
+          opam exec -- dune build --profile release
+          bin=_build/default/main.exe
+          for f in canada:111130 citm_catalog:16390 twitter:11600; do
+            file="${f%%:*}"; want="${f##*:}"
+            out=$("$bin" "$GITHUB_WORKSPACE/bench/data/$file.json")
+            echo "$out"
+            grep -q "count=$want " <<<"$out" || { echo "angstrom $file count != $want"; exit 1; }
+          done
