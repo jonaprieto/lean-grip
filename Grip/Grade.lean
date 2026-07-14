@@ -2,6 +2,11 @@
 Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
+
+Adapted from PrimParser/Basic.lean in prim-parser by Jan Mas Rovira
+(https://github.com/janmasrovira/prim-parser, commit 5a5ff0d, 2026-05-31):
+the error/consumption Grade, its named grades, the choice/ite rule and
+consumptionWitness, re-implemented here over grip's Batteries-only Modality.
 -/
 
 import Grip.Modality
