@@ -127,14 +127,15 @@ private def uStep (st : UState) (c : Char) : UState :=
 /-- Decode the escapes in a JSON string body (no surrounding quotes). -/
 def unescape (s : String) : String := (s.foldl uStep {}).out
 
-/-- Strip the surrounding quotes of a captured string literal, then decode its escapes.
-Folds `uStep` directly over a `String.Slice` of the quote-stripped body, so there is no
-`List Char` round-trip and no separate unescape pass. When the body has no backslash (the
-common case) it is a single `toString` memcpy instead of a char-by-char rebuild. -/
-def decodeString (raw : String) : String :=
-  let body := raw.toSlice.drop 1 |>.dropEnd 1
-  if body.contains '\\' then (body.foldl uStep {}).out
-  else body.toString
+/-- Decode a validated string literal spanning `arr[start .. stop)` (both quotes included)
+straight from the input bytes: strip the quotes, build the body `String` once, and unescape
+only if a backslash is present. No `capture` `String` is materialized first, so a plain
+string costs a single `fromUTF8?` copy rather than capture-then-copy. -/
+def decodeStringBytes (arr : ByteArray) (start stop : Nat) : String :=
+  let s := start + 1
+  let e := stop - 1
+  let body := (String.fromUTF8? (arr.extract s e)).getD ""
+  if arr.foldl (fun a b => a || b == 92) false s e then unescape body else body
 
 /-- State threaded through `decodeNumber`'s single fold over the whole lexeme. -/
 private structure NState where
@@ -145,26 +146,28 @@ private structure NState where
   expNeg  : Bool := false
   expVal  : Nat := 0
 
-/-- One step of the float decode. A `-` is the mantissa sign in phase 0 and the exponent
-sign in phase 2; `+` only occurs in the exponent. -/
-private def nStep (st : NState) (c : Char) : NState :=
-  if c == '.' then { st with phase := 1 }
-  else if c == 'e' || c == 'E' then { st with phase := 2 }
-  else if c == '+' then st
-  else if c == '-' then
+/-- One step of the number decode, over a raw input byte. A `-` (45) is the mantissa sign
+in phase 0 and the exponent sign in phase 2; `+` (43) only occurs in the exponent. Digit
+bytes are `48..57`. -/
+private def numByte (st : NState) (b : UInt8) : NState :=
+  if b == 46 then { st with phase := 1 }                    -- '.'
+  else if b == 101 || b == 69 then { st with phase := 2 }   -- 'e' / 'E'
+  else if b == 43 then st                                   -- '+'
+  else if b == 45 then                                      -- '-'
     (if st.phase == 2 then { st with expNeg := true } else { st with mantNeg := true })
   else
-    let d := c.toNat - 48
+    let d := (b - 48).toNat
     if st.phase == 0 then { st with mant := st.mant * 10 + d }
     else if st.phase == 1 then { st with mant := st.mant * 10 + d, fracLen := st.fracLen + 1 }
     else { st with expVal := st.expVal * 10 + d }
 
-/-- Decode a validated JSON number lexeme to an exact `.num mantissa exponent`. A
-nonnegative base-10 exponent is folded into the mantissa (so `2e3` is `num 2000 0`),
-keeping `exponent : Nat`; a negative one becomes the exponent (`2.5` is `num 25 1`).
-Folds `nStep` over a `String.Slice` in one pass — no `List Char` round-trip. -/
-def decodeNumber (s : String) : Json :=
-  let st := s.toSlice.foldl nStep {}
+/-- Decode a validated number lexeme spanning `arr[start .. stop)` to an exact
+`.num mantissa exponent`. A nonnegative base-10 exponent is folded into the mantissa (so
+`2e3` is `num 2000 0`), keeping `exponent : Nat`; a negative one becomes the exponent
+(`2.5` is `num 25 1`). Folds `numByte` over the input bytes directly — no `capture`
+`String`, no per-char UTF-8 decode. -/
+def decodeNumberBytes (arr : ByteArray) (start stop : Nat) : Json :=
+  let st := arr.foldl numByte {} start stop
   let mant : Int := if st.mantNeg then -(st.mant : Int) else st.mant
   let decExp : Int := (if st.expNeg then -(st.expVal : Int) else (st.expVal : Int)) - st.fracLen
   if decExp ≥ 0 then Json.num (mant * (10 ^ decExp.toNat)) 0
@@ -189,19 +192,19 @@ open Decode
     (GParser.seqR (GParser.satisfy Ascii.isDigit19)
       (GParser.seqR (GParser.takeWhile Ascii.isDigit) (GParser.pure ())))
 
-/-- A JSON number, decoded to `.num`. The lexeme is captured verbatim and
-decoded; leading-zero and trailing-garbage rejection come from the grammar and the
+/-- A JSON number, decoded to `.num` straight from the consumed byte range (no `capture`
+`String`). Leading-zero and trailing-garbage rejection come from the grammar and the
 top-level EOF check. -/
 private def number : GParser conditional Json :=
-  GParser.map decodeNumber
-    (GParser.capture
-      (GParser.seqR (GParser.optional (GParser.ch '-'))
-        (GParser.seqL intPart
-          (GParser.seqR (GParser.optional frac) (GParser.optional expo)))))
+  GParser.captureWith decodeNumberBytes
+    (GParser.seqR (GParser.optional (GParser.ch '-'))
+      (GParser.seqL intPart
+        (GParser.seqR (GParser.optional frac) (GParser.optional expo))))
 
-/-- A validated JSON string literal, decoded to its `String` contents. -/
+/-- A validated JSON string literal, decoded to its `String` contents from the consumed
+byte range (no `capture` `String`). -/
 private def jstr : GParser conditional String :=
-  GParser.map decodeString (GParser.capture GParser.stringLit)
+  GParser.captureWith decodeStringBytes GParser.stringLit
 
 private def jstring : GParser conditional Json := GParser.map Json.str jstr
 private def jnull  : GParser conditional Json :=

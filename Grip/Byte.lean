@@ -123,6 +123,40 @@ instead of only structural counts. Invalid UTF-8 in the slice decodes to `""`. -
       exact p.bwit hq hx
     next e hx => exact absurd heq (by simp)
 
+/-- Like `capture`, but hand the consumed byte range `(arr, start, stop)` to `f` instead
+of decoding it to a `String`. Lets a value parser fold over the raw input bytes directly,
+with no `extract`/`fromUTF8?`/`String` round-trip. -/
+@[inline] def GParser.captureWith (f : ByteArray → Nat → Nat → β) (p : GParser g α) :
+    GParser g β where
+  run := fun arr q =>
+    match p.run arr q with
+    | .ok _ q' => .ok (f arr q q') q'
+    | .error e => .error e
+  cwit := by
+    intro arr q b q' heq
+    split at heq
+    next a p' hx =>
+      simp only [ParseResult.ok.injEq] at heq
+      obtain ⟨_, rfl⟩ := heq
+      exact p.cwit hx
+    next e hx => exact absurd heq (by simp)
+  ewit := by
+    intro he arr q
+    obtain ⟨e, he'⟩ := p.ewit he arr q
+    exact ⟨e, by simp only [he']⟩
+  swit := by
+    intro he arr q
+    obtain ⟨a, q', ha⟩ := p.swit he arr q
+    exact ⟨f arr q q', q', by simp only [ha]⟩
+  bwit := by
+    intro arr q b q' hq heq
+    split at heq
+    next a p' hx =>
+      simp only [ParseResult.ok.injEq] at heq
+      obtain ⟨_, rfl⟩ := heq
+      exact p.bwit hq hx
+    next e hx => exact absurd heq (by simp)
+
 /-- First-byte dispatch: read the current byte and run the parser `select` chooses for
 it, without an intermediate allocation. Fails without consuming at end-of-input. This is
 `peek`-then-branch fused into one step, so a keyword/number/string/array/object choice
