@@ -503,16 +503,25 @@ def renderNum (m : Int) (e : Nat) : String :=
     (if m < 0 then "-" else "") ++ String.ofList (ds.take k) ++ "." ++ String.ofList (ds.drop k)
 
 /-- Serialize a value to compact RFC-8259 JSON (no insignificant whitespace). Round-trips
-through `parse` (the value, not necessarily the mantissa/exponent split). -/
-partial def render : Json → String
+through `parse` (the value, not necessarily the mantissa/exponent split). Total: structural on
+`sizeOf`; `attach` carries the membership proof each recursive call decreases by. -/
+def render : Json → String
   | .null       => "null"
   | .bool true  => "true"
   | .bool false => "false"
   | .num m e    => renderNum m e
   | .str s      => "\"" ++ escape s ++ "\""
-  | .arr xs     => "[" ++ String.intercalate "," (xs.toList.map render) ++ "]"
-  | .obj kvs    => "{" ++ String.intercalate ","
-      (kvs.toList.map fun kv => "\"" ++ escape kv.1 ++ "\":" ++ render kv.2) ++ "}"
+  | .arr xs     =>
+    "[" ++ String.intercalate "," (xs.attach.toList.map (fun x => render x.1)) ++ "]"
+  | .obj kvs    =>
+    "{" ++ String.intercalate ","
+      (kvs.attach.toList.map (fun ⟨(k, j), _h⟩ => "\"" ++ escape k ++ "\":" ++ render j)) ++ "}"
+termination_by v => sizeOf v
+decreasing_by
+  · have := Array.sizeOf_lt_of_mem x.2; simp_wf; omega
+  · have hm := Array.sizeOf_lt_of_mem _h
+    simp only [Prod.mk.sizeOf_spec] at hm
+    simp_wf; omega
 
 instance : ToString Json := ⟨render⟩
 
