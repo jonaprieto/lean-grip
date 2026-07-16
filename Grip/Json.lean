@@ -151,17 +151,29 @@ private def numByte (st : NState) (b : UInt8) : NState :=
     else if st.phase == 1 then { st with mant := st.mant * 10 + d, fracLen := st.fracLen + 1 }
     else { st with expVal := st.expVal * 10 + d }
 
+/-- The largest net base-10 exponent the decoder folds into the mantissa. A positive net
+exponent beyond this is rejected rather than powered: it bounds the widest integer the decoder
+will materialize (`10 ^ maxExp`), keeping it far above any real datum yet well below the
+`Nat.pow` panic threshold. Without the bound, a pathological but grammar-valid literal like the
+600-digit exponent in `test/jsontestsuite/i_number_huge_exp.json` aborts the process with
+`INTERNAL PANIC: Nat.pow exponent is too big`. `i_`-prefixed JSONTestSuite numbers are
+implementation-defined, so rejecting them stays RFC-8259-conformant. -/
+def maxExp : Nat := 1000000
+
 /-- Decode a validated number lexeme spanning `arr[start .. stop)` to an exact
-`.num mantissa exponent`. A nonnegative base-10 exponent is folded into the mantissa (so
-`2e3` is `num 2000 0`), keeping `exponent : Nat`; a negative one becomes the exponent
-(`2.5` is `num 25 1`). Folds `numByte` over the input bytes directly — no `capture`
+`.num mantissa exponent`, or `none` when the net positive exponent exceeds `maxExp` (which would
+otherwise fold into an unbounded `10 ^ n` and panic). A nonnegative base-10 exponent is folded
+into the mantissa (so `2e3` is `num 2000 0`), keeping `exponent : Nat`; a negative one becomes
+the exponent (`2.5` is `num 25 1`). Folds `numByte` over the input bytes directly — no `capture`
 `String`, no per-char UTF-8 decode. -/
-def decodeNumberBytes (arr : ByteArray) (start stop : Nat) : Json :=
+def decodeNumberBytes? (arr : ByteArray) (start stop : Nat) : Option Json :=
   let st := arr.foldl numByte {} start stop
   let mant : Int := if st.mantNeg then -(st.mant : Int) else st.mant
   let decExp : Int := (if st.expNeg then -(st.expVal : Int) else (st.expVal : Int)) - st.fracLen
-  if decExp ≥ 0 then Json.num (mant * (10 ^ decExp.toNat)) 0
-  else Json.num mant (-decExp).toNat
+  if decExp ≥ 0 then
+    if decExp > (maxExp : Int) then none
+    else some (Json.num (mant * (10 ^ decExp.toNat)) 0)
+  else some (Json.num mant (-decExp).toNat)
 
 end Decode
 
@@ -308,7 +320,7 @@ decreasing_by
 `String`). Leading-zero and trailing-garbage rejection come from the grammar and the
 top-level EOF check. -/
 private def number : GParser conditional Json :=
-  GParser.captureWith decodeNumberBytes
+  GParser.captureWith? decodeNumberBytes?
     (GParser.seqR (GParser.optional (GParser.ch '-'))
       (GParser.seqL intPart
         (GParser.seqR (GParser.optional frac) (GParser.optional expo))))
@@ -525,6 +537,10 @@ open Grip Grip.Json
 #guard (GParser.run? parser "2.5".toUTF8) == some (Json.num 25 1)
 #guard (GParser.run? parser "-2.5e3".toUTF8) == some (Json.num (-2500) 0)
 #guard (GParser.run? parser "5e-1".toUTF8) == some (Json.num 5 1)
+-- exponent within `maxExp` folds; a huge positive one is rejected, not powered (no panic)
+#guard (GParser.run? parser "1e6".toUTF8) == some (Json.num 1000000 0)
+#guard (GParser.run? parser "1e999999999999".toUTF8) == none
+#guard (GParser.run? parser "1e-999999999999".toUTF8) == some (Json.num 1 999999999999)
 -- `int` smart constructor and strict `int?` extractor
 #guard Json.int 42 == Json.num 42 0
 #guard (Json.num 42 0).int? == some 42

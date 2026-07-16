@@ -157,6 +157,44 @@ with no `extract`/`fromUTF8?`/`String` round-trip. -/
       exact p.bwit hq hx
     next e hx => exact absurd heq (by simp)
 
+/-- Like `captureWith`, but `f` may reject the consumed range by returning `none`, in which
+case the parse fails at the entry offset. The result grade keeps `p`'s consumption but sets
+`errors := possibly` (the extra failure path), so a `conditional` `p` yields a `conditional`
+parser. Lets a value decoder veto a syntactically-valid but semantically-out-of-range slice
+(e.g. a JSON exponent so large that folding it would blow up). -/
+@[inline] def GParser.captureWith? (f : ByteArray → Nat → Nat → Option β) (p : GParser g α) :
+    GParser ⟨possibly, g.consumes⟩ β where
+  run := fun arr q =>
+    match p.run arr q with
+    | .ok _ q' => match f arr q q' with
+      | some b => .ok b q'
+      | none   => .error ⟨q, []⟩
+    | .error e => .error e
+  cwit := by
+    intro arr q b q' heq
+    split at heq
+    next a p' hx =>
+      split at heq
+      next b0 hf =>
+        simp only [ParseResult.ok.injEq] at heq
+        obtain ⟨_, rfl⟩ := heq
+        exact p.cwit hx
+      next hf => exact absurd heq (by simp)
+    next e hx => exact absurd heq (by simp)
+  ewit := by intro he; exact Modality.noConfusion he
+  swit := by intro he; exact Modality.noConfusion he
+  bwit := by
+    intro arr q b q' hq heq
+    split at heq
+    next a p' hx =>
+      split at heq
+      next b0 hf =>
+        simp only [ParseResult.ok.injEq] at heq
+        obtain ⟨_, rfl⟩ := heq
+        exact p.bwit hq hx
+      next hf => exact absurd heq (by simp)
+    next e hx => exact absurd heq (by simp)
+
 /-- First-byte dispatch: read the current byte and run the parser `select` chooses for
 it, without an intermediate allocation. Fails without consuming at end-of-input. This is
 `peek`-then-branch fused into one step, so a keyword/number/string/array/object choice
