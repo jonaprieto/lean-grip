@@ -42,6 +42,40 @@ theorem eof_run_end (arr : ByteArray) (q : Nat) (hq : arr.size ≤ q) :
   simp only [GParser.eof, GParser.notFollowedBy, GParser.satisfy]
   rw [dif_neg (by omega : ¬ q < arr.size)]
 
+/-- `scanFwd` consumes exactly a maximal run of `n` matching bytes ending at a non-match or EOF. -/
+theorem scanFwd_run (arr : ByteArray) (f : UInt8 → Bool) (q n : Nat)
+    (hall : ∀ i, i < n → f arr[q + i]! = true)
+    (hstop : q + n = arr.size ∨ (q + n < arr.size ∧ f arr[q + n]! = false)) :
+    scanFwd arr f q = q + n := by
+  induction n generalizing q with
+  | zero =>
+    simp only [Nat.add_zero] at hstop ⊢
+    rw [scanFwd]
+    rcases hstop with h | ⟨h, hf⟩
+    · rw [dif_neg (by omega)]
+    · rw [dif_pos h, if_neg (by rw [← getElem!_pos arr q h]; simp [hf])]
+  | succ n ih =>
+    have hqs : q < arr.size := by omega
+    have hf0 : f arr[q] = true := by
+      rw [← getElem!_pos arr q hqs]; simpa using hall 0 (by omega)
+    rw [scanFwd, dif_pos hqs, if_pos hf0,
+      ih (q + 1)
+        (fun i hi => by
+          have := hall (i + 1) (by omega)
+          rwa [show q + (i + 1) = q + 1 + i from by omega] at this)
+        (by rcases hstop with h | ⟨h, hf⟩
+            · exact Or.inl (by omega)
+            · refine Or.inr ⟨by omega, ?_⟩
+              rwa [show q + 1 + n = q + (n + 1) from by omega])]
+    omega
+
+/-- `takeWhile f` consumes a maximal run of `n` matching bytes. -/
+theorem takeWhile_run (f : UInt8 → Bool) (arr : ByteArray) (q n : Nat)
+    (hall : ∀ i, i < n → f arr[q + i]! = true)
+    (hstop : q + n = arr.size ∨ (q + n < arr.size ∧ f arr[q + n]! = false)) :
+    (GParser.takeWhile f).run arr q = .ok n (q + n) := by
+  simp only [GParser.takeWhile, scanFwd_run arr f q n hall hstop, Nat.add_sub_cancel_left]
+
 variable {α β γ : Type} {g g' : Grade}
 
 /-- `ch c` on a matching in-prefix byte. -/
