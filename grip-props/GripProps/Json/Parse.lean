@@ -143,4 +143,92 @@ theorem ws_run_end (arr : ByteArray) (q : Nat) (hq : arr.size ≤ q) :
   have : scanFwd arr Ascii.isWs q = q := by rw [scanFwd, dif_neg (by omega)]
   simp only [GParser.ws, GParser.takeWhile, this, Nat.sub_self]
 
+/-- `wsDispatch`, with no leading whitespace, runs the parser its `select` picks for the
+current byte. -/
+theorem wsDispatch_run_stop (select : UInt8 → GParser conditional Grip.Json.Json)
+    (arr : ByteArray) (q : Nat) (hq : q < arr.size) (hw : Ascii.isWs arr[q] = false) :
+    (Grip.Json.wsDispatch select).run arr q = (select arr[q]).run arr q := by
+  have hs : scanFwd arr Ascii.isWs q = q := by rw [scanFwd, dif_pos hq, if_neg (by simp [hw])]
+  simp only [Grip.Json.wsDispatch, hs, dif_pos hq]
+
+/-- `wsByte b`, no leading whitespace, matching byte: consume it. -/
+theorem wsByte_run_stop (b : UInt8) (arr : ByteArray) (q : Nat) (hq : q < arr.size)
+    (hw : Ascii.isWs arr[q] = false) (hb : arr[q] = b) :
+    (Grip.Json.wsByte b).run arr q = .ok () (q + 1) := by
+  have hs : scanFwd arr Ascii.isWs q = q := by rw [scanFwd, dif_pos hq, if_neg (by simp [hw])]
+  simp only [Grip.Json.wsByte, hs, dif_pos hq, hb, beq_self_eq_true, if_true]
+
+/-- One-step unfolding of `fix`: its run is the body applied to the clamped self at the
+bytes-remaining fuel, behind the advance clamp. -/
+theorem fix_run_unroll (f : GParser conditional α → GParser conditional α) (arr : ByteArray)
+    (q : Nat) :
+    (GParser.fix f).run arr q
+      = clampAdvance arr q ((f (GParser.fixSelf f (arr.size - q))).run arr q) := by
+  show clampAdvance arr q (GParser.fixFuel f (arr.size - q + 1) arr q) = _
+  rw [GParser.fixFuel_succ]
+
+/-- The advance clamp is the identity on a success that advances within bounds. -/
+theorem clampAdvance_ok (arr : ByteArray) (q : Nat) {v : Grip.Json.Json} {q' : Nat}
+    (h1 : q < q') (h2 : q' ≤ arr.size) :
+    clampAdvance arr q (.ok v q') = .ok v q' := by
+  have h : q < q' ∧ q' ≤ arr.size := ⟨h1, h2⟩
+  simp only [clampAdvance, if_pos h]
+
+open Grip.Json Grip.Json.Json
+
+/-- `value` parses the `null` keyword. -/
+theorem value_run_null (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
+    (hm : ∀ j, j < 4 → arr[q + j]! = "null".toUTF8[j]!) :
+    value.run arr q = .ok Json.null (q + 4) := by
+  have hs : q < arr.size := by omega
+  have hb : arr[q] = 110 := by
+    have h0 := hm 0 (by norm_num)
+    rw [Nat.add_zero, getElem!_pos arr q hs] at h0
+    rw [h0]; decide
+  have hstr : (GParser.string "null").run arr q = .ok () (q + 4) := by
+    have := string_run "null" arr q (by decide) (by simpa using hq)
+      (fun j hj => by have := hm j (by simpa using hj); simpa using this)
+    simpa using this
+  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
+  rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_neg (by decide),
+    if_neg (by decide), if_pos (by decide)]
+  simp only [jnull, GParser.map, hstr]
+  exact clampAdvance_ok arr q (by omega) (by omega)
+
+/-- `value` parses the `true` keyword. -/
+theorem value_run_true (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
+    (hm : ∀ j, j < 4 → arr[q + j]! = "true".toUTF8[j]!) :
+    value.run arr q = .ok (Json.bool true) (q + 4) := by
+  have hs : q < arr.size := by omega
+  have hb : arr[q] = 116 := by
+    have h0 := hm 0 (by norm_num); rw [Nat.add_zero, getElem!_pos arr q hs] at h0; rw [h0]; decide
+  have hstr : (GParser.string "true").run arr q = .ok () (q + 4) := by
+    have := string_run "true" arr q (by decide) (by simpa using hq)
+      (fun j hj => by have := hm j (by simpa using hj); simpa using this)
+    simpa using this
+  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
+  rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_pos (by decide)]
+  simp only [jtrue, GParser.map, hstr]
+  exact clampAdvance_ok arr q (by omega) (by omega)
+
+/-- `value` parses the `false` keyword. -/
+theorem value_run_false (arr : ByteArray) (q : Nat) (hq : q + 5 ≤ arr.size)
+    (hm : ∀ j, j < 5 → arr[q + j]! = "false".toUTF8[j]!) :
+    value.run arr q = .ok (Json.bool false) (q + 5) := by
+  have hs : q < arr.size := by omega
+  have hb : arr[q] = 102 := by
+    have h0 := hm 0 (by norm_num); rw [Nat.add_zero, getElem!_pos arr q hs] at h0; rw [h0]; decide
+  have hstr : (GParser.string "false").run arr q = .ok () (q + 5) := by
+    have := string_run "false" arr q (by decide) (by simpa using hq)
+      (fun j hj => by have := hm j (by simpa using hj); simpa using this)
+    simpa using this
+  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
+  rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_neg (by decide),
+    if_pos (by decide)]
+  simp only [jfalse, GParser.map, hstr]
+  exact clampAdvance_ok arr q (by omega) (by omega)
+
 end GripProps.Parse
