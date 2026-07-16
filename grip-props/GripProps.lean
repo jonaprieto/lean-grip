@@ -12,6 +12,7 @@ import GripProps.Scanner
 import GripProps.Json.Bytes
 import GripProps.Json.NatDigits
 import GripProps.Json.Number
+import GripProps.Json.Parse
 import GripProps.Json.Leaf
 
 /-!
