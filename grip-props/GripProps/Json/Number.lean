@@ -58,3 +58,55 @@ theorem foldl_numByte_digits (ds : List Char) (st : NState) (hp : st.phase = 0)
       simp [Bool.or_self, hp, hd48]
     rw [List.foldl_cons, List.foldl_cons, hstep]
     rw [ih _ (by simp [hp]) (fun c hc => hd c (by simp [hc]))]
+
+/-- An ASCII character encodes to a single byte, its code point. -/
+theorem ascii_encode (c : Char) (h : c.toNat ≤ 127) :
+    String.utf8EncodeChar c = [UInt8.ofNat c.toNat] := by
+  have hval : c.val ≤ 127 := by rw [UInt32.le_iff_toNat_le]; exact h
+  have hbyte : c.val.toUInt8 = UInt8.ofNat c.toNat := by
+    rw [Char.toNat]; exact UInt8.toNat_inj.mp rfl
+  rw [String.utf8EncodeChar_eq_singleton (Char.utf8Size_eq_one_iff.mpr hval), hbyte]
+
+/-- Over ASCII characters, `flatMap`-encoding is `map`ping each to its byte. -/
+theorem flatMap_ascii (cs : List Char) (h : ∀ c ∈ cs, c.toNat ≤ 127) :
+    cs.flatMap String.utf8EncodeChar = cs.map (fun c => UInt8.ofNat c.toNat) := by
+  induction cs with
+  | nil => simp
+  | cons c cs ih =>
+    rw [List.flatMap_cons, List.map_cons, ascii_encode c (h c (by simp)),
+      ih (fun c hc => h c (by simp [hc]))]
+    simp
+
+/-- Folding `numByte` over an ASCII digit string's UTF-8 bytes accumulates the mantissa. -/
+theorem foldl_numByte_ascii (cs : List Char) (st : NState) (hp : st.phase = 0)
+    (hd : ∀ c ∈ cs, 48 ≤ c.toNat ∧ c.toNat ≤ 57) :
+    (cs.flatMap String.utf8EncodeChar).foldl numByte st
+      = { st with mant := cs.foldl (fun a c => a * 10 + (c.toNat - 48)) st.mant } := by
+  rw [flatMap_ascii cs (fun c hc => by have := hd c hc; omega), List.foldl_map]
+  exact foldl_numByte_digits cs st hp hd
+
+/-- **Integer number round-trip.** For a nonnegative integer, decoding the bytes of its rendering
+recovers it. Composes the ByteArray/toUTF8 fold bridge, the digit-fold inversion, and the numByte
+accumulation. -/
+theorem decode_renderNum_int (m : Int) (hm : 0 ≤ m) :
+    decodeNumberBytes? (renderNum m 0).toUTF8 0 (renderNum m 0).toUTF8.size
+      = some (Json.num m 0) := by
+  have hrepr : renderNum m 0 = Nat.repr m.toNat := by
+    have h1 : renderNum m 0 = toString m := by unfold renderNum; simp
+    have h2 : toString m = toString ((m.toNat : Int)) := by rw [Int.toNat_of_nonneg hm]
+    rw [h1, h2]; exact String.toByteArray_inj.mp rfl
+  have hchars : (renderNum m 0).toList = Nat.toDigits 10 m.toNat := by
+    rw [hrepr, Nat.repr, String.toList_ofList]
+  have hst : (renderNum m 0).toUTF8.foldl numByte {} 0 (renderNum m 0).toUTF8.size
+      = ({ mant := m.toNat } : NState) := by
+    rw [GripProps.Bytes.toUTF8_foldl, hchars,
+      foldl_numByte_ascii _ _ rfl (GripProps.NatDigits.mem_toDigits_bound m.toNat)]
+    have hfold : (Nat.toDigits 10 m.toNat).foldl (fun a c => a * 10 + (c.toNat - 48)) 0
+        = m.toNat := by
+      have := GripProps.NatDigits.foldl_repr m.toNat
+      rw [Nat.repr, String.toList_ofList] at this
+      exact this
+    simp only [hfold]
+  unfold decodeNumberBytes?
+  rw [hst]
+  simp [Int.toNat_of_nonneg hm, maxExp]

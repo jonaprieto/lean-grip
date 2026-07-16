@@ -18,7 +18,7 @@ set_option maxHeartbeats 1000000
 namespace GripProps.NatDigits
 
 /-- The Horner step the JSON number decoder uses on a decimal digit character. -/
-private def H (a : Nat) (c : Char) : Nat := a * 10 + (c.toNat - 48)
+def H (a : Nat) (c : Char) : Nat := a * 10 + (c.toNat - 48)
 
 /-- `toDigitsCore` prepends the digits of `n` to its accumulator. -/
 theorem toDigitsCore_append :
@@ -68,6 +68,36 @@ theorem foldl_toDigitsCore (n : Nat) :
       simp only [List.foldl_cons, List.foldl_nil, H,
         digitChar_toNat_sub (n % 10) (Nat.mod_lt _ (by omega))]
       omega
+
+/-- `Nat.digitChar` of a decimal digit is an ASCII digit byte. -/
+theorem digitChar_bound (d : Nat) (hd : d < 10) :
+    48 ≤ (Nat.digitChar d).toNat ∧ (Nat.digitChar d).toNat ≤ 57 := by
+  interval_cases d <;> decide
+
+/-- Every character of `Nat.toDigits 10 k` is a decimal digit. -/
+theorem mem_toDigits_bound (k : Nat) :
+    ∀ c ∈ Nat.toDigits 10 k, 48 ≤ c.toNat ∧ c.toNat ≤ 57 := by
+  have core : ∀ (fuel n : Nat) (ds : List Char),
+      (∀ c ∈ ds, 48 ≤ c.toNat ∧ c.toNat ≤ 57) →
+      ∀ c ∈ Nat.toDigitsCore 10 fuel n ds, 48 ≤ c.toNat ∧ c.toNat ≤ 57 := by
+    intro fuel
+    induction fuel with
+    | zero => intro n ds hds c hc; exact hds c hc
+    | succ f ih =>
+      intro n ds hds c hc
+      have hdig := digitChar_bound (n % 10) (Nat.mod_lt _ (by omega))
+      rw [show Nat.toDigitsCore 10 (f + 1) n ds
+            = (if n / 10 = 0 then Nat.digitChar (n % 10) :: ds
+               else Nat.toDigitsCore 10 f (n / 10) (Nat.digitChar (n % 10) :: ds)) from rfl] at hc
+      split at hc
+      · rcases List.mem_cons.mp hc with rfl | hc'
+        · exact hdig
+        · exact hds c hc'
+      · exact ih (n / 10) _ (fun c' hc'' => by
+          rcases List.mem_cons.mp hc'' with rfl | h
+          · exact hdig
+          · exact hds c' h) c hc
+  exact core (k + 1) k [] (by simp)
 
 /-- **Decimal fold inversion.** Folding the Horner step over `Nat.repr n`'s characters gives `n`. -/
 theorem foldl_repr (n : Nat) : (Nat.repr n).toList.foldl H 0 = n := by
