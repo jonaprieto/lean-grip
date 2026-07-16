@@ -10,6 +10,7 @@ import GripProps.Productivity
 import GripProps.ChoiceGrade
 import GripProps.Scanner
 import GripProps.Json.Bytes
+import GripProps.Json.NatDigits
 import GripProps.Json.Leaf
 
 /-!
