@@ -137,7 +137,7 @@ theorem decodeUtf8_le {arr : ByteArray} {q : Nat} {c : Char} {q' : Nat}
 @[inline] def GParser.char (c : Char) : GParser conditional Char := GParser.satisfyChar (· == c)
 
 /-- Do the bytes of `bs` from index `i` match `arr` from offset `q`? -/
-private def matchBytes (arr bs : ByteArray) (i q : Nat) : Bool :=
+def matchBytes (arr bs : ByteArray) (i q : Nat) : Bool :=
   if i < bs.size then
     if q < arr.size then (arr[q]! == bs[i]!) && matchBytes arr bs (i + 1) (q + 1) else false
   else true

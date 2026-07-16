@@ -90,4 +90,57 @@ theorem alt_run_left {ge gc ge' gc' : Modality} (x : GParser ⟨ge, gc⟩ α) (y
     (GParser.alt x y).run arr q = .ok a q' := by
   simp only [GParser.alt, hx]
 
+/-- `matchBytes` succeeds when `arr`'s bytes from `q` match `bs` from `i`. -/
+theorem matchBytes_true (arr bs : ByteArray) (q i : Nat)
+    (hsize : q + (bs.size - i) ≤ arr.size)
+    (hmatch : ∀ j, i ≤ j → j < bs.size → arr[q + (j - i)]! = bs[j]!) :
+    Grip.matchBytes arr bs i q = true := by
+  rw [Grip.matchBytes]
+  split
+  · rename_i hi
+    rw [if_pos (show q < arr.size by omega), Bool.and_eq_true]
+    refine ⟨?_, ?_⟩
+    · rw [beq_iff_eq]; simpa using hmatch i (le_refl i) hi
+    · exact matchBytes_true arr bs (q + 1) (i + 1) (by omega) (fun j hj hjs => by
+        have := hmatch j (by omega) hjs
+        have he : q + 1 + (j - (i + 1)) = q + (j - i) := by omega
+        rwa [he])
+  · rfl
+termination_by bs.size - i
+decreasing_by omega
+
+/-- `string s` (nonempty) succeeds when `arr`'s bytes from `q` match `s`'s UTF-8. -/
+theorem string_run (s : String) (arr : ByteArray) (q : Nat)
+    (hne : 0 < s.toUTF8.size) (hsize : q + s.toUTF8.size ≤ arr.size)
+    (hmatch : ∀ j, j < s.toUTF8.size → arr[q + j]! = s.toUTF8[j]!) :
+    (GParser.string s).run arr q = .ok () (q + s.toUTF8.size) := by
+  have hmb : Grip.matchBytes arr s.toUTF8 0 q = true :=
+    matchBytes_true arr s.toUTF8 q 0 (by simpa using hsize)
+      (fun j _ hj => by simpa using hmatch j hj)
+  simp only [GParser.string, hmb, if_true, if_pos (show q < q + s.toUTF8.size by omega)]
+
+/-- `optional p`, `p` succeeds. -/
+theorem optional_run_some (p : GParser g α) (arr : ByteArray) (q : Nat) (a : α) (q' : Nat)
+    (hp : p.run arr q = .ok a q') : (GParser.optional p).run arr q = .ok (some a) q' := by
+  simp only [GParser.optional]
+  exact alt_run_left _ _ arr q (some a) q' (map_run_ok some p arr q a q' hp)
+
+/-- `optional p`, `p` fails without consuming (grade forces same-offset failure); result `none`. -/
+theorem optional_run_none (p : GParser g α) (arr : ByteArray) (q : Nat) (e : Err)
+    (hp : p.run arr q = .error e) : (GParser.optional p).run arr q = .ok none q := by
+  simp only [GParser.optional, GParser.alt, GParser.map, hp, GParser.pure]
+
+/-- `ws` consumes nothing at a non-whitespace in-bounds byte. -/
+theorem ws_run_stop (arr : ByteArray) (q : Nat) (hq : q < arr.size)
+    (hw : Ascii.isWs arr[q] = false) :
+    (GParser.ws).run arr q = .ok 0 q := by
+  have : scanFwd arr Ascii.isWs q = q := by rw [scanFwd, dif_pos hq, if_neg (by simp [hw])]
+  simp only [GParser.ws, GParser.takeWhile, this, Nat.sub_self]
+
+/-- `ws` consumes nothing at end of input. -/
+theorem ws_run_end (arr : ByteArray) (q : Nat) (hq : arr.size ≤ q) :
+    (GParser.ws).run arr q = .ok 0 q := by
+  have : scanFwd arr Ascii.isWs q = q := by rw [scanFwd, dif_neg (by omega)]
+  simp only [GParser.ws, GParser.takeWhile, this, Nat.sub_self]
+
 end GripProps.Parse
