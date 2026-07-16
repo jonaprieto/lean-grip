@@ -167,6 +167,55 @@ theorem fold_frac_chars (intg fracg : List Char)
     numByte_dot, foldl_numByte_frac_ascii _ _ rfl hf]
   simp [List.foldl_append]
 
+/-- **Fractional number round-trip.** For a nonnegative `m` and `e > 0`, decoding the bytes of
+`renderNum m e` recovers `num m e`. The zero-padding contributes nothing to the mantissa and the
+fractional length equals `e`. -/
+theorem decode_renderNum_frac (m : Int) (hm : 0 ≤ m) (e : Nat) (he : 0 < e) :
+    decodeNumberBytes? (renderNum m e).toUTF8 0 (renderNum m e).toUTF8.size
+      = some (Json.num m e) := by
+  have hna : m.natAbs = m.toNat := by omega
+  have htl : (toString m.natAbs).toList = Nat.toDigits 10 m.toNat := by
+    rw [hna]; show (Nat.repr m.toNat).toList = _; rw [Nat.repr, String.toList_ofList]
+  set len := (toString m.natAbs).length with hlen
+  have hlenL : len = (Nat.toDigits 10 m.toNat).length := by
+    rw [hlen, hna]; show (Nat.repr m.toNat).length = _; rw [Nat.repr, String.length_ofList]
+  set ds := List.replicate (e + 1 - len) '0' ++ Nat.toDigits 10 m.toNat with hds
+  set k := ds.length - e with hk
+  have hds_dig : ∀ c ∈ ds, 48 ≤ c.toNat ∧ c.toNat ≤ 57 := by
+    intro c hc
+    rcases List.mem_append.mp hc with h | h
+    · rw [List.eq_of_mem_replicate h]; decide
+    · exact GripProps.NatDigits.mem_toDigits_bound m.toNat c h
+  have hdslen : e ≤ ds.length := by
+    rw [hds, List.length_append, List.length_replicate, ← hlenL]; omega
+  have hrn : (renderNum m e).toList = ds.take k ++ '.' :: ds.drop k := by
+    unfold renderNum
+    simp only [show (e == 0) = false from by simp [he.ne'],
+      Bool.false_eq_true, if_false,
+      if_neg (show ¬ m < 0 by omega), String.empty_append, String.toList_append,
+      String.toList_ofList, show ("." : String).toList = ['.'] from by decide]
+    rw [htl, ← hlen]
+    simp [hds, hk, List.length_append, List.length_replicate]
+  have hst : (renderNum m e).toUTF8.foldl numByte {} 0 (renderNum m e).toUTF8.size
+      = ({ mant := m.toNat, fracLen := e, phase := 1 } : NState) := by
+    rw [GripProps.Bytes.toUTF8_foldl, hrn, List.flatMap_append, List.flatMap_cons,
+      ← List.append_assoc,
+      fold_frac_chars _ _ (fun c hc => hds_dig c (List.mem_of_mem_take hc))
+        (fun c hc => hds_dig c (List.mem_of_mem_drop hc))]
+    have hmant : (ds.take k ++ ds.drop k).foldl (fun a c => a * 10 + (c.toNat - 48)) 0
+        = m.toNat := by
+      rw [List.take_append_drop, hds, List.foldl_append, foldl_H_zeros]
+      have := GripProps.NatDigits.foldl_repr m.toNat
+      rw [Nat.repr, String.toList_ofList] at this
+      exact this
+    have hfrac : (ds.drop k).length = e := by rw [List.length_drop]; omega
+    rw [hmant, hfrac]
+  unfold decodeNumberBytes?
+  rw [hst]
+  simp only [Bool.false_eq_true, if_false, CharP.cast_eq_zero, zero_sub, ge_iff_le,
+    Left.nonneg_neg_iff, Int.natCast_nonpos_iff]
+  rw [if_neg (show ¬ e = 0 by omega), neg_neg, Int.toNat_natCast, Int.toNat_of_nonneg hm]
+
 /-- **Integer number round-trip.** For a nonnegative integer, decoding the bytes of its rendering
 recovers it. Composes the ByteArray/toUTF8 fold bridge, the digit-fold inversion, and the numByte
 accumulation. -/
