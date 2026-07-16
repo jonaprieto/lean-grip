@@ -288,15 +288,15 @@ decreasing_by
 
 -- Leaf value parsers -----------------------------------------------------
 
-@[inline] private def frac : GParser conditional Nat :=
+@[inline] def frac : GParser conditional Nat :=
   GParser.seqR (GParser.ch '.') (GParser.takeWhile1 Ascii.isDigit)
 
-@[inline] private def expo : GParser conditional Nat :=
+@[inline] def expo : GParser conditional Nat :=
   GParser.seqR (GParser.satisfy Ascii.isExp)
     (GParser.seqR (GParser.optional (GParser.satisfy Ascii.isSign))
       (GParser.takeWhile1 Ascii.isDigit))
 
-@[inline] private def intPart : GParser conditional Unit :=
+@[inline] def intPart : GParser conditional Unit :=
   GParser.alt (GParser.ch '0')
     (GParser.seqR (GParser.satisfy Ascii.isDigit19)
       (GParser.seqR (GParser.takeWhile Ascii.isDigit) (GParser.pure ())))
@@ -304,7 +304,7 @@ decreasing_by
 /-- A JSON number, decoded to `.num` straight from the consumed byte range (no `capture`
 `String`). Leading-zero and trailing-garbage rejection come from the grammar and the
 top-level EOF check. -/
-private def number : GParser conditional Json :=
+def number : GParser conditional Json :=
   GParser.captureWith? decodeNumberBytes?
     (GParser.seqR (GParser.optional (GParser.ch '-'))
       (GParser.seqL intPart
@@ -313,7 +313,7 @@ private def number : GParser conditional Json :=
 /-- A validated JSON string literal decoded to its `String` contents in a single scan. The
 escape-aware body scan reports whether any `\` occurred, so `unescape` runs only when it
 must and there is no separate backslash pass over the body. -/
-@[inline] private def jstr : GParser conditional String where
+@[inline] def jstr : GParser conditional String where
   run := fun arr q =>
     if h : q < arr.size then
       (if arr[q] == 34 then scanStr arr q (q + 1) false else .error ⟨q, []⟩)
@@ -335,12 +335,12 @@ must and there is no separate backslash pass over the body. -/
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
 
-private def jstring : GParser conditional Json := GParser.map Json.str jstr
-private def jnull  : GParser conditional Json :=
+def jstring : GParser conditional Json := GParser.map Json.str jstr
+def jnull  : GParser conditional Json :=
   GParser.map (fun _ => Json.null) (GParser.string "null")
-private def jtrue  : GParser conditional Json :=
+def jtrue  : GParser conditional Json :=
   GParser.map (fun _ => Json.bool true) (GParser.string "true")
-private def jfalse : GParser conditional Json :=
+def jfalse : GParser conditional Json :=
   GParser.map (fun _ => Json.bool false) (GParser.string "false")
 
 -- Recursive value via `fix` ----------------------------------------------
@@ -349,7 +349,7 @@ private def jfalse : GParser conditional Json :=
 `seqR ws (dispatch …)` this avoids allocating (and discarding) `ws`'s byte count and the
 extra combinator indirection on every value entry. Grade `conditional`: the dispatched
 parser consumes, and whitespace only advances the offset further. -/
-@[inline] private def wsDispatch (select : UInt8 → GParser conditional Json) :
+@[inline] def wsDispatch (select : UInt8 → GParser conditional Json) :
     GParser conditional Json where
   run := fun arr q =>
     let p := scanFwd arr Ascii.isWs q
@@ -375,7 +375,7 @@ parser consumes, and whitespace only advances the offset further. -/
 /-- Skip leading whitespace, then match the single byte `b`, consuming it. Fused so a
 structural token (`:`, `,`, `]`, `}`) after whitespace costs one scan and one compare with
 no discarded `ws` count allocation. -/
-@[inline] private def wsByte (b : UInt8) : GParser conditional Unit where
+@[inline] def wsByte (b : UInt8) : GParser conditional Unit where
   run := fun arr q =>
     let p := scanFwd arr Ascii.isWs q
     if _ : p < arr.size then
@@ -406,7 +406,7 @@ no discarded `ws` count allocation. -/
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
 
-private def value : GParser conditional Json :=
+def value : GParser conditional Json :=
   GParser.fix fun value =>
     -- The container sub-parsers reference `value`, so `fix` rebuilds them on every entry.
     -- Building them inside the taken dispatch arm (not eagerly before the dispatch) means a
