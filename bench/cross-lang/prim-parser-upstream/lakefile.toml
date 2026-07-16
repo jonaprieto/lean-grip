@@ -1,0 +1,14 @@
+name = "ppupstream"
+defaultTargets = ["bench-canada"]
+
+[[lean_exe]]
+name = "bench-canada"
+root = "BenchCanada"
+
+# The ACTUAL upstream prim-parser (Jan Mas Rovira), pinned to main e1f3f7b.
+# Char-level `List.Vector Char n`; pulls mathlib transitively.
+[[require]]
+name = "PrimParser"
+scope = ""
+git = "https://github.com/janmasrovira/prim-parser"
+rev = "e1f3f7b53a9b90c2c1ca8e902681ccd125a10b13"

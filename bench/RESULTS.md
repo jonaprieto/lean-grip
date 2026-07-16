@@ -50,10 +50,17 @@ bodies, and returns the leaf counts above. Sorted by `canada`.
 | **grip** (Lean)                         |  19.38 |  7.73 |    2.88 | Lean v4.28.0 |
 | Std.Internal.Parsec (Lean)              |  21.34 | 11.17 |    4.89 | Lean v4.28.0 |
 | angstrom (OCaml)                        |  39.04 | 12.56 |    3.79 | OCaml 5.3.0  |
-| prim-parser (Lean, deep-embedded)       |  71.01 | 32.29 |   10.89 | Lean v4.28.0 |
+| prim-parser byte port (deep `G`, local) |  71.01 | 32.29 |   10.89 | Lean v4.28.0 |
 
-Versions: attoparsec 0.14.4, megaparsec 9.8.1, nom 7.1.3, angstrom 0.16.1; prim-parser is the
-sibling `research/prim-parser` `G` (Graded) framework. Each uses its own library's idiomatic
+**Two things are labeled prim-parser; do not confuse them.** The row above is a *byte-level
+deep-embedded reimplementation* (the sibling `research/prim-parser` `G` framework, a reified
+combinator GADT interpreted at run time), not the upstream library. The **actual upstream
+prim-parser** (`janmasrovira/prim-parser` main `e1f3f7b`, char-level `List.Vector Char n`) was
+measured separately, count-only, same task: **~698 ms on canada, ~35x slower than grip** (its char
+linked-list input, with no O(1) access or bulk scan, is the cost). The byte port (71 ms) isolates
+the shallow-vs-deep axis; the upstream (698 ms) shows the char-vs-byte and index axis.
+
+Versions: attoparsec 0.14.4, megaparsec 9.8.1, nom 7.1.3, angstrom 0.16.1. Each uses its own library's idiomatic
 combinators; none builds a DOM.
 
 ## Reading the numbers
@@ -62,11 +69,12 @@ grip is a mid-pack combinator parser, and the fastest one in the Lean set.
 
 **Lean, same toolchain (the controlled set).** grip is the fastest combinator parser in Lean. It
 beats `Std.Internal.Parsec` on every file (~1.1x canada, ~1.45x citm, ~1.7x twitter -- first-byte
-`dispatch` and the single-pass `stringLit` scanner), and it beats **prim-parser, its own
-predecessor, by ~3.6x** (19.4 vs 71.0 on canada). prim-parser's `G` framework is a deep-embedded,
-reified combinator GADT interpreted at run time; grip is a shallow embedding -- each combinator is
-a direct function over `ByteArray → Nat → ParseResult`, with no reified tree to walk. That
-representation difference is the gap. grip sits ~3.8x above the hand-written Lean floor (5.12 ms),
+`dispatch` and the single-pass `stringLit` scanner), and it is **~35x faster than upstream
+prim-parser, its char-level ancestor** (19.4 vs ~698 ms on canada; see the note above). The
+byte port isolates why: it is a deep-embedded, reified combinator GADT interpreted at run time,
+while grip is a shallow embedding -- each combinator is a direct function over
+`ByteArray → Nat → ParseResult`, with no reified tree to walk -- and grip beats even that byte
+port by ~3.6x. So the ~35x decomposes as ~10x char-vs-byte plus ~3.6x shallow-vs-deep. grip sits ~3.8x above the hand-written Lean floor (5.12 ms),
 which is the combinator overhead over raw byte recursion in the same runtime.
 
 **Cross-language combinator libraries.** Both mature Haskell libraries beat grip on native arm64:
@@ -158,7 +166,7 @@ grip's own optimization history (grade algebra unchanged throughout):
   body with one total escape-aware scanner; twitter ~10 to ~3 ms, citm ~13.6 to ~8.1 ms.
 
 grip sits ~3.8x above the hand-written Lean floor (the combinator overhead in the same runtime)
-and ~3.6x below prim-parser's reified `G` interpreter -- the shallow-versus-deep embedding choice
+and ~3.6x below the byte-port reified `G` interpreter -- the shallow-versus-deep embedding choice
 is the dominant factor between the two Lean combinator libraries.
 
 ## All example parsers
