@@ -17,7 +17,7 @@
    "manifestFile": "lake-manifest.json",
    "inherited": false,
    "dir": "../",
-   "configFile": "lakefile.toml"},
+   "configFile": "lakefile.lean"},
   {"url": "https://github.com/leanprover-community/plausible",
    "type": "git",
    "subDir": null,
