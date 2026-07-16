@@ -212,23 +212,6 @@ theorem escEnd_gt (arr : ByteArray) (q q' : Nat) (h : escEnd arr q = some q') : 
       · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-theorem escEnd_le (arr : ByteArray) (q q' : Nat) (h : escEnd arr q = some q') :
-    q' ≤ arr.size := by
-  rw [escEnd] at h
-  split at h
-  · rename_i h1
-    split at h
-    · simp only [Option.some.injEq] at h; omega
-    · split at h
-      · split at h
-        · rename_i h2 _
-          split at h
-          · simp only [Option.some.injEq] at h; omega
-          · exact absurd h (by simp)
-        · exact absurd h (by simp)
-      · exact absurd h (by simp)
-  · exact absurd h (by simp)
-
 /-- Scan a strict RFC-8259 string body and produce the decoded `String` in one pass. `q0` is
 the opening-quote index and `q` the current scan position; `esc` accumulates whether any `\`
 was seen. On the closing quote the body `arr[q0+1 .. q)` is built once (a single `fromUTF8!`
@@ -475,23 +458,25 @@ namespace Json
 
 private def hexDigit (n : Nat) : Char := "0123456789abcdef".toList.getD n '0'
 
+/-- The JSON escape of a single character, as the list of output characters: `"`, `\`, and the
+named control escapes map to a two-character sequence, other control bytes to `\u00XX`, and every
+other character to itself. -/
+def escapeChar (c : Char) : List Char :=
+  if c == '"' then ['\\', '"']
+  else if c == '\\' then ['\\', '\\']
+  else if c == '\n' then ['\\', 'n']
+  else if c == '\t' then ['\\', 't']
+  else if c == '\r' then ['\\', 'r']
+  else if c == Char.ofNat 8 then ['\\', 'b']
+  else if c == Char.ofNat 12 then ['\\', 'f']
+  else if c.toNat < 0x20 then
+    ['\\', 'u', '0', '0', hexDigit (c.toNat / 16), hexDigit (c.toNat % 16)]
+  else [c]
+
 /-- Escape a string body for JSON output: `"`, `\`, and control characters. Non-ASCII is
-emitted verbatim (valid UTF-8 JSON). -/
-def escape (s : String) : String :=
-  -- ponytail: naive `++` append, quadratic in the escaped length; fine for a serializer,
-  -- switch to a `String` builder if it ever shows up in a profile.
-  s.foldl (fun acc c =>
-    acc ++
-      (if c == '"' then "\\\""
-       else if c == '\\' then "\\\\"
-       else if c == '\n' then "\\n"
-       else if c == '\t' then "\\t"
-       else if c == '\r' then "\\r"
-       else if c == Char.ofNat 8 then "\\b"
-       else if c == Char.ofNat 12 then "\\f"
-       else if c.toNat < 0x20 then
-         String.ofList ['\\', 'u', '0', '0', hexDigit (c.toNat / 16), hexDigit (c.toNat % 16)]
-       else String.singleton c)) ""
+emitted verbatim (valid UTF-8 JSON). Builds the output as one `List Char` (`flatMap`) and
+materializes it once, so it is linear rather than quadratic in the escaped length. -/
+def escape (s : String) : String := String.ofList (s.toList.flatMap escapeChar)
 
 /-- Render an exact `num mantissa exponent` to a decimal literal, inserting the point
 `exponent` digits from the right (`num 25 1` → `"2.5"`, `num 5 3` → `"0.005"`). -/
