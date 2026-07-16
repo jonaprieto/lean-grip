@@ -154,15 +154,18 @@ theorem foldl_H_zeros (n : Nat) :
   | succ n ih => rw [List.replicate_succ, List.foldl_cons]; norm_num; exact ih
 
 /-- The `numByte` fold over an integer part, the point, and a fractional part yields the mantissa
-of all digits together and a fractional length equal to the fractional part. -/
-theorem fold_frac_chars (intg fracg : List Char)
+of all digits together (starting from `st`) and a fractional length equal to the fractional part;
+other `NState` fields (e.g. the sign) are preserved. -/
+theorem fold_frac_chars (intg fracg : List Char) (st : NState) (hp : st.phase = 0)
     (hi : ∀ c ∈ intg, 48 ≤ c.toNat ∧ c.toNat ≤ 57)
     (hf : ∀ c ∈ fracg, 48 ≤ c.toNat ∧ c.toNat ≤ 57) :
     (intg.flatMap String.utf8EncodeChar ++ String.utf8EncodeChar '.'
-        ++ fracg.flatMap String.utf8EncodeChar).foldl numByte {}
-      = { mant := (intg ++ fracg).foldl (fun a c => a * 10 + (c.toNat - 48)) 0,
-          fracLen := fracg.length, phase := 1 } := by
-  rw [List.append_assoc, List.foldl_append, foldl_numByte_ascii _ _ rfl hi,
+        ++ fracg.flatMap String.utf8EncodeChar).foldl numByte st
+      = { st with
+          mant := (intg ++ fracg).foldl (fun a c => a * 10 + (c.toNat - 48)) st.mant
+          fracLen := st.fracLen + fracg.length
+          phase := 1 } := by
+  rw [List.append_assoc, List.foldl_append, foldl_numByte_ascii _ _ hp hi,
     ascii_encode '.' (by decide), List.foldl_append, List.foldl_cons, List.foldl_nil,
     numByte_dot, foldl_numByte_frac_ascii _ _ rfl hf]
   simp [List.foldl_append]
@@ -200,7 +203,7 @@ theorem decode_renderNum_frac (m : Int) (hm : 0 ≤ m) (e : Nat) (he : 0 < e) :
       = ({ mant := m.toNat, fracLen := e, phase := 1 } : NState) := by
     rw [GripProps.Bytes.toUTF8_foldl, hrn, List.flatMap_append, List.flatMap_cons,
       ← List.append_assoc,
-      fold_frac_chars _ _ (fun c hc => hds_dig c (List.mem_of_mem_take hc))
+      fold_frac_chars _ _ {} rfl (fun c hc => hds_dig c (List.mem_of_mem_take hc))
         (fun c hc => hds_dig c (List.mem_of_mem_drop hc))]
     have hmant : (ds.take k ++ ds.drop k).foldl (fun a c => a * 10 + (c.toNat - 48)) 0
         = m.toNat := by
@@ -209,12 +212,64 @@ theorem decode_renderNum_frac (m : Int) (hm : 0 ≤ m) (e : Nat) (he : 0 < e) :
       rw [Nat.repr, String.toList_ofList] at this
       exact this
     have hfrac : (ds.drop k).length = e := by rw [List.length_drop]; omega
-    rw [hmant, hfrac]
+    rw [show ({} : NState).mant = 0 from rfl, hmant, hfrac]
+    simp
   unfold decodeNumberBytes?
   rw [hst]
   simp only [Bool.false_eq_true, if_false, CharP.cast_eq_zero, zero_sub, ge_iff_le,
     Left.nonneg_neg_iff, Int.natCast_nonpos_iff]
   rw [if_neg (show ¬ e = 0 by omega), neg_neg, Int.toNat_natCast, Int.toNat_of_nonneg hm]
+
+/-- **Negative fractional number round-trip.** For `m < 0` and `e > 0`. The leading `-` sets the
+sign flag before the fractional decode; the sign literal uses ordinary `++`, so unlike the
+integer case there is no `String.Internal.append` obstruction. -/
+theorem decode_renderNum_frac_neg (m : Int) (hm : m < 0) (e : Nat) (he : 0 < e) :
+    decodeNumberBytes? (renderNum m e).toUTF8 0 (renderNum m e).toUTF8.size
+      = some (Json.num m e) := by
+  have htl : (toString m.natAbs).toList = Nat.toDigits 10 m.natAbs := by
+    show (Nat.repr m.natAbs).toList = _; rw [Nat.repr, String.toList_ofList]
+  set len := (toString m.natAbs).length with hlen
+  have hlenL : len = (Nat.toDigits 10 m.natAbs).length := by
+    rw [hlen]; show (Nat.repr m.natAbs).length = _; rw [Nat.repr, String.length_ofList]
+  set ds := List.replicate (e + 1 - len) '0' ++ Nat.toDigits 10 m.natAbs with hds
+  set k := ds.length - e with hk
+  have hds_dig : ∀ c ∈ ds, 48 ≤ c.toNat ∧ c.toNat ≤ 57 := by
+    intro c hc
+    rcases List.mem_append.mp hc with h | h
+    · rw [List.eq_of_mem_replicate h]; decide
+    · exact GripProps.NatDigits.mem_toDigits_bound m.natAbs c h
+  have hdslen : e ≤ ds.length := by
+    rw [hds, List.length_append, List.length_replicate, ← hlenL]; omega
+  have hrn : (renderNum m e).toList = '-' :: (ds.take k ++ '.' :: ds.drop k) := by
+    unfold renderNum
+    simp only [show (e == 0) = false from by simp [he.ne'],
+      Bool.false_eq_true, if_false, if_pos hm, String.toList_append,
+      String.toList_ofList, show ("." : String).toList = ['.'] from by decide,
+      show ("-" : String).toList = ['-'] from by decide]
+    rw [htl, ← hlen]
+    simp [hds, hk, List.length_append, List.length_replicate, List.append_assoc]
+  have hst : (renderNum m e).toUTF8.foldl numByte {} 0 (renderNum m e).toUTF8.size
+      = ({ mant := m.natAbs, fracLen := e, phase := 1, mantNeg := true } : NState) := by
+    rw [GripProps.Bytes.toUTF8_foldl, hrn, List.flatMap_cons, ascii_encode '-' (by decide),
+      List.foldl_append, List.foldl_cons, List.foldl_nil,
+      show numByte {} (UInt8.ofNat ('-').toNat) = ({ mantNeg := true } : NState) from rfl,
+      List.flatMap_append, List.flatMap_cons, ← List.append_assoc,
+      fold_frac_chars _ _ _ rfl (fun c hc => hds_dig c (List.mem_of_mem_take hc))
+        (fun c hc => hds_dig c (List.mem_of_mem_drop hc))]
+    have hmant : (ds.take k ++ ds.drop k).foldl (fun a c => a * 10 + (c.toNat - 48))
+        ({ mantNeg := true } : NState).mant = m.natAbs := by
+      rw [List.take_append_drop, hds, List.foldl_append, foldl_H_zeros]
+      have := GripProps.NatDigits.foldl_repr m.natAbs
+      rw [Nat.repr, String.toList_ofList] at this
+      exact this
+    have hfrac : (ds.drop k).length = e := by rw [List.length_drop]; omega
+    rw [hmant, hfrac]; simp
+  unfold decodeNumberBytes?
+  rw [hst]
+  simp only [Bool.false_eq_true, if_false, if_true, ite_true, CharP.cast_eq_zero, zero_sub,
+    ge_iff_le, Left.nonneg_neg_iff, Int.natCast_nonpos_iff]
+  rw [if_neg (show ¬ e = 0 by omega), neg_neg, Int.toNat_natCast,
+    show -(m.natAbs : Int) = m from by omega]
 
 /-- **Integer number round-trip.** For a nonnegative integer, decoding the bytes of its rendering
 recovers it. Composes the ByteArray/toUTF8 fold bridge, the digit-fold inversion, and the numByte
