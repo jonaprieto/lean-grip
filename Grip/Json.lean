@@ -86,7 +86,7 @@ end Json
 namespace Decode
 
 /-- State threaded through `unescape`'s single left fold. -/
-private structure UState where
+structure UState where
   out   : String := ""
   esc   : Bool := false   -- previous char was a lone backslash
   uLeft : Nat := 0        -- hex digits still expected in a `\uXXXX` (0 = not in one)
@@ -96,7 +96,7 @@ private structure UState where
 /-- One step of `unescape`. Handles simple escapes, `\uXXXX`, and a high/low surrogate
 pair combined into one scalar. Assumes a grammar-validated body, so malformed input is
 handled leniently rather than rejected. -/
-private def uStep (st : UState) (c : Char) : UState :=
+def uStep (st : UState) (c : Char) : UState :=
   if st.uLeft > 0 then
     let acc := st.uAcc * 16 + Grip.Ascii.hexValue (UInt8.ofNat c.toNat)
     if st.uLeft == 1 then
@@ -124,11 +124,13 @@ private def uStep (st : UState) (c : Char) : UState :=
   else if c == '\\' then { st with esc := true }
   else { st with out := st.out.push c }
 
-/-- Decode the escapes in a JSON string body (no surrounding quotes). -/
-def unescape (s : String) : String := (s.foldl uStep {}).out
+/-- Decode the escapes in a JSON string body (no surrounding quotes). Folds over `s.toList`
+(not `s.foldl`) so the round-trip proof can rewrite with `String.toList_ofList`; this runs only
+when a body actually contained a `\`-escape, off the escape-free fast path. -/
+def unescape (s : String) : String := (s.toList.foldl uStep {}).out
 
 /-- State threaded through `decodeNumber`'s single fold over the whole lexeme. -/
-private structure NState where
+structure NState where
   mant    : Nat := 0     -- integer and fractional digits as one natural
   fracLen : Nat := 0     -- number of fractional digits
   phase   : Nat := 0     -- 0 = integer part, 1 = fraction, 2 = exponent
@@ -139,7 +141,7 @@ private structure NState where
 /-- One step of the number decode, over a raw input byte. A `-` (45) is the mantissa sign
 in phase 0 and the exponent sign in phase 2; `+` (43) only occurs in the exponent. Digit
 bytes are `48..57`. -/
-private def numByte (st : NState) (b : UInt8) : NState :=
+def numByte (st : NState) (b : UInt8) : NState :=
   if b == 46 then { st with phase := 1 }                    -- '.'
   else if b == 101 || b == 69 then { st with phase := 2 }   -- 'e' / 'E'
   else if b == 43 then st                                   -- '+'
@@ -456,7 +458,7 @@ def parse! (s : String) : Except ParseError Json := parser.parse s.toUTF8
 
 namespace Json
 
-private def hexDigit (n : Nat) : Char := "0123456789abcdef".toList.getD n '0'
+def hexDigit (n : Nat) : Char := "0123456789abcdef".toList.getD n '0'
 
 /-- The JSON escape of a single character, as the list of output characters: `"`, `\`, and the
 named control escapes map to a two-character sequence, other control bytes to `\u00XX`, and every
