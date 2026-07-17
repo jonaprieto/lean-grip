@@ -57,6 +57,38 @@ theorem foldl_eq_data_toList {β : Type} (f : β → UInt8 → β) (b : β) (arr
   simp only [Nat.le_refl, ↓reduceDIte, Nat.sub_zero]
   exact foldlM_loop_eq f arr (Nat.le_refl _) arr.size 0 b (by omega)
 
+/-- The internal loop over a bounded range computes the `List.foldl` over that slice of bytes. -/
+theorem foldlM_loop_range {β : Type} (f : β → UInt8 → β) (arr : ByteArray) (stop : Nat)
+    (h : stop ≤ arr.size) :
+    ∀ (i j : Nat) (b : β), j + i = stop →
+      ByteArray.foldlM.loop (m := Id) (fun x y => pure (f x y)) arr stop h i j b
+        = ((arr.data.toList.drop j).take i).foldl f b := by
+  intro i
+  induction i with
+  | zero =>
+    intro j b hj; unfold ByteArray.foldlM.loop
+    simp only [List.take_zero, List.foldl_nil]; split <;> rfl
+  | succ n ih =>
+    intro j b hj
+    have hjt : j < arr.data.toList.length := by
+      rw [Array.length_toList, ByteArray.size_data]; omega
+    have hget : arr[j] = arr.data.toList[j]'hjt := by
+      rw [ByteArray.getElem_eq_getElem_data, Array.getElem_toList]
+    unfold ByteArray.foldlM.loop
+    rw [dif_pos (show j < stop by omega)]
+    rw [hget, List.drop_eq_getElem_cons hjt, List.take_succ_cons, List.foldl_cons]
+    exact ih (j + 1) _ (by omega)
+
+/-- A bounded-range `ByteArray.foldl` is the `List.foldl` over that byte slice. -/
+theorem foldl_range_data {β : Type} (f : β → UInt8 → β) (b : β) (arr : ByteArray) (q q' : Nat)
+    (hq' : q' ≤ arr.size) (hqq : q ≤ q') :
+    arr.foldl f b q q' = ((arr.data.toList.drop q).take (q' - q)).foldl f b := by
+  show (ByteArray.foldlM (m := Id) (fun x y => pure (f x y)) b arr q q').run
+      = ((arr.data.toList.drop q).take (q' - q)).foldl f b
+  unfold ByteArray.foldlM
+  simp only [dif_pos hq']
+  exact foldlM_loop_range f arr q' hq' (q' - q) q b (by omega)
+
 /-- The byte list of a `List Char`'s UTF-8 encoding is the per-character encodings concatenated. -/
 theorem utf8Encode_data_toList (cs : List Char) :
     (List.utf8Encode cs).data.toList = cs.flatMap String.utf8EncodeChar := by
