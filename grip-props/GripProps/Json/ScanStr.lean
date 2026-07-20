@@ -24,6 +24,27 @@ open Grip Grip.Json Grip.Json.Decode Grip.Json.Json
 
 namespace GripProps.ScanStr
 
+/-- The UTF-8 bytes a single character contributes to a rendered string body. -/
+def cbytes (c : Char) : List UInt8 := (escapeChar c).flatMap String.utf8EncodeChar
+
+/-- The UTF-8 bytes of a whole rendered string body (`escape`'s output). -/
+def ebytes (cs : List Char) : List UInt8 := (cs.flatMap escapeChar).flatMap String.utf8EncodeChar
+
+/-- `ebytes` peels one character off the front as `cbytes`. -/
+theorem ebytes_cons (c : Char) (cs : List Char) : ebytes (c :: cs) = cbytes c ++ ebytes cs := by
+  simp only [ebytes, cbytes, List.flatMap_cons, List.flatMap_append]
+
+/-- `isHexByte` accepts every `hexDigit` output: each is one of `0-9a-f`, all hex. -/
+theorem isHexByte_hexDigit (n : Nat) : isHexByte ((hexDigit n).val.toUInt8) = true := by
+  have hmem : hexDigit n ∈ "0123456789abcdef".toList := by
+    unfold hexDigit
+    rcases Nat.lt_or_ge n "0123456789abcdef".toList.length with h | h
+    · rw [List.getD_eq_getElem _ _ h]; exact List.getElem_mem _
+    · rw [List.getD_eq_default _ _ h]; decide
+  have key : ∀ c ∈ "0123456789abcdef".toList, isHexByte (c.val.toUInt8) = true := by
+    intro c hc; fin_cases hc <;> rfl
+  exact key _ hmem
+
 /-- Inverting `escapeChar c = [c]`: the character fell through every escape branch, so it is
 `≥ 0x20` and neither `"` nor `\`. -/
 theorem passthrough_props (c : Char) (h : escapeChar c = [c]) :
@@ -193,6 +214,22 @@ theorem scanStr_char_passthrough (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c 
   rw [hcontent i hi]
   exact ⟨by omega, hn34, hn92, hnlt⟩
 
+/-- Every `hexDigit` output is ASCII (`≤ 0x7F`). -/
+theorem hexDigit_val_le (k : Nat) : (hexDigit k).val ≤ 0x7F := by
+  have hmem : hexDigit k ∈ "0123456789abcdef".toList := by
+    unfold hexDigit
+    rcases Nat.lt_or_ge k "0123456789abcdef".toList.length with h | h
+    · rw [List.getD_eq_getElem _ _ h]; exact List.getElem_mem _
+    · rw [List.getD_eq_default _ _ h]; decide
+  have key : ∀ c ∈ "0123456789abcdef".toList, c.val ≤ 0x7F := by
+    intro c hc; fin_cases hc <;> decide
+  exact key _ hmem
+
+/-- A `hexDigit` char is single-byte in UTF-8, carrying its codepoint. -/
+theorem hexDigit_utf8 (k : Nat) :
+    String.utf8EncodeChar (hexDigit k) = [(hexDigit k).val.toUInt8] :=
+  String.utf8EncodeChar_eq_singleton (Char.utf8Size_eq_one_iff.mpr (hexDigit_val_le k))
+
 /-- A two-byte escape (`\` then a named escape byte) is walked in two, marking `esc`. -/
 theorem scanStr_char_escape2 (arr : ByteArray) (q0 q : Nat) (esc : Bool) (Xb : UInt8)
     (hq1 : q + 1 < arr.size) (h92 : arr[q]! = 92) (hX : arr[q + 1]! = Xb)
@@ -209,5 +246,93 @@ theorem scanStr_char_escapeU (arr : ByteArray) (q0 q : Nat) (esc : Bool) (hq5 : 
       isHexByte arr[q + 5]!) = true) :
     scanStr arr q0 q esc = scanStr arr q0 (q + 6) true :=
   scanStr_esc_step arr q0 q (q + 6) esc (by omega) h92 (escEnd_u arr q (by omega) hq5 hu hhex)
+
+/-- A named two-byte escape, given its byte layout `[92, Xb]`, is walked in two. -/
+theorem escape2_of (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Char) (Xb : UInt8)
+    (hcb : cbytes c = [92, Xb])
+    (hset : (Xb == 34 || Xb == 92 || Xb == 47 || Xb == 98 || Xb == 102 || Xb == 110 ||
+      Xb == 114 || Xb == 116) = true)
+    (hcontent : ∀ j, j < (cbytes c).length → arr[q + j]! = (cbytes c)[j]!)
+    (hbound : q + (cbytes c).length ≤ arr.size) :
+    scanStr arr q0 q esc = scanStr arr q0 (q + (cbytes c).length) true := by
+  have hlen : (cbytes c).length = 2 := by rw [hcb]; rfl
+  rw [hlen]
+  have h92 : arr[q]! = 92 := by
+    have := hcontent 0 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
+  have hX : arr[q + 1]! = Xb := by
+    have := hcontent 1 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
+  exact scanStr_char_escape2 arr q0 q esc Xb (by rw [hlen] at hbound; omega) h92 hX hset
+
+/-- A `\uXXXX` escape, given its byte layout `[92, 117, 48, 48, b4, b5]` with `b4 b5` hex, is
+walked in six. -/
+theorem escapeU_of (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Char) (b4 b5 : UInt8)
+    (hcb : cbytes c = [92, 117, 48, 48, b4, b5]) (hb4 : isHexByte b4 = true)
+    (hb5 : isHexByte b5 = true)
+    (hcontent : ∀ j, j < (cbytes c).length → arr[q + j]! = (cbytes c)[j]!)
+    (hbound : q + (cbytes c).length ≤ arr.size) :
+    scanStr arr q0 q esc = scanStr arr q0 (q + (cbytes c).length) true := by
+  have hlen : (cbytes c).length = 6 := by rw [hcb]; rfl
+  rw [hlen]
+  have g92 : arr[q]! = 92 := by
+    have := hcontent 0 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
+  have gu : arr[q + 1]! = 117 := by
+    have := hcontent 1 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
+  have g2 : arr[q + 2]! = 48 := by
+    have := hcontent 2 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
+  have g3 : arr[q + 3]! = 48 := by
+    have := hcontent 3 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
+  have g4 : arr[q + 4]! = b4 := by
+    have := hcontent 4 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
+  have g5 : arr[q + 5]! = b5 := by
+    have := hcontent 5 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
+  have hhex : (isHexByte arr[q + 2]! && isHexByte arr[q + 3]! && isHexByte arr[q + 4]! &&
+      isHexByte arr[q + 5]!) = true := by
+    rw [g2, g3, g4, g5, hb4, hb5]; decide
+  exact scanStr_char_escapeU arr q0 q esc (by rw [hlen] at hbound; omega) g92 gu hhex
+
+/-- Any escaped character (`escapeChar c ≠ [c]`) is walked by `scanStr` over exactly its `cbytes`,
+marking the escape flag. Dispatches the seven named escapes to `escape2_of` and every other control
+character to `escapeU_of`. -/
+theorem scanStr_char_escape (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Char)
+    (hesc : escapeChar c ≠ [c])
+    (hcontent : ∀ j, j < (cbytes c).length → arr[q + j]! = (cbytes c)[j]!)
+    (hbound : q + (cbytes c).length ≤ arr.size) :
+    scanStr arr q0 q esc = scanStr arr q0 (q + (cbytes c).length) true := by
+  by_cases h : c = '"'
+  · exact escape2_of arr q0 q esc c 34 (by rw [h]; decide) (by decide) hcontent hbound
+  by_cases h2 : c = '\\'
+  · exact escape2_of arr q0 q esc c 92 (by rw [h2]; decide) (by decide) hcontent hbound
+  by_cases h3 : c = '\n'
+  · exact escape2_of arr q0 q esc c 110 (by rw [h3]; decide) (by decide) hcontent hbound
+  by_cases h4 : c = '\t'
+  · exact escape2_of arr q0 q esc c 116 (by rw [h4]; decide) (by decide) hcontent hbound
+  by_cases h5 : c = '\r'
+  · exact escape2_of arr q0 q esc c 114 (by rw [h5]; decide) (by decide) hcontent hbound
+  by_cases h6 : c = Char.ofNat 8
+  · exact escape2_of arr q0 q esc c 98 (by rw [h6]; decide) (by decide) hcontent hbound
+  by_cases h7 : c = Char.ofNat 12
+  · exact escape2_of arr q0 q esc c 102 (by rw [h7]; decide) (by decide) hcontent hbound
+  by_cases hctrl : c.toNat < 0x20
+  · -- control character: `\u00XX`
+    have hec : escapeChar c =
+        ['\\', 'u', '0', '0', hexDigit (c.toNat / 16), hexDigit (c.toNat % 16)] := by
+      unfold escapeChar
+      simp only [beq_eq_false_iff_ne.mpr h, beq_eq_false_iff_ne.mpr h2, beq_eq_false_iff_ne.mpr h3,
+        beq_eq_false_iff_ne.mpr h4, beq_eq_false_iff_ne.mpr h5, beq_eq_false_iff_ne.mpr h6,
+        beq_eq_false_iff_ne.mpr h7, Bool.false_eq_true, if_false, if_pos hctrl]
+    have hcb : cbytes c = [92, 117, 48, 48, (hexDigit (c.toNat / 16)).val.toUInt8,
+        (hexDigit (c.toNat % 16)).val.toUInt8] := by
+      unfold cbytes; rw [hec]
+      simp only [List.flatMap_cons, List.flatMap_nil, hexDigit_utf8,
+        show String.utf8EncodeChar '\\' = [92] from by decide,
+        show String.utf8EncodeChar 'u' = [117] from by decide,
+        show String.utf8EncodeChar '0' = [48] from by decide, List.append_assoc,
+        List.nil_append, List.cons_append]
+    exact escapeU_of arr q0 q esc c _ _ hcb (isHexByte_hexDigit _) (isHexByte_hexDigit _)
+      hcontent hbound
+  · exact absurd (by unfold escapeChar; simp only [beq_eq_false_iff_ne.mpr h,
+      beq_eq_false_iff_ne.mpr h2, beq_eq_false_iff_ne.mpr h3, beq_eq_false_iff_ne.mpr h4,
+      beq_eq_false_iff_ne.mpr h5, beq_eq_false_iff_ne.mpr h6, beq_eq_false_iff_ne.mpr h7,
+      Bool.false_eq_true, if_false, if_neg hctrl]) hesc
 
 end GripProps.ScanStr
