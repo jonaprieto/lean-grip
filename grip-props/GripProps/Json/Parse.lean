@@ -401,6 +401,67 @@ theorem value_run_num_int (arr : ByteArray) (q : Nat) (m : Int) (hm : 0 ≤ m) (
   rw [hnum]
   exact clampAdvance_ok arr q (by omega) (by omega)
 
+/-- `value` parses a nonnegative fractional number (`e > 0`): integer part of length `ip`, `.`,
+then a nonempty fractional part, total length `n`. -/
+theorem value_run_num_frac (arr : ByteArray) (q : Nat) (m : Int) (e ip n : Nat) (hm : 0 ≤ m)
+    (hip : 1 ≤ ip) (hn : ip + 2 ≤ n) (hsize : q + n ≤ arr.size)
+    (hintstruct : (ip = 1 ∧ arr[q]! = 48) ∨
+      (Ascii.isDigit19 arr[q]! = true ∧ ∀ i, 1 ≤ i → i < ip → Ascii.isDigit arr[q + i]! = true))
+    (hdot : arr[q + ip]! = 46)
+    (hfrac : ∀ i, ip + 1 ≤ i → i < n → Ascii.isDigit arr[q + i]! = true)
+    (hstop : q + n = arr.size ∨ (q + n < arr.size ∧ Ascii.isDigit arr[q + n]! = false ∧
+      arr[q + n]! ≠ 46 ∧ Ascii.isExp arr[q + n]! = false))
+    (hdecode : decodeNumberBytes? arr q (q + n) = some (Json.num m e)) :
+    value.run arr q = .ok (Json.num m e) (q + n) := by
+  have hqs : q < arr.size := by omega
+  have hd! : Ascii.isDigit arr[q]! = true := by
+    rcases hintstruct with ⟨_, h0⟩ | ⟨h19, _⟩
+    · rw [h0]; decide
+    · exact isDigit19_isDigit h19
+  have hb : Ascii.isDigit arr[q] = true := by rwa [getElem!_pos arr q hqs] at hd!
+  have hsign : (GParser.optional (GParser.ch '-')).run arr q = .ok none q :=
+    optional_run_none _ arr q ⟨q, []⟩ (byte_run_fail! (Ascii.code '-') arr q hqs
+      (by intro he; rw [show Ascii.code '-' = (45 : UInt8) from by decide] at he
+          exact absurd (he ▸ hd! : Ascii.isDigit 45 = true) (by decide)))
+  -- intPart consumes [q, q+ip), stopping at the '.'
+  have hint : intPart.run arr q = .ok () (q + ip) := by
+    rcases hintstruct with ⟨hip1, h0⟩ | ⟨h19, hds⟩
+    · subst hip1; exact intPart_run_zero arr q hqs h0
+    · refine intPart_run_nonzero arr q ip hqs hip h19 hds (Or.inr ⟨by omega, ?_⟩)
+      rw [hdot]; decide
+  -- frac consumes [q+ip, q+n)
+  have hfr : frac.run arr (q + ip) = .ok (n - ip - 1) (q + n) := by
+    have := frac_run arr (q + ip) (n - ip) (by omega) hdot (by omega)
+      (by omega)
+      (fun i hi1 hi2 => by
+        have := hfrac (ip + i) (by omega) (by omega)
+        rwa [show q + (ip + i) = q + ip + i from by omega] at this)
+      (by rcases hstop with h | ⟨h1, h2, _, _⟩
+          · exact Or.inl (by omega)
+          · exact Or.inr ⟨by omega, by rwa [show q + ip + (n - ip) = q + n from by omega]⟩)
+    rwa [show q + ip + (n - ip) = q + n from by omega] at this
+  have hexp : (GParser.optional expo).run arr (q + n) = .ok none (q + n) := by
+    refine optional_run_none _ _ _ ⟨q + n, []⟩ (seqR_run_fail_left _ _ arr (q + n) _ ?_)
+    rcases hstop with h | ⟨h1, _, _, hexp'⟩
+    · exact satisfy_run_end _ arr (q + n) (by omega)
+    · exact satisfy_run_fail! _ arr (q + n) h1 hexp'
+  have hnum : number.run arr q = .ok (Json.num m e) (q + n) := by
+    simp only [number]
+    exact captureWith?_run decodeNumberBytes? _ arr q () (q + n) (Json.num m e)
+      (seqR_run _ _ arr q none q () (q + n) hsign
+        (seqL_run _ _ arr q () (q + ip) none (q + n) hint
+          (seqR_run _ _ arr (q + ip) (some (n - ip - 1)) (q + n) none (q + n)
+            (optional_run_some frac arr (q + ip) (n - ip - 1) (q + n) hfr) hexp))) hdecode
+  have hne : ∀ c : UInt8, Ascii.isDigit c = false → ¬((arr[q] == c) = true) := fun c hc => by
+    rw [beq_iff_eq]; intro he; rw [he, hc] at hb; exact absurd hb (by decide)
+  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
+  simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
+  rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
+    if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
+    if_pos (by rw [hb]; rfl)]
+  rw [hnum]
+  exact clampAdvance_ok arr q (by omega) (by omega)
+
 /-- `value` parses the `null` keyword. -/
 theorem value_run_null (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
     (hm : ∀ j, j < 4 → arr[q + j]! = "null".toUTF8[j]!) :
