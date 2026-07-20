@@ -14,6 +14,7 @@ import GripProps.Json.NatDigits
 import GripProps.Json.Number
 import GripProps.Json.Parse
 import GripProps.Json.Leaf
+import GripProps.Json.ScanStr
 
 /-!
 # grip-props
