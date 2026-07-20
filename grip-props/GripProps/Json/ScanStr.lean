@@ -24,6 +24,19 @@ open Grip.Json Grip.Json.Decode
 
 namespace GripProps.ScanStr
 
+/-- Decoding the UTF-8 bytes of a string recovers it: `fromUTF8!` inverts `toUTF8`. The body that
+`scanStr` extracts at the closing quote is exactly `(escape s).toUTF8`, so this turns it back into
+`escape s`. -/
+theorem fromUTF8!_toUTF8 (s : String) : String.fromUTF8! s.toUTF8 = s := by
+  have hv : s.toUTF8.IsValidUTF8 := by
+    rw [show s.toUTF8 = s.toList.utf8Encode from by
+      rw [String.toUTF8_eq_toByteArray, ← String.utf8Encode_toList]]
+    exact ByteArray.isValidUTF8_utf8Encode
+  unfold String.fromUTF8!
+  rw [dif_pos hv]
+  apply String.toByteArray_inj.mp
+  exact ByteArray.ext rfl
+
 /-- At the closing quote, `scanStr` finishes: it builds the body `arr[q0+1 .. q)` and unescapes
 it exactly when an escape was seen. -/
 theorem scanStr_close (arr : ByteArray) (q0 q : Nat) (esc : Bool) (hq : q < arr.size)
