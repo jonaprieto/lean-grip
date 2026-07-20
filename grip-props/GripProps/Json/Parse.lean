@@ -279,6 +279,25 @@ theorem intPart_run_nonzero (arr : ByteArray) (q n : Nat) (hq : q < arr.size) (h
     exact seqR_run _ _ arr q _ (q + 1) () (q + n) hsat
       (seqR_run _ _ arr (q + 1) (n - 1) (q + n) () (q + n) htw rfl)
 
+/-- `frac` consumes `.` then a nonempty digit run. -/
+theorem frac_run (arr : ByteArray) (q n : Nat) (hq : q < arr.size) (hdot : arr[q]! = 46)
+    (hq1 : q + 1 < arr.size) (hn : 2 ≤ n)
+    (hall : ∀ i, 1 ≤ i → i < n → Ascii.isDigit arr[q + i]! = true)
+    (hstop : q + n = arr.size ∨ (q + n < arr.size ∧ Ascii.isDigit arr[q + n]! = false)) :
+    frac.run arr q = .ok (n - 1) (q + n) := by
+  simp only [frac]
+  have hch : (GParser.ch '.').run arr q = .ok () (q + 1) :=
+    byte_run! (Ascii.code '.') arr q hq (by rw [hdot]; decide)
+  have htw1 : (GParser.takeWhile1 Ascii.isDigit).run arr (q + 1) = .ok (n - 1) (q + n) := by
+    have := takeWhile1_run Ascii.isDigit arr (q + 1) (n - 1) hq1 (by omega)
+      (fun i hi => by have := hall (i + 1) (by omega) (by omega)
+                      rwa [show q + (i + 1) = q + 1 + i from by omega] at this)
+      (by rcases hstop with h | ⟨h, hf⟩
+          · exact Or.inl (by omega)
+          · exact Or.inr ⟨by omega, by rwa [show q + 1 + (n - 1) = q + n from by omega]⟩)
+    rwa [show q + 1 + (n - 1) = q + n from by omega] at this
+  exact seqR_run _ _ arr q () (q + 1) (n - 1) (q + n) hch htw1
+
 /-- `value` parses the `null` keyword. -/
 theorem value_run_null (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
     (hm : ∀ j, j < 4 → arr[q + j]! = "null".toUTF8[j]!) :
