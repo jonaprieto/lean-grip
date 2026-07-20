@@ -20,9 +20,34 @@ round-trip.
 
 set_option maxHeartbeats 1000000
 
-open Grip.Json Grip.Json.Decode
+open Grip.Json Grip.Json.Decode Grip.Json.Json
 
 namespace GripProps.ScanStr
+
+/-- Inverting `escapeChar c = [c]`: the character fell through every escape branch, so it is
+`≥ 0x20` and neither `"` nor `\`. -/
+theorem passthrough_props (c : Char) (h : escapeChar c = [c]) :
+    32 ≤ c.toNat ∧ c.val ≠ 34 ∧ c.val ≠ 92 := by
+  unfold escapeChar at h
+  by_cases h34 : c = '"'
+  · simp [h34] at h
+  by_cases h92 : c = '\\'
+  · simp [h92] at h
+  by_cases hn : c = '\n'
+  · simp [hn] at h
+  by_cases ht : c = '\t'
+  · simp [ht] at h
+  by_cases hr : c = '\r'
+  · simp [hr] at h
+  by_cases hb8 : c = Char.ofNat 8
+  · simp [hb8] at h
+  by_cases hf12 : c = Char.ofNat 12
+  · simp [hf12] at h
+  by_cases hctrl : c.toNat < 0x20
+  · simp [h34, h92, hn, ht, hr, hb8, hf12, hctrl] at h
+  refine ⟨by omega, ?_, ?_⟩
+  · intro he; exact h34 (Char.eq_of_val_eq (he.trans (by decide)))
+  · intro he; exact h92 (Char.eq_of_val_eq (he.trans (by decide)))
 
 /-- Decoding the UTF-8 bytes of a string recovers it: `fromUTF8!` inverts `toUTF8`. The body that
 `scanStr` extracts at the closing quote is exactly `(escape s).toUTF8`, so this turns it back into
@@ -65,13 +90,13 @@ theorem passthrough_bytes_normal (c : Char) (h32 : 32 ≤ c.toNat) (hq : c.val �
       exact h92 he
     · rw [UInt8.lt_iff_toNat_lt, hbb, show (32 : UInt8).toNat = 32 from by decide]; omega
   · rw [String.utf8EncodeChar_eq_cons_cons h] at hb
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hb
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
     rcases hb with rfl | rfl <;> exact ⟨by bv_decide, by bv_decide, by bv_decide⟩
   · rw [String.utf8EncodeChar_eq_cons_cons_cons h] at hb
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hb
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
     rcases hb with rfl | rfl | rfl <;> exact ⟨by bv_decide, by bv_decide, by bv_decide⟩
   · rw [String.utf8EncodeChar_eq_cons_cons_cons_cons h] at hb
-    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hb
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
     rcases hb with rfl | rfl | rfl | rfl <;> exact ⟨by bv_decide, by bv_decide, by bv_decide⟩
 
 /-- At the closing quote, `scanStr` finishes: it builds the body `arr[q0+1 .. q)` and unescapes
@@ -128,5 +153,22 @@ theorem scanStr_esc_step (arr : ByteArray) (q0 q q' : Nat) (esc : Bool) (hq : q 
     rw [hE] at heq; injection heq with h; rw [h]
   · rename_i heq
     rw [hE] at heq; exact absurd heq (by simp)
+
+/-- A passthrough character (`escapeChar c = [c]`) is walked by `scanStr` over exactly its
+`utf8Size` bytes, escape flag unchanged. -/
+theorem scanStr_char_passthrough (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Char)
+    (hpass : escapeChar c = [c])
+    (hcontent : ∀ j, j < c.utf8Size → arr[q + j]! = (String.utf8EncodeChar c)[j]!)
+    (hbound : q + c.utf8Size ≤ arr.size) :
+    scanStr arr q0 q esc = scanStr arr q0 (q + c.utf8Size) esc := by
+  obtain ⟨h32, hq34, hq92⟩ := passthrough_props c hpass
+  apply scanStr_normal_run arr q0 q esc c.utf8Size
+  intro i hi
+  have hlen : (String.utf8EncodeChar c).length = c.utf8Size := String.length_utf8EncodeChar c
+  have hmem : (String.utf8EncodeChar c)[i]! ∈ String.utf8EncodeChar c := by
+    rw [getElem!_pos _ i (by rw [hlen]; exact hi)]; exact List.getElem_mem _
+  obtain ⟨hn34, hn92, hnlt⟩ := passthrough_bytes_normal c h32 hq34 hq92 _ hmem
+  rw [hcontent i hi]
+  exact ⟨by omega, hn34, hn92, hnlt⟩
 
 end GripProps.ScanStr
