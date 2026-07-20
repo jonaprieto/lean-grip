@@ -37,6 +37,43 @@ theorem fromUTF8!_toUTF8 (s : String) : String.fromUTF8! s.toUTF8 = s := by
   apply String.toByteArray_inj.mp
   exact ByteArray.ext rfl
 
+/-- Every UTF-8 byte of a passthrough character (`≥ 0x20`, not `"` or `\`) is scan-normal: it is
+not the closing quote, not a backslash, and not a control byte. Single-byte chars carry their
+codepoint (in `[0x20, 0x7F] \ {34, 92}`); every byte of a multi-byte char has its high bit set
+(`≥ 0x80`), so all bounds hold. This lets `scanStr` walk a passthrough char's bytes one by one. -/
+theorem passthrough_bytes_normal (c : Char) (h32 : 32 ≤ c.toNat) (hq : c.val ≠ 34)
+    (hbs : c.val ≠ 92) (b : UInt8) (hb : b ∈ String.utf8EncodeChar c) :
+    b ≠ 34 ∧ b ≠ 92 ∧ ¬ b < 32 := by
+  have hpos := Char.utf8Size_pos c
+  have hle4 := Char.utf8Size_le_four c
+  rcases (show c.utf8Size = 1 ∨ c.utf8Size = 2 ∨ c.utf8Size = 3 ∨ c.utf8Size = 4 from by omega)
+    with h | h | h | h
+  · rw [String.utf8EncodeChar_eq_singleton h, List.mem_singleton] at hb
+    subst hb
+    have hle : c.val ≤ 0x7F := Char.utf8Size_eq_one_iff.mp h
+    have hvn : c.val.toNat = c.toNat := Char.toNat_val c
+    have hbb : c.val.toUInt8.toNat = c.toNat := by
+      rw [UInt32.toNat_toUInt8, hvn]
+      have : c.toNat ≤ 127 := by rw [← hvn]; exact UInt32.le_iff_toNat_le.mp hle
+      omega
+    have h34 : c.toNat ≠ 34 := fun he => hq (UInt32.toNat_inj.mp (by rw [hvn, he]; decide))
+    have h92 : c.toNat ≠ 92 := fun he => hbs (UInt32.toNat_inj.mp (by rw [hvn, he]; decide))
+    refine ⟨?_, ?_, ?_⟩
+    · intro he; rw [← UInt8.toNat_inj, hbb, show (34 : UInt8).toNat = 34 from by decide] at he
+      exact h34 he
+    · intro he; rw [← UInt8.toNat_inj, hbb, show (92 : UInt8).toNat = 92 from by decide] at he
+      exact h92 he
+    · rw [UInt8.lt_iff_toNat_lt, hbb, show (32 : UInt8).toNat = 32 from by decide]; omega
+  · rw [String.utf8EncodeChar_eq_cons_cons h] at hb
+    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hb
+    rcases hb with rfl | rfl <;> exact ⟨by bv_decide, by bv_decide, by bv_decide⟩
+  · rw [String.utf8EncodeChar_eq_cons_cons_cons h] at hb
+    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hb
+    rcases hb with rfl | rfl | rfl <;> exact ⟨by bv_decide, by bv_decide, by bv_decide⟩
+  · rw [String.utf8EncodeChar_eq_cons_cons_cons_cons h] at hb
+    simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hb
+    rcases hb with rfl | rfl | rfl | rfl <;> exact ⟨by bv_decide, by bv_decide, by bv_decide⟩
+
 /-- At the closing quote, `scanStr` finishes: it builds the body `arr[q0+1 .. q)` and unescapes
 it exactly when an escape was seen. -/
 theorem scanStr_close (arr : ByteArray) (q0 q : Nat) (esc : Bool) (hq : q < arr.size)
@@ -57,6 +94,24 @@ theorem scanStr_normal_step (arr : ByteArray) (q0 q : Nat) (esc : Bool) (hq : q 
   rw [scanStr]
   rw [dif_pos hq, if_neg (by simpa [beq_iff_eq] using h34),
     if_neg (by simpa [beq_iff_eq] using h92), if_neg hlt]
+
+/-- `scanStr` walks a run of `k` consecutive scan-normal bytes, advancing `k` with the escape flag
+unchanged. Iterates `scanStr_normal_step`. -/
+theorem scanStr_normal_run (arr : ByteArray) (q0 q : Nat) (esc : Bool) : ∀ (k : Nat),
+    (∀ i, i < k → q + i < arr.size ∧ arr[q + i]! ≠ 34 ∧ arr[q + i]! ≠ 92 ∧ ¬ arr[q + i]! < 32) →
+    scanStr arr q0 q esc = scanStr arr q0 (q + k) esc := by
+  intro k
+  induction k generalizing q with
+  | zero => intro _; rw [Nat.add_zero]
+  | succ n ih =>
+    intro hall
+    obtain ⟨hq, h34, h92, hlt⟩ := hall 0 (by omega)
+    rw [Nat.add_zero] at hq h34 h92 hlt
+    rw [scanStr_normal_step arr q0 q esc hq h34 h92 hlt]
+    rw [ih (q + 1) (fun i hi => by
+      have := hall (i + 1) (by omega)
+      rwa [show q + (i + 1) = q + 1 + i from by omega] at this)]
+    rw [show q + 1 + n = q + (n + 1) from by omega]
 
 /-- On a backslash starting a valid escape (`escEnd = some q'`), `scanStr` skips to `q'` and marks
 the escape flag. -/
