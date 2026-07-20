@@ -89,6 +89,36 @@ theorem foldl_range_data {β : Type} (f : β → UInt8 → β) (b : β) (arr : B
   simp only [dif_pos hq']
   exact foldlM_loop_range f arr q' hq' (q' - q) q b (by omega)
 
+/-- `arr[j]!` equals the `j`-th element of `arr.data.toList` (with `!`). -/
+theorem getElem!_eq_toList (arr : ByteArray) (j : Nat) : arr[j]! = arr.data.toList[j]! := by
+  rcases Nat.lt_or_ge j arr.size with h | h
+  · have hj : j < arr.data.toList.length := by rw [Array.length_toList, ByteArray.size_data]; omega
+    rw [getElem!_pos arr j h, ByteArray.getElem_eq_getElem_data, ← Array.getElem_toList,
+      getElem!_pos _ j hj]
+  · have hj : ¬ j < arr.data.toList.length := by
+      rw [Array.length_toList, ByteArray.size_data]; omega
+    rw [getElem!_neg arr j (by omega), getElem!_neg _ j hj]
+
+/-- Two byte ranges with matching bytes fold to the same value. -/
+theorem foldl_congr_match {β : Type} (f : β → UInt8 → β) (b : β) (arr1 arr2 : ByteArray)
+    (q1 q2 n : Nat) (h1 : q1 + n ≤ arr1.size) (h2 : q2 + n ≤ arr2.size)
+    (hm : ∀ i, i < n → arr1[q1 + i]! = arr2[q2 + i]!) :
+    arr1.foldl f b q1 (q1 + n) = arr2.foldl f b q2 (q2 + n) := by
+  rw [foldl_range_data f b arr1 q1 (q1 + n) (by omega) (by omega),
+    foldl_range_data f b arr2 q2 (q2 + n) (by omega) (by omega)]
+  congr 1
+  apply List.ext_getElem
+  · rw [List.length_take, List.length_take, List.length_drop, List.length_drop,
+      Array.length_toList, Array.length_toList, ByteArray.size_data, ByteArray.size_data]
+    omega
+  · intro i hi1 hi2
+    rw [List.length_take, List.length_drop, Array.length_toList, ByteArray.size_data] at hi1
+    rw [List.getElem_take, List.getElem_take, List.getElem_drop, List.getElem_drop,
+      Array.getElem_toList, Array.getElem_toList, ← ByteArray.getElem_eq_getElem_data,
+      ← ByteArray.getElem_eq_getElem_data, ← getElem!_pos arr1 (q1 + i) (by omega),
+      ← getElem!_pos arr2 (q2 + i) (by omega)]
+    exact hm i (by omega)
+
 /-- The byte list of a `List Char`'s UTF-8 encoding is the per-character encodings concatenated. -/
 theorem utf8Encode_data_toList (cs : List Char) :
     (List.utf8Encode cs).data.toList = cs.flatMap String.utf8EncodeChar := by

@@ -296,3 +296,23 @@ theorem decode_renderNum_int (m : Int) (hm : 0 ≤ m) :
   unfold decodeNumberBytes?
   rw [hst]
   simp [Int.toNat_of_nonneg hm, maxExp]
+
+/-- `decodeNumberBytes?` depends only on the folded state, so equal folds decode equally. -/
+theorem decodeNumberBytes?_congr {arr1 arr2 : ByteArray} {q1 q1' q2 q2' : Nat}
+    (h : arr1.foldl numByte {} q1 q1' = arr2.foldl numByte {} q2 q2') :
+    decodeNumberBytes? arr1 q1 q1' = decodeNumberBytes? arr2 q2 q2' := by
+  unfold decodeNumberBytes?; rw [h]
+
+/-- Decoding a number that matches `renderNum m e` at offset `q` recovers `num m e`, given the
+whole-array decode result. -/
+theorem decode_renderNum_at (arr : ByteArray) (q : Nat) (m : Int) (e : Nat)
+    (hsize : q + (renderNum m e).toUTF8.size ≤ arr.size)
+    (hm : ∀ j, j < (renderNum m e).toUTF8.size → arr[q + j]! = (renderNum m e).toUTF8[j]!)
+    (hd : decodeNumberBytes? (renderNum m e).toUTF8 0 (renderNum m e).toUTF8.size
+      = some (Json.num m e)) :
+    decodeNumberBytes? arr q (q + (renderNum m e).toUTF8.size) = some (Json.num m e) := by
+  rw [decodeNumberBytes?_congr
+    (GripProps.Bytes.foldl_congr_match numByte {} arr (renderNum m e).toUTF8 q 0
+      (renderNum m e).toUTF8.size hsize (by omega)
+      (fun i hi => by rw [Nat.zero_add]; exact hm i hi))]
+  simpa using hd
