@@ -277,12 +277,11 @@ accumulation. -/
 theorem decode_renderNum_int (m : Int) (hm : 0 ≤ m) :
     decodeNumberBytes? (renderNum m 0).toUTF8 0 (renderNum m 0).toUTF8.size
       = some (Json.num m 0) := by
-  have hrepr : renderNum m 0 = Nat.repr m.toNat := by
-    have h1 : renderNum m 0 = toString m := by unfold renderNum; simp
-    have h2 : toString m = toString ((m.toNat : Int)) := by rw [Int.toNat_of_nonneg hm]
-    rw [h1, h2]; exact String.toByteArray_inj.mp rfl
+  have hna : m.natAbs = m.toNat := by omega
+  have hrn0 : renderNum m 0 = toString m.natAbs := by
+    unfold renderNum; rw [if_neg (show ¬ m < 0 from by omega)]; simp
   have hchars : (renderNum m 0).toList = Nat.toDigits 10 m.toNat := by
-    rw [hrepr, Nat.repr, String.toList_ofList]
+    rw [hrn0, hna]; show (Nat.repr m.toNat).toList = _; rw [Nat.repr, String.toList_ofList]
   have hst : (renderNum m 0).toUTF8.foldl numByte {} 0 (renderNum m 0).toUTF8.size
       = ({ mant := m.toNat } : NState) := by
     rw [GripProps.Bytes.toUTF8_foldl, hchars,
@@ -296,6 +295,36 @@ theorem decode_renderNum_int (m : Int) (hm : 0 ≤ m) :
   unfold decodeNumberBytes?
   rw [hst]
   simp [Int.toNat_of_nonneg hm, maxExp]
+
+/-- **Negative-integer round-trip.** Restructuring `renderNum`'s `e = 0` case as
+`"-" ++ toString m.natAbs` (instead of `Int.repr`, whose `String.Internal.append` has no `toList`
+characterization in Lean 4.28) makes the negative branch decodable too. -/
+theorem decode_renderNum_int_neg (m : Int) (hm : m < 0) :
+    decodeNumberBytes? (renderNum m 0).toUTF8 0 (renderNum m 0).toUTF8.size
+      = some (Json.num m 0) := by
+  have hrn0 : renderNum m 0 = "-" ++ toString m.natAbs := by
+    unfold renderNum; rw [if_pos (show m < 0 from hm)]; simp
+  have hrn : (renderNum m 0).toList = '-' :: Nat.toDigits 10 m.natAbs := by
+    rw [hrn0, String.toList_append, show ("-" : String).toList = ['-'] from by decide,
+      show (toString m.natAbs).toList = Nat.toDigits 10 m.natAbs from by
+        show (Nat.repr m.natAbs).toList = _; rw [Nat.repr, String.toList_ofList]]
+    rfl
+  have hst : (renderNum m 0).toUTF8.foldl numByte {} 0 (renderNum m 0).toUTF8.size
+      = ({ mant := m.natAbs, mantNeg := true } : NState) := by
+    rw [GripProps.Bytes.toUTF8_foldl, hrn, List.flatMap_cons, ascii_encode '-' (by decide),
+      List.foldl_append, List.foldl_cons, List.foldl_nil,
+      show numByte {} (UInt8.ofNat ('-').toNat) = ({ mantNeg := true } : NState) from rfl,
+      foldl_numByte_ascii _ _ rfl (GripProps.NatDigits.mem_toDigits_bound m.natAbs)]
+    have hfold : (Nat.toDigits 10 m.natAbs).foldl (fun a c => a * 10 + (c.toNat - 48))
+        ({ mantNeg := true } : NState).mant = m.natAbs := by
+      have := GripProps.NatDigits.foldl_repr m.natAbs
+      rw [Nat.repr, String.toList_ofList] at this
+      exact this
+    rw [hfold]
+  unfold decodeNumberBytes?
+  rw [hst]
+  norm_num [maxExp]
+  rw [abs_of_neg hm, neg_neg]
 
 /-- `decodeNumberBytes?` depends only on the folded state, so equal folds decode equally. -/
 theorem decodeNumberBytes?_congr {arr1 arr2 : ByteArray} {q1 q1' q2 q2' : Nat}

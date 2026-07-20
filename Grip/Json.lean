@@ -483,7 +483,7 @@ def escape (s : String) : String := String.ofList (s.toList.flatMap escapeChar)
 /-- Render an exact `num mantissa exponent` to a decimal literal, inserting the point
 `exponent` digits from the right (`num 25 1` → `"2.5"`, `num 5 3` → `"0.005"`). -/
 def renderNum (m : Int) (e : Nat) : String :=
-  if e == 0 then toString m
+  if e == 0 then (if m < 0 then "-" else "") ++ toString m.natAbs
   else
     let ds := List.replicate (e + 1 - (toString m.natAbs).length) '0' ++ (toString m.natAbs).toList
     let k := ds.length - e
