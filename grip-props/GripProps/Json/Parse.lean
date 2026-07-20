@@ -124,6 +124,32 @@ theorem alt_run_left {ge gc ge' gc' : Modality} (x : GParser ⟨ge, gc⟩ α) (y
     (GParser.alt x y).run arr q = .ok a q' := by
   simp only [GParser.alt, hx]
 
+/-- `alt`, left fails, right succeeds. -/
+theorem alt_run_right {ge gc ge' gc' : Modality} (x : GParser ⟨ge, gc⟩ α)
+    (y : GParser ⟨ge', gc'⟩ α) (arr : ByteArray) (q : Nat) (ex : Err) (a : α) (q' : Nat)
+    (hx : x.run arr q = .error ex) (hy : y.run arr q = .ok a q') :
+    (GParser.alt x y).run arr q = .ok a q' := by
+  simp only [GParser.alt, hx, hy]
+
+/-- `satisfy f` on an in-bounds byte satisfying `f` (stated with `getElem!`). -/
+theorem satisfy_run! (f : UInt8 → Bool) (arr : ByteArray) (q : Nat) (hq : q < arr.size)
+    (hf : f arr[q]! = true) : (GParser.satisfy f).run arr q = .ok arr[q]! (q + 1) := by
+  rw [getElem!_pos arr q hq] at hf ⊢
+  simp only [GParser.satisfy, dif_pos hq, hf, if_true]
+
+/-- `byte c` on a matching in-bounds byte (stated with `getElem!`). -/
+theorem byte_run! (c : UInt8) (arr : ByteArray) (q : Nat) (hq : q < arr.size)
+    (hc : arr[q]! = c) : (GParser.byte c).run arr q = .ok () (q + 1) := by
+  rw [getElem!_pos arr q hq] at hc
+  simp only [GParser.byte, dif_pos hq, hc, beq_self_eq_true, if_true]
+
+/-- `byte c` fails at an in-bounds non-matching byte. -/
+theorem byte_run_fail! (c : UInt8) (arr : ByteArray) (q : Nat) (hq : q < arr.size)
+    (hc : arr[q]! ≠ c) : (GParser.byte c).run arr q = .error ⟨q, []⟩ := by
+  rw [getElem!_pos arr q hq] at hc
+  simp only [GParser.byte, dif_pos hq]
+  rw [if_neg (by simpa [beq_iff_eq] using hc)]
+
 /-- `matchBytes` succeeds when `arr`'s bytes from `q` match `bs` from `i`. -/
 theorem matchBytes_true (arr bs : ByteArray) (q i : Nat)
     (hsize : q + (bs.size - i) ≤ arr.size)
@@ -209,6 +235,49 @@ theorem clampAdvance_ok (arr : ByteArray) (q : Nat) {v : Grip.Json.Json} {q' : N
   simp only [clampAdvance, if_pos h]
 
 open Grip.Json Grip.Json.Json
+
+/-- `takeWhile1 f`: a nonempty maximal run of matching bytes. -/
+theorem takeWhile1_run (f : UInt8 → Bool) (arr : ByteArray) (q n : Nat) (hq : q < arr.size)
+    (hn : 1 ≤ n) (hall : ∀ i, i < n → f arr[q + i]! = true)
+    (hstop : q + n = arr.size ∨ (q + n < arr.size ∧ f arr[q + n]! = false)) :
+    (GParser.takeWhile1 f).run arr q = .ok n (q + n) := by
+  have hf0 : f arr[q] = true := by
+    rw [← getElem!_pos arr q hq]; simpa using hall 0 (by omega)
+  show (if h : q < arr.size then
+      if f arr[q] then (GParser.takeWhile f).run arr q else .error ⟨q, []⟩ else .error ⟨q, []⟩)
+      = _
+  rw [dif_pos hq, if_pos hf0]
+  exact takeWhile_run f arr q n hall hstop
+
+/-- `intPart` consumes a single leading `0`. -/
+theorem intPart_run_zero (arr : ByteArray) (q : Nat) (hq : q < arr.size) (h0 : arr[q]! = 48) :
+    intPart.run arr q = .ok () (q + 1) := by
+  simp only [intPart]
+  exact alt_run_left _ _ arr q () (q + 1) (byte_run! (Ascii.code '0') arr q hq (by rw [h0]; decide))
+
+/-- `intPart` consumes a nonzero-leading integer (digit 1-9 then more digits). -/
+theorem intPart_run_nonzero (arr : ByteArray) (q n : Nat) (hq : q < arr.size) (hn : 1 ≤ n)
+    (h19 : Ascii.isDigit19 arr[q]! = true)
+    (hall : ∀ i, 1 ≤ i → i < n → Ascii.isDigit arr[q + i]! = true)
+    (hstop : q + n = arr.size ∨ (q + n < arr.size ∧ Ascii.isDigit arr[q + n]! = false)) :
+    intPart.run arr q = .ok () (q + n) := by
+  have hne : arr[q]! ≠ (48 : UInt8) := by
+    intro he; rw [he] at h19; exact absurd h19 (by decide)
+  simp only [intPart]
+  refine alt_run_right _ _ arr q ⟨q, []⟩ () (q + n) (byte_run_fail! (Ascii.code '0') arr q hq ?_) ?_
+  · simpa [show Ascii.code '0' = (48 : UInt8) from by decide] using hne
+  · have hsat : (GParser.satisfy Ascii.isDigit19).run arr q = .ok arr[q]! (q + 1) :=
+      satisfy_run! _ arr q hq h19
+    have htw : (GParser.takeWhile Ascii.isDigit).run arr (q + 1) = .ok (n - 1) (q + n) := by
+      have := takeWhile_run Ascii.isDigit arr (q + 1) (n - 1)
+        (fun i hi => by have := hall (i + 1) (by omega) (by omega)
+                        rwa [show q + (i + 1) = q + 1 + i from by omega] at this)
+        (by rcases hstop with h | ⟨h, hf⟩
+            · exact Or.inl (by omega)
+            · exact Or.inr ⟨by omega, by rwa [show q + 1 + (n - 1) = q + n from by omega]⟩)
+      rwa [show q + 1 + (n - 1) = q + n from by omega] at this
+    exact seqR_run _ _ arr q _ (q + 1) () (q + n) hsat
+      (seqR_run _ _ arr (q + 1) (n - 1) (q + n) () (q + n) htw rfl)
 
 /-- `value` parses the `null` keyword. -/
 theorem value_run_null (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
