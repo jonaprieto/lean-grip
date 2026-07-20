@@ -20,7 +20,7 @@ round-trip.
 
 set_option maxHeartbeats 1000000
 
-open Grip.Json Grip.Json.Decode Grip.Json.Json
+open Grip Grip.Json Grip.Json.Decode Grip.Json.Json
 
 namespace GripProps.ScanStr
 
@@ -154,6 +154,28 @@ theorem scanStr_esc_step (arr : ByteArray) (q0 q q' : Nat) (esc : Bool) (hq : q 
   · rename_i heq
     rw [hE] at heq; exact absurd heq (by simp)
 
+/-- `escEnd` accepts a simple two-byte escape: a backslash whose successor is one of the named
+escape bytes advances by two. -/
+theorem escEnd_simple (arr : ByteArray) (q : Nat) (hq : q + 1 < arr.size)
+    (hset : (arr[q + 1]! == 34 || arr[q + 1]! == 92 || arr[q + 1]! == 47 || arr[q + 1]! == 98 ||
+      arr[q + 1]! == 102 || arr[q + 1]! == 110 || arr[q + 1]! == 114 ||
+      arr[q + 1]! == 116) = true) :
+    escEnd arr q = some (q + 2) := by
+  rw [getElem!_pos arr (q + 1) hq] at hset
+  rw [escEnd, dif_pos hq, if_pos hset]
+
+/-- `escEnd` accepts a `\uXXXX` escape: `\`, `u`, then four hex bytes, advancing by six. -/
+theorem escEnd_u (arr : ByteArray) (q : Nat) (hq1 : q + 1 < arr.size) (hq5 : q + 5 < arr.size)
+    (hu : arr[q + 1]! = 117)
+    (hhex : (isHexByte arr[q + 2]! && isHexByte arr[q + 3]! && isHexByte arr[q + 4]! &&
+      isHexByte arr[q + 5]!) = true) :
+    escEnd arr q = some (q + 6) := by
+  rw [getElem!_pos arr (q + 1) hq1] at hu
+  rw [getElem!_pos arr (q + 2) (by omega), getElem!_pos arr (q + 3) (by omega),
+    getElem!_pos arr (q + 4) (by omega), getElem!_pos arr (q + 5) hq5] at hhex
+  rw [escEnd, dif_pos hq1, if_neg (by rw [hu]; decide), if_pos (by rw [hu]; decide),
+    dif_pos hq5, if_pos hhex]
+
 /-- A passthrough character (`escapeChar c = [c]`) is walked by `scanStr` over exactly its
 `utf8Size` bytes, escape flag unchanged. -/
 theorem scanStr_char_passthrough (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Char)
@@ -170,5 +192,22 @@ theorem scanStr_char_passthrough (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c 
   obtain ⟨hn34, hn92, hnlt⟩ := passthrough_bytes_normal c h32 hq34 hq92 _ hmem
   rw [hcontent i hi]
   exact ⟨by omega, hn34, hn92, hnlt⟩
+
+/-- A two-byte escape (`\` then a named escape byte) is walked in two, marking `esc`. -/
+theorem scanStr_char_escape2 (arr : ByteArray) (q0 q : Nat) (esc : Bool) (Xb : UInt8)
+    (hq1 : q + 1 < arr.size) (h92 : arr[q]! = 92) (hX : arr[q + 1]! = Xb)
+    (hset : (Xb == 34 || Xb == 92 || Xb == 47 || Xb == 98 || Xb == 102 || Xb == 110 ||
+      Xb == 114 || Xb == 116) = true) :
+    scanStr arr q0 q esc = scanStr arr q0 (q + 2) true :=
+  scanStr_esc_step arr q0 q (q + 2) esc (by omega) h92
+    (escEnd_simple arr q hq1 (by rw [hX]; exact hset))
+
+/-- A `\uXXXX` escape (a control character's rendering) is walked in six, marking `esc`. -/
+theorem scanStr_char_escapeU (arr : ByteArray) (q0 q : Nat) (esc : Bool) (hq5 : q + 5 < arr.size)
+    (h92 : arr[q]! = 92) (hu : arr[q + 1]! = 117)
+    (hhex : (isHexByte arr[q + 2]! && isHexByte arr[q + 3]! && isHexByte arr[q + 4]! &&
+      isHexByte arr[q + 5]!) = true) :
+    scanStr arr q0 q esc = scanStr arr q0 (q + 6) true :=
+  scanStr_esc_step arr q0 q (q + 6) esc (by omega) h92 (escEnd_u arr q (by omega) hq5 hu hhex)
 
 end GripProps.ScanStr
