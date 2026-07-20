@@ -462,6 +462,117 @@ theorem value_run_num_frac (arr : ByteArray) (q : Nat) (m : Int) (e ip n : Nat) 
   rw [hnum]
   exact clampAdvance_ok arr q (by omega) (by omega)
 
+/-- `value` parses a negative integer (`m < 0`, `e = 0`): a `-` sign then an integer part of
+length `ip`. Dispatch routes `-` to `number` via the `dash` branch. -/
+theorem value_run_num_int_neg (arr : ByteArray) (q : Nat) (m : Int) (hm : m < 0) (ip : Nat)
+    (hip : 1 ≤ ip) (hsize : q + 1 + ip ≤ arr.size) (hdash : arr[q]! = 45)
+    (hstruct : (ip = 1 ∧ arr[q + 1]! = 48) ∨
+      (Ascii.isDigit19 arr[q + 1]! = true ∧
+        ∀ i, 1 ≤ i → i < ip → Ascii.isDigit arr[q + 1 + i]! = true))
+    (hstop : q + 1 + ip = arr.size ∨ (q + 1 + ip < arr.size ∧
+      Ascii.isDigit arr[q + 1 + ip]! = false ∧ arr[q + 1 + ip]! ≠ 46 ∧
+      Ascii.isExp arr[q + 1 + ip]! = false))
+    (hdecode : decodeNumberBytes? arr q (q + 1 + ip) = some (Json.num m 0)) :
+    value.run arr q = .ok (Json.num m 0) (q + 1 + ip) := by
+  have hqs : q < arr.size := by omega
+  have hq1 : q + 1 < arr.size := by omega
+  have hb : arr[q] = 45 := by rw [getElem!_pos arr q hqs] at hdash; exact hdash
+  have hsign : (GParser.optional (GParser.ch '-')).run arr q = .ok (some ()) (q + 1) :=
+    optional_run_some _ arr q () (q + 1)
+      (byte_run! (Ascii.code '-') arr q hqs (by rw [hdash]; decide))
+  have hint : intPart.run arr (q + 1) = .ok () (q + 1 + ip) := by
+    rcases hstruct with ⟨hip1, h0⟩ | ⟨h19, hds⟩
+    · subst hip1; exact intPart_run_zero arr (q + 1) hq1 h0
+    · refine intPart_run_nonzero arr (q + 1) ip hq1 hip h19 hds ?_
+      rcases hstop with h | ⟨h1, h2, _, _⟩
+      · exact Or.inl (by omega)
+      · exact Or.inr ⟨by omega, h2⟩
+  have hfrac : (GParser.optional frac).run arr (q + 1 + ip) = .ok none (q + 1 + ip) := by
+    refine optional_run_none _ _ _ ⟨q + 1 + ip, []⟩ (seqR_run_fail_left _ _ arr (q + 1 + ip) _ ?_)
+    rcases hstop with h | ⟨h1, _, hdot, _⟩
+    · exact byte_run_end (Ascii.code '.') arr (q + 1 + ip) (by omega)
+    · exact byte_run_fail! (Ascii.code '.') arr (q + 1 + ip) h1
+        (by rwa [show Ascii.code '.' = (46 : UInt8) from by decide])
+  have hexp : (GParser.optional expo).run arr (q + 1 + ip) = .ok none (q + 1 + ip) := by
+    refine optional_run_none _ _ _ ⟨q + 1 + ip, []⟩ (seqR_run_fail_left _ _ arr (q + 1 + ip) _ ?_)
+    rcases hstop with h | ⟨h1, _, _, hexp'⟩
+    · exact satisfy_run_end _ arr (q + 1 + ip) (by omega)
+    · exact satisfy_run_fail! _ arr (q + 1 + ip) h1 hexp'
+  have hnum : number.run arr q = .ok (Json.num m 0) (q + 1 + ip) := by
+    simp only [number]
+    exact captureWith?_run decodeNumberBytes? _ arr q () (q + 1 + ip) (Json.num m 0)
+      (seqR_run _ _ arr q (some ()) (q + 1) () (q + 1 + ip) hsign
+        (seqL_run _ _ arr (q + 1) () (q + 1 + ip) none (q + 1 + ip) hint
+          (seqR_run _ _ arr (q + 1 + ip) none (q + 1 + ip) none (q + 1 + ip) hfrac hexp)))
+      hdecode
+  have hne : ∀ c : UInt8, c ≠ 45 → ¬((arr[q] == c) = true) := fun c hc => by
+    rw [beq_iff_eq, hb]; exact fun h => hc h.symm
+  have hws : Ascii.isWs arr[q] = false := by rw [hb]; decide
+  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hqs hws]
+  simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
+  rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
+    if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
+    if_pos (by rw [hb]; decide)]
+  rw [hnum]
+  exact clampAdvance_ok arr q (by omega) (by omega)
+
+/-- `value` parses a negative fractional number (`m < 0`, `e > 0`): `-`, integer part of length
+`ip`, `.`, then a nonempty fractional part, total length `n`. -/
+theorem value_run_num_frac_neg (arr : ByteArray) (q : Nat) (m : Int) (e ip n : Nat) (hm : m < 0)
+    (hip : 1 ≤ ip) (hn : ip + 3 ≤ n) (hsize : q + n ≤ arr.size) (hdash : arr[q]! = 45)
+    (hintstruct : (ip = 1 ∧ arr[q + 1]! = 48) ∨
+      (Ascii.isDigit19 arr[q + 1]! = true ∧
+        ∀ i, 1 ≤ i → i < ip → Ascii.isDigit arr[q + 1 + i]! = true))
+    (hdot : arr[q + 1 + ip]! = 46)
+    (hfrac : ∀ i, ip + 2 ≤ i → i < n → Ascii.isDigit arr[q + i]! = true)
+    (hstop : q + n = arr.size ∨ (q + n < arr.size ∧ Ascii.isDigit arr[q + n]! = false ∧
+      arr[q + n]! ≠ 46 ∧ Ascii.isExp arr[q + n]! = false))
+    (hdecode : decodeNumberBytes? arr q (q + n) = some (Json.num m e)) :
+    value.run arr q = .ok (Json.num m e) (q + n) := by
+  have hqs : q < arr.size := by omega
+  have hq1 : q + 1 < arr.size := by omega
+  have hb : arr[q] = 45 := by rw [getElem!_pos arr q hqs] at hdash; exact hdash
+  have hsign : (GParser.optional (GParser.ch '-')).run arr q = .ok (some ()) (q + 1) :=
+    optional_run_some _ arr q () (q + 1)
+      (byte_run! (Ascii.code '-') arr q hqs (by rw [hdash]; decide))
+  have hint : intPart.run arr (q + 1) = .ok () (q + 1 + ip) := by
+    rcases hintstruct with ⟨hip1, h0⟩ | ⟨h19, hds⟩
+    · subst hip1; exact intPart_run_zero arr (q + 1) hq1 h0
+    · refine intPart_run_nonzero arr (q + 1) ip hq1 hip h19 hds (Or.inr ⟨by omega, ?_⟩)
+      rw [show q + 1 + ip = q + 1 + ip from rfl, hdot]; decide
+  have hfr : frac.run arr (q + 1 + ip) = .ok (n - 1 - ip - 1) (q + n) := by
+    have := frac_run arr (q + 1 + ip) (n - 1 - ip) (by omega) hdot (by omega) (by omega)
+      (fun i hi1 hi2 => by
+        have := hfrac (ip + 1 + i) (by omega) (by omega)
+        rwa [show q + (ip + 1 + i) = q + 1 + ip + i from by omega] at this)
+      (by rcases hstop with h | ⟨h1, h2, _, _⟩
+          · exact Or.inl (by omega)
+          · exact Or.inr ⟨by omega, by rwa [show q + 1 + ip + (n - 1 - ip) = q + n from by omega]⟩)
+    rwa [show q + 1 + ip + (n - 1 - ip) = q + n from by omega] at this
+  have hexp : (GParser.optional expo).run arr (q + n) = .ok none (q + n) := by
+    refine optional_run_none _ _ _ ⟨q + n, []⟩ (seqR_run_fail_left _ _ arr (q + n) _ ?_)
+    rcases hstop with h | ⟨h1, _, _, hexp'⟩
+    · exact satisfy_run_end _ arr (q + n) (by omega)
+    · exact satisfy_run_fail! _ arr (q + n) h1 hexp'
+  have hnum : number.run arr q = .ok (Json.num m e) (q + n) := by
+    simp only [number]
+    exact captureWith?_run decodeNumberBytes? _ arr q () (q + n) (Json.num m e)
+      (seqR_run _ _ arr q (some ()) (q + 1) () (q + n) hsign
+        (seqL_run _ _ arr (q + 1) () (q + 1 + ip) none (q + n) hint
+          (seqR_run _ _ arr (q + 1 + ip) (some (n - 1 - ip - 1)) (q + n) none (q + n)
+            (optional_run_some frac arr (q + 1 + ip) (n - 1 - ip - 1) (q + n) hfr) hexp)))
+      hdecode
+  have hne : ∀ c : UInt8, c ≠ 45 → ¬((arr[q] == c) = true) := fun c hc => by
+    rw [beq_iff_eq, hb]; exact fun h => hc h.symm
+  have hws : Ascii.isWs arr[q] = false := by rw [hb]; decide
+  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hqs hws]
+  simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
+  rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
+    if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
+    if_pos (by rw [hb]; decide)]
+  rw [hnum]
+  exact clampAdvance_ok arr q (by omega) (by omega)
+
 /-- `value` parses the `null` keyword. -/
 theorem value_run_null (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
     (hm : ∀ j, j < 4 → arr[q + j]! = "null".toUTF8[j]!) :
