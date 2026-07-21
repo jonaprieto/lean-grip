@@ -394,7 +394,7 @@ theorem value_run_num_int (arr : ByteArray) (q : Nat) (m : Int) (hm : 0 ≤ m) (
           (seqR_run _ _ arr (q + n) none (q + n) none (q + n) hfrac hexp))) hdecode
   have hne : ∀ c : UInt8, Ascii.isDigit c = false → ¬((arr[q] == c) = true) := fun c hc => by
     rw [beq_iff_eq]; intro he; rw [he, hc] at hb; exact absurd hb (by decide)
-  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
+  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
     if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
@@ -455,7 +455,7 @@ theorem value_run_num_frac (arr : ByteArray) (q : Nat) (m : Int) (e ip n : Nat) 
             (optional_run_some frac arr (q + ip) (n - ip - 1) (q + n) hfr) hexp))) hdecode
   have hne : ∀ c : UInt8, Ascii.isDigit c = false → ¬((arr[q] == c) = true) := fun c hc => by
     rw [beq_iff_eq]; intro he; rw [he, hc] at hb; exact absurd hb (by decide)
-  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
+  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
     if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
@@ -509,7 +509,7 @@ theorem value_run_num_int_neg (arr : ByteArray) (q : Nat) (m : Int) (hm : m < 0)
   have hne : ∀ c : UInt8, c ≠ 45 → ¬((arr[q] == c) = true) := fun c hc => by
     rw [beq_iff_eq, hb]; exact fun h => hc h.symm
   have hws : Ascii.isWs arr[q] = false := by rw [hb]; decide
-  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hqs hws]
+  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hqs hws]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
     if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
@@ -566,7 +566,7 @@ theorem value_run_num_frac_neg (arr : ByteArray) (q : Nat) (m : Int) (e ip n : N
   have hne : ∀ c : UInt8, c ≠ 45 → ¬((arr[q] == c) = true) := fun c hc => by
     rw [beq_iff_eq, hb]; exact fun h => hc h.symm
   have hws : Ascii.isWs arr[q] = false := by rw [hb]; decide
-  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hqs hws]
+  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hqs hws]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
     if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
@@ -587,7 +587,7 @@ theorem value_run_null (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
     have := string_run "null" arr q (by decide) (by simpa using hq)
       (fun j hj => by have := hm j (by simpa using hj); simpa using this)
     simpa using this
-  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_neg (by decide),
     if_neg (by decide), if_pos (by decide)]
@@ -605,7 +605,7 @@ theorem value_run_true (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
     have := string_run "true" arr q (by decide) (by simpa using hq)
       (fun j hj => by have := hm j (by simpa using hj); simpa using this)
     simpa using this
-  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_pos (by decide)]
   simp only [jtrue, GParser.map, hstr]
@@ -622,7 +622,7 @@ theorem value_run_false (arr : ByteArray) (q : Nat) (hq : q + 5 ≤ arr.size)
     have := string_run "false" arr q (by decide) (by simpa using hq)
       (fun j hj => by have := hm j (by simpa using hj); simpa using this)
     simpa using this
-  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_neg (by decide),
     if_pos (by decide)]
@@ -697,12 +697,103 @@ theorem value_run_str (arr : ByteArray) (q : Nat) (s : String)
   have hqs : q < arr.size := by omega
   have hq34 : arr[q] = 34 := by rwa [getElem!_pos arr q hqs] at h34
   have hws : Ascii.isWs arr[q] = false := by rw [hq34]; decide
-  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hqs hws, hq34]
+  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hqs hws, hq34]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_pos (by decide)]
   simp only [jstring]
   rw [map_run_ok Json.str jstr arr q s _
     (jstr_run arr q s hbound h34 hcontent hclose)]
   exact clampAdvance_ok arr q (by omega) (by omega)
+
+private theorem ba_get!_append_left {i : Nat} {a b : ByteArray} (h : i < a.size) :
+    (a ++ b)[i]! = a[i]! := by
+  rw [getElem!_pos (a ++ b) i (by rw [ByteArray.size_append]; omega),
+      ByteArray.getElem_append_left h,
+      getElem!_pos a i h]
+
+private theorem ba_get!_append_right {i : Nat} {a b : ByteArray} (h : a.size ≤ i)
+    (hi : i < (a ++ b).size) :
+    (a ++ b)[i]! = b[i - a.size]! := by
+  rw [getElem!_pos (a ++ b) i hi,
+      ByteArray.getElem_append_right h,
+      getElem!_pos b (i - a.size) (by rw [ByteArray.size_append] at hi; omega)]
+
+open GripProps.ScanStr in
+/-- On the exact byte-array `(render v).toUTF8`, `value` parses `v` consuming all bytes.
+Container cases (arr, obj) and numbers are still `sorry`. -/
+theorem value_run_render : ∀ (v : Json),
+    value.run (render v).toUTF8 0 = .ok v (render v).toUTF8.size
+  | .null => by
+      simp only [render]
+      exact value_run_null "null".toUTF8 0 (by decide) (fun j _ => by simp [Nat.zero_add])
+  | .bool true => by
+      simp only [render]
+      exact value_run_true "true".toUTF8 0 (by decide) (fun j _ => by simp [Nat.zero_add])
+  | .bool false => by
+      simp only [render]
+      exact value_run_false "false".toUTF8 0 (by decide) (fun j _ => by simp [Nat.zero_add])
+  | .num _ _ => by
+      sorry
+  | .str s => by
+      simp only [render]
+      -- split arr = "\"".toUTF8 ++ (escape s).toUTF8 ++ "\"".toUTF8
+      set arr := ("\"" ++ escape s ++ "\"").toUTF8
+      have arr_split : arr = "\"".toByteArray ++ (escape s).toByteArray ++ "\"".toByteArray := by
+        simp [arr, String.toByteArray_append]
+      have hquote_size : "\"".toByteArray.size = 1 := by decide
+      have hescape_size : (escape s).toByteArray.size = (ebytes s.toList).length :=
+        escape_toUTF8_size s
+      have arr_size : arr.size = 2 + (ebytes s.toList).length := by
+        rw [arr_split, ByteArray.size_append, ByteArray.size_append, hquote_size, hescape_size]
+        omega
+      -- arr = (qs ++ es) ++ cl where qs = "\"", es = escape body, cl = "\""
+      set qs := "\"".toByteArray
+      set es := (escape s).toByteArray
+      set cl := "\"".toByteArray
+      have h := value_run_str arr 0 s
+        (by rw [arr_size]; omega)
+        (by  -- h34: arr[0]! = 34
+          -- arr = (qs ++ es) ++ cl, 0 is in qs
+          rw [arr_split]
+          rw [ba_get!_append_left (by rw [ByteArray.size_append, hquote_size, hescape_size]; omega)]
+          rw [ba_get!_append_left (by rw [hquote_size]; omega)]
+          decide)
+        (by  -- hcontent: arr[0+1+j]! = (ebytes s.toList)[j]! for j < |ebytes|
+          -- arr = (qs ++ es) ++ cl, index 1+j is in es (since qs.size = 1)
+          intro j hj
+          simp only [Nat.zero_add]
+          have hj_esc : j < es.size := by rw [hescape_size]; exact hj
+          rw [arr_split]
+          rw [ba_get!_append_left
+              (by rw [ByteArray.size_append, hquote_size, hescape_size]; omega)]
+          rw [ba_get!_append_right (by rw [hquote_size]; omega)
+              (by rw [ByteArray.size_append, hquote_size, hescape_size]; omega)]
+          simp only [show 1 + j - qs.size = j from by rw [hquote_size]; omega]
+          exact escape_toUTF8_getElem! s j (hescape_size ▸ hj_esc))
+        (by  -- hclose: arr[0+1+|ebytes|]! = 34
+          -- arr = (qs ++ es) ++ cl, index 1+|eb| is the first byte of cl
+          simp only [Nat.zero_add]
+          rw [arr_split]
+          rw [ba_get!_append_right (by rw [ByteArray.size_append, hquote_size, hescape_size])
+              (by rw [ByteArray.size_append, ByteArray.size_append, hquote_size, hescape_size]; omega)]
+          simp only [show 1 + (ebytes s.toList).length - (qs ++ es).size = 0
+              from by rw [ByteArray.size_append, hquote_size, hescape_size]; omega]
+          decide)
+      rw [show arr.size = 0 + 1 + (ebytes s.toList).length + 1 from by rw [arr_size]; omega]
+      exact h
+  | .arr _ => sorry
+  | .obj _ => sorry
+
+/-- `parse ∘ render = id` on the `ByteArray` representation.
+Container cases depend on `value_run_render` being fully proved. -/
+theorem parse_render (v : Json) :
+    Grip.Json.parse (render v).toUTF8 = .ok v := by
+  simp only [Grip.Json.parse, Grip.Json.parser, GParser.parse]
+  let arr := (render v).toUTF8
+  have hval : value.run arr 0 = .ok v arr.size := value_run_render v
+  have hws : (GParser.ws).run arr arr.size = .ok 0 arr.size := ws_run_end arr arr.size (le_refl _)
+  have heof : (GParser.eof).run arr arr.size = .ok () arr.size := eof_run_end arr arr.size (le_refl _)
+  rw [seqL_run _ _ arr 0 v arr.size () arr.size hval
+    (seqR_run _ _ arr arr.size 0 arr.size () arr.size hws heof)]
 
 end GripProps.Parse
