@@ -417,4 +417,65 @@ theorem scanStr_walk (arr : ByteArray) (q0 : Nat) (body : String) :
     · simp only [List.any_cons]; rw [Bool.or_assoc]
     · omega
 
+/-- The data-list of `(escape s).toUTF8` equals `ebytes s.toList`. -/
+theorem escape_toUTF8_data_toList (s : String) :
+    (escape s).toUTF8.data.toList = ebytes s.toList := by
+  rw [String.toUTF8_eq_toByteArray, ← String.utf8Encode_toList,
+      GripProps.Bytes.utf8Encode_data_toList]
+  simp only [escape, String.toList_ofList, ebytes]
+
+/-- `(escape s).toUTF8.size = (ebytes s.toList).length`. -/
+theorem escape_toUTF8_size (s : String) :
+    (escape s).toUTF8.size = (ebytes s.toList).length := by
+  rw [← ByteArray.size_data, ← Array.length_toList, escape_toUTF8_data_toList]
+
+/-- `getElem!` on `(escape s).toUTF8` at `i` equals `(ebytes s.toList)[i]!`. -/
+theorem escape_toUTF8_getElem! (s : String) (i : Nat)
+    (hi : i < (ebytes s.toList).length) :
+    (escape s).toUTF8[i]! = (ebytes s.toList)[i]! := by
+  rw [GripProps.Bytes.getElem!_eq_toList, escape_toUTF8_data_toList]
+
+/-- Two ByteArrays are equal when their sizes and `getElem!` values agree element-wise. -/
+private theorem bytearray_eq_of_getElem! {a b : ByteArray} (hsize : a.size = b.size)
+    (h : ∀ i, i < a.size → a[i]! = b[i]!) : a = b := by
+  apply ByteArray.ext
+  apply Array.ext (by simp [ByteArray.size_data, hsize])
+  intro i hi _
+  have hia : i < a.size := ByteArray.size_data ▸ hi
+  simp only [← ByteArray.getElem_eq_getElem_data]
+  rw [← getElem!_pos a i hia, ← getElem!_pos b i (hsize ▸ hia)]
+  exact h i hia
+
+/-- `getElem!` on `arr.extract s e` at `i` (in range) equals `arr[s + i]!`. -/
+theorem getElem!_extract (arr : ByteArray) (s e i : Nat)
+    (he : e ≤ arr.size) (hi : i < e - s) :
+    (arr.extract s e)[i]! = arr[s + i]! := by
+  have hext : i < (arr.extract s e).size := by
+    simp [ByteArray.size_extract, Nat.min_eq_left he]; omega
+  have h2 : s + i < arr.size := by omega
+  have step : (arr.extract s e)[i]'hext = arr[s + i]'h2 := by
+    rw [ByteArray.getElem_extract hext]
+  rw [getElem!_pos _ i hext, getElem!_pos arr (s + i) h2, step]
+
+/-- When `arr[q+1+j]! = (ebytes s.toList)[j]!` for all `j` in range, the extract
+`arr[q+1..q+1+k)` equals `(escape s).toUTF8`. Used to show `scanStr` extracts the right
+body string. -/
+theorem extract_eq_escape_toUTF8 (arr : ByteArray) (q : Nat) (s : String)
+    (hbound : q + 1 + (ebytes s.toList).length < arr.size)
+    (hcontent : ∀ j, j < (ebytes s.toList).length →
+        arr[q + 1 + j]! = (ebytes s.toList)[j]!) :
+    arr.extract (q + 1) (q + 1 + (ebytes s.toList).length) = (escape s).toUTF8 := by
+  set k := (ebytes s.toList).length
+  apply bytearray_eq_of_getElem!
+  · rw [ByteArray.size_extract,
+        Nat.min_eq_left (show q + 1 + k ≤ arr.size by omega),
+        escape_toUTF8_size]
+    omega
+  · intro i hi
+    rw [ByteArray.size_extract,
+        Nat.min_eq_left (show q + 1 + k ≤ arr.size by omega)] at hi
+    rw [getElem!_extract arr (q + 1) (q + 1 + k) i (by omega) (by omega)]
+    rw [show q + 1 + i = q + 1 + i from rfl, hcontent i (by omega)]
+    exact (escape_toUTF8_getElem! s i (by omega)).symm
+
 end GripProps.ScanStr
