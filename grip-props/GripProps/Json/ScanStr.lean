@@ -335,4 +335,86 @@ theorem scanStr_char_escape (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Cha
       beq_eq_false_iff_ne.mpr h5, beq_eq_false_iff_ne.mpr h6, beq_eq_false_iff_ne.mpr h7,
       Bool.false_eq_true, if_false, if_neg hctrl]) hesc
 
+/-- `getElem!` on the left part of an append. -/
+theorem getElem!_append_left (l1 l2 : List UInt8) (j : Nat) (h : j < l1.length) :
+    (l1 ++ l2)[j]! = l1[j]! := by
+  rw [getElem!_pos l1 j h, getElem!_pos (l1 ++ l2) j (by rw [List.length_append]; omega)]
+  rw [List.getElem_append_left]
+
+/-- `getElem!` on the right part of an append. -/
+theorem getElem!_append_right (l1 l2 : List UInt8) (j : Nat) (h : l1.length ≤ j)
+    (h2 : j < l1.length + l2.length) : (l1 ++ l2)[j]! = l2[j - l1.length]! := by
+  rw [getElem!_pos (l1 ++ l2) j (by rw [List.length_append]; omega),
+    getElem!_pos l2 (j - l1.length) (by omega)]
+  rw [List.getElem_append_right h]
+
+/-- **One character of a rendered body.** `scanStr` walks a single character's `cbytes`, advancing
+by their length and setting the escape flag iff the character was escaped. Unifies the passthrough
+and escape steps. -/
+theorem scanStr_char_step (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Char)
+    (hcontent : ∀ j, j < (cbytes c).length → arr[q + j]! = (cbytes c)[j]!)
+    (hbound : q + (cbytes c).length ≤ arr.size) :
+    scanStr arr q0 q esc =
+      scanStr arr q0 (q + (cbytes c).length) (esc || !(escapeChar c == [c])) := by
+  by_cases hp : escapeChar c = [c]
+  · have hbeq : (escapeChar c == [c]) = true := by rw [hp]; exact beq_self_eq_true _
+    rw [hbeq]; simp only [Bool.not_true, Bool.or_false]
+    have hcbc : cbytes c = String.utf8EncodeChar c := by
+      simp only [cbytes, hp, List.flatMap_cons, List.flatMap_nil, List.append_nil]
+    have hn1 : (cbytes c).length = c.utf8Size := by rw [hcbc, String.length_utf8EncodeChar]
+    rw [show (cbytes c).length = c.utf8Size from hn1]
+    exact scanStr_char_passthrough arr q0 q esc c hp
+      (fun j hj => by
+        have hc := hcontent j (by rw [hn1]; exact hj); rw [hcbc] at hc; exact hc)
+      (by rw [hn1] at hbound; exact hbound)
+  · have hbeq : (escapeChar c == [c]) = false := by rw [beq_eq_false_iff_ne]; exact hp
+    rw [hbeq]; simp only [Bool.not_false, Bool.or_true]
+    exact scanStr_char_escape arr q0 q esc c hp hcontent hbound
+
+/-- **The rendered-body walk.** Over a body whose bytes are `ebytes cs` (`escape`'s output for the
+characters `cs`), followed by the closing quote, `scanStr` returns the decoded string: it decodes
+the whole body and unescapes exactly when some character was escaped. Proved by induction on `cs`
+via `scanStr_char_step`. -/
+theorem scanStr_walk (arr : ByteArray) (q0 : Nat) (body : String) :
+    ∀ (cs : List Char) (q : Nat) (esc : Bool),
+      (∀ j, j < (ebytes cs).length → arr[q + j]! = (ebytes cs)[j]!) →
+      arr[q + (ebytes cs).length]! = 34 →
+      q + (ebytes cs).length < arr.size →
+      body = String.fromUTF8! (arr.extract (q0 + 1) (q + (ebytes cs).length)) →
+      scanStr arr q0 q esc =
+        .ok (if (esc || cs.any (fun c => !(escapeChar c == [c]))) then unescape body else body)
+          (q + (ebytes cs).length + 1) := by
+  intro cs
+  induction cs with
+  | nil =>
+    intro q esc hcontent hquote hqb hbody
+    simp only [ebytes, List.flatMap_nil, List.length_nil, Nat.add_zero] at hquote hqb hbody ⊢
+    rw [scanStr_close arr q0 q esc hqb hquote]
+    simp only [List.any_nil, Bool.or_false]
+    rw [hbody]
+  | cons c rest ih =>
+    intro q esc hcontent hquote hqb hbody
+    rw [ebytes_cons, List.length_append] at hcontent hquote hqb hbody ⊢
+    have hstep := scanStr_char_step arr q0 q esc c
+      (fun j hj => by
+        have hc := hcontent j (by omega)
+        rwa [getElem!_append_left (cbytes c) (ebytes rest) j hj] at hc)
+      (by omega)
+    rw [hstep, ih (q + (cbytes c).length) (esc || !(escapeChar c == [c]))
+      (fun j hj => by
+        have hc := hcontent ((cbytes c).length + j) (by omega)
+        rw [getElem!_append_right (cbytes c) (ebytes rest) ((cbytes c).length + j)
+          (by omega) (by omega), Nat.add_sub_cancel_left,
+          show q + ((cbytes c).length + j) = q + (cbytes c).length + j from by omega] at hc
+        exact hc)
+      (by rw [show q + (cbytes c).length + (ebytes rest).length
+          = q + ((cbytes c).length + (ebytes rest).length) from by omega]; exact hquote)
+      (by rw [show q + (cbytes c).length + (ebytes rest).length
+          = q + ((cbytes c).length + (ebytes rest).length) from by omega]; exact hqb)
+      (by rw [show q + (cbytes c).length + (ebytes rest).length
+          = q + ((cbytes c).length + (ebytes rest).length) from by omega]; exact hbody)]
+    congr 1
+    · simp only [List.any_cons]; rw [Bool.or_assoc]
+    · omega
+
 end GripProps.ScanStr
