@@ -406,42 +406,45 @@ no discarded `ws` count allocation. -/
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
 
-def value : GParser conditional Json :=
-  GParser.fix fun value =>
-    -- The container sub-parsers reference `value`, so `fix` rebuilds them on every entry.
-    -- Building them inside the taken dispatch arm (not eagerly before the dispatch) means a
-    -- leaf value (string/number/keyword) constructs no array/object machinery at all.
-    wsDispatch
-      (fun b =>
-        if b == Ascii.lbrace then
-          -- `value` skips its own leading whitespace, so no `ws` before it after `:` / `,`.
-          let pair : GParser conditional (String × Json) :=
-            GParser.map2 (fun k v => (k, v)) jstr (GParser.seqR (wsByte Ascii.colon) value)
-          let objectBody : GParser flexible (Array (String × Json)) :=
-            GParser.alt
-              (GParser.bind pair (fun p =>
-                GParser.foldMany (fun (a : Array (String × Json)) x => a.push x) #[p]
-                  (GParser.seqR (wsByte Ascii.comma) (GParser.seqR GParser.ws pair))))
-              (GParser.pure #[])
-          GParser.seqR (GParser.ch '{')
-            (GParser.seqR GParser.ws
-              (GParser.seqL (GParser.map Json.obj objectBody) (wsByte Ascii.rbrace)))
-        else if b == Ascii.lbracket then
-          let arrayBody : GParser flexible (Array Json) :=
-            GParser.alt
-              (GParser.bind value (fun x =>
-                GParser.foldMany (fun (a : Array Json) e => a.push e) #[x]
-                  (GParser.seqR (wsByte Ascii.comma) value)))
-              (GParser.pure #[])
-          GParser.seqR (GParser.ch '[')
-            (GParser.seqL (GParser.map Json.arr arrayBody) (wsByte Ascii.rbracket))
-        else if b == Ascii.quote then jstring
-        else if b == 116 then jtrue
-        else if b == 102 then jfalse
-        else if b == 110 then jnull
-        else if Ascii.isDigit b || b == Ascii.dash then number
-        -- A byte that starts no value: always fails (the mapped `null` is unreachable).
-        else GParser.map (fun _ => Json.null) (GParser.satisfy (fun _ => false)))
+/-- Named body of the recursive JSON value parser. Proofs reference
+    `GParser.fixFuel value_body` directly. -/
+def value_body (rec : GParser conditional Json) : GParser conditional Json :=
+  -- The container sub-parsers reference `rec`, so `fix` rebuilds them on every entry.
+  -- Building them inside the taken dispatch arm (not eagerly before the dispatch) means a
+  -- leaf value (string/number/keyword) constructs no array/object machinery at all.
+  wsDispatch
+    (fun b =>
+      if b == Ascii.lbrace then
+        -- `rec` skips its own leading whitespace, so no `ws` before it after `:` / `,`.
+        let pair : GParser conditional (String × Json) :=
+          GParser.map2 (fun k v => (k, v)) jstr (GParser.seqR (wsByte Ascii.colon) rec)
+        let objectBody : GParser flexible (Array (String × Json)) :=
+          GParser.alt
+            (GParser.bind pair (fun p =>
+              GParser.foldMany (fun (a : Array (String × Json)) x => a.push x) #[p]
+                (GParser.seqR (wsByte Ascii.comma) (GParser.seqR GParser.ws pair))))
+            (GParser.pure #[])
+        GParser.seqR (GParser.ch '{')
+          (GParser.seqR GParser.ws
+            (GParser.seqL (GParser.map Json.obj objectBody) (wsByte Ascii.rbrace)))
+      else if b == Ascii.lbracket then
+        let arrayBody : GParser flexible (Array Json) :=
+          GParser.alt
+            (GParser.bind rec (fun x =>
+              GParser.foldMany (fun (a : Array Json) e => a.push e) #[x]
+                (GParser.seqR (wsByte Ascii.comma) rec)))
+            (GParser.pure #[])
+        GParser.seqR (GParser.ch '[')
+          (GParser.seqL (GParser.map Json.arr arrayBody) (wsByte Ascii.rbracket))
+      else if b == Ascii.quote then jstring
+      else if b == 116 then jtrue
+      else if b == 102 then jfalse
+      else if b == 110 then jnull
+      else if Ascii.isDigit b || b == Ascii.dash then number
+      -- A byte that starts no value: always fails (the mapped `null` is unreachable).
+      else GParser.map (fun _ => Json.null) (GParser.satisfy (fun _ => false)))
+
+def value : GParser conditional Json := GParser.fix value_body
 
 /-- One complete JSON document: a value, optional trailing whitespace, then EOF (so
 trailing garbage is rejected). -/
@@ -489,6 +492,13 @@ def renderNum (m : Int) (e : Nat) : String :=
     let k := ds.length - e
     (if m < 0 then "-" else "") ++ String.ofList (ds.take k) ++ "." ++ String.ofList (ds.drop k)
 
+/-- Join a list of strings with a separator, proof-friendly alternative to `String.intercalate`.
+The output is identical: `joinWith sep ss = String.intercalate sep ss`. -/
+def joinWith (sep : String) : List String → String
+  | []         => ""
+  | [s]        => s
+  | s :: rest  => s ++ sep ++ joinWith sep rest
+
 /-- Serialize a value to compact RFC-8259 JSON (no insignificant whitespace). Round-trips
 through `parse` (the value, not necessarily the mantissa/exponent split). Total: structural on
 `sizeOf`; `attach` carries the membership proof each recursive call decreases by. -/
@@ -499,9 +509,9 @@ def render : Json → String
   | .num m e    => renderNum m e
   | .str s      => "\"" ++ escape s ++ "\""
   | .arr xs     =>
-    "[" ++ String.intercalate "," (xs.attach.toList.map (fun x => render x.1)) ++ "]"
+    "[" ++ joinWith "," (xs.attach.toList.map (fun x => render x.1)) ++ "]"
   | .obj kvs    =>
-    "{" ++ String.intercalate ","
+    "{" ++ joinWith ","
       (kvs.attach.toList.map (fun ⟨(k, j), _h⟩ => "\"" ++ escape k ++ "\":" ++ render j)) ++ "}"
 termination_by v => sizeOf v
 decreasing_by
