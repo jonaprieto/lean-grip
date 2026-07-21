@@ -5,6 +5,7 @@ Authors: Jonathan Cubides
 -/
 import Mathlib
 import Grip.Json
+import GripProps.Json.ScanStr
 
 /-!
 # Parser run-denotation over a serialized prefix (L2, in progress)
@@ -626,6 +627,82 @@ theorem value_run_false (arr : ByteArray) (q : Nat) (hq : q + 5 ≤ arr.size)
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_neg (by decide),
     if_pos (by decide)]
   simp only [jfalse, GParser.map, hstr]
+  exact clampAdvance_ok arr q (by omega) (by omega)
+
+open GripProps.ScanStr
+
+/-- `jstr` on a rendered string: opening `"`, then `ebytes s.toList` body bytes, then closing
+`"`. Returns `s` at the position after the closing quote. -/
+theorem jstr_run (arr : ByteArray) (q : Nat) (s : String)
+    (hbound : q + 1 + (ebytes s.toList).length < arr.size)
+    (h34 : arr[q]! = 34)
+    (hcontent : ∀ j, j < (ebytes s.toList).length →
+        arr[q + 1 + j]! = (ebytes s.toList)[j]!)
+    (hclose : arr[q + 1 + (ebytes s.toList).length]! = 34) :
+    jstr.run arr q = .ok s (q + 1 + (ebytes s.toList).length + 1) := by
+  set k := (ebytes s.toList).length
+  have hqs : q < arr.size := by omega
+  have hq34 : arr[q] = 34 := by rwa [getElem!_pos arr q hqs] at h34
+  -- unfold jstr
+  show (if _ : q < arr.size then
+      (if arr[q] == 34 then scanStr arr q (q + 1) false else .error ⟨q, []⟩)
+    else .error ⟨q, []⟩) = _
+  rw [dif_pos hqs, if_pos (by simp [hq34])]
+  -- apply scanStr_walk: body = escape s
+  have hbody_eq : escape s =
+      String.fromUTF8! (arr.extract (q + 1) (q + 1 + k)) := by
+    rw [extract_eq_escape_toUTF8 arr q s (by omega) hcontent,
+        fromUTF8!_toUTF8]
+  rw [scanStr_walk arr q (escape s) s.toList (q + 1) false
+    (fun j hj => by rw [show q + 1 + j = q + 1 + j from rfl]; exact hcontent j hj)
+    (by rw [show q + 1 + k = q + 1 + k from rfl]; exact hclose)
+    (by omega) hbody_eq]
+  -- goal: .ok (if false || s.toList.any ... then unescape (escape s) else escape s) _ = .ok s _
+  congr 1
+  simp only [Bool.false_or]
+  split_ifs with h
+  · exact Grip.Json.Leaf.unescape_escape s
+  · have hfalse : s.toList.any (fun c => !(escapeChar c == [c])) = false :=
+      Bool.of_not_eq_true h
+    have hall : ∀ c ∈ s.toList, escapeChar c = [c] := fun c hc => by
+      have hec := List.any_eq_false.mp hfalse c hc
+      have hec' : (escapeChar c == [c]) = true := by
+        cases h : (escapeChar c == [c]) with
+        | true => rfl
+        | false => simp [h] at hec
+      rwa [beq_iff_eq] at hec'
+    have hfm : s.toList.flatMap escapeChar = s.toList := by
+      have aux : ∀ l : List Char, (∀ c ∈ l, escapeChar c = [c]) →
+          l.flatMap escapeChar = l := by
+        intro l hl
+        induction l with
+        | nil => simp
+        | cons c cs ih =>
+          rw [List.flatMap_cons, hl c List.mem_cons_self,
+              List.singleton_append]
+          exact congrArg (c :: ·)
+            (ih (fun c' hc' => hl c' (List.mem_cons_of_mem c hc')))
+      exact aux s.toList hall
+    simp only [escape]; rw [hfm]; exact String.ofList_toList
+
+/-- `value` parses a string literal `s`. The array holds `"`, `ebytes s.toList`, `"` at `q`.
+Dispatch routes byte 34 (Ascii.quote) to `jstring`, which wraps `jstr` in `Json.str`. -/
+theorem value_run_str (arr : ByteArray) (q : Nat) (s : String)
+    (hbound : q + 1 + (ebytes s.toList).length < arr.size)
+    (h34 : arr[q]! = 34)
+    (hcontent : ∀ j, j < (ebytes s.toList).length →
+        arr[q + 1 + j]! = (ebytes s.toList)[j]!)
+    (hclose : arr[q + 1 + (ebytes s.toList).length]! = 34) :
+    value.run arr q = .ok (Json.str s) (q + 1 + (ebytes s.toList).length + 1) := by
+  have hqs : q < arr.size := by omega
+  have hq34 : arr[q] = 34 := by rwa [getElem!_pos arr q hqs] at h34
+  have hws : Ascii.isWs arr[q] = false := by rw [hq34]; decide
+  rw [value, fix_run_unroll, wsDispatch_run_stop _ arr q hqs hws, hq34]
+  simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
+  rw [if_neg (by decide), if_neg (by decide), if_pos (by decide)]
+  simp only [jstring]
+  rw [map_run_ok Json.str jstr arr q s _
+    (jstr_run arr q s hbound h34 hcontent hclose)]
   exact clampAdvance_ok arr q (by omega) (by omega)
 
 end GripProps.Parse
