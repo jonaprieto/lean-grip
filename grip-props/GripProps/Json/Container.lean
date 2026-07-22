@@ -10,7 +10,7 @@ import GripProps.Json.ScanStr
 /-!
 # Container round-trip lemmas
 
-Infrastructure for the `.arr` and `.obj` cases of `value_run_render`:
+Infrastructure for the array and object cases of `parse_render`:
 - `foldFwd_agree` – agreement of foldFwd under agreeing element parsers
 - `value_body_guarded` – `Grip.Json.value_body` is `Guarded`
 - `fixSelf_eq_value_of_gt` – `fixSelf value_body (arr.size - q)` at offsets `> q` agrees with `value`
@@ -102,7 +102,7 @@ private theorem seqR_comma_agree (s1 s2 : GParser conditional Json)
     (hpre : ∀ q', q < q' → AgreeOk (s1.run arr q') (s2.run arr q')) :
     AgreeOk ((GParser.seqR (Grip.Json.wsByte Ascii.comma) s1).run arr r)
             ((GParser.seqR (Grip.Json.wsByte Ascii.comma) s2).run arr r) := by
-  simp only [GParser.seqR, GParser.bind, GParser.pure, GParser.map, GParser.map2]
+  simp only [GParser.seqR]
   rcases hcomma : (Grip.Json.wsByte Ascii.comma).run arr r with ⟨_, r'⟩ | _
   · exact hpre r' (lt_trans hr ((Grip.Json.wsByte Ascii.comma).cwit hcomma))
   · exact True.intro
@@ -122,7 +122,7 @@ private theorem arrayBody_agree (s1 s2 : GParser conditional Json)
               (GParser.seqR (Grip.Json.wsByte Ascii.comma) s2)))
           (GParser.pure #[])).run arr pos) := by
   have hs := hpre pos hpos
-  simp only [GParser.alt, GParser.bind, GParser.pure, GParser.map]
+  simp only [GParser.alt, GParser.bind, GParser.pure]
   rcases hs1 : s1.run arr pos with ⟨x1, q1⟩ | _ <;> rcases hs2 : s2.run arr pos with ⟨x2, q2⟩ | _
   · -- ok-ok
     rw [hs1, hs2] at hs; simp only [AgreeOk] at hs; obtain ⟨hx, hq⟩ := hs; subst hx; subst hq
@@ -150,7 +150,7 @@ private theorem pair_agree (s1 s2 : GParser conditional Json)
           (GParser.seqR (Grip.Json.wsByte Ascii.colon) s1)).run arr pos)
       ((GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
           (GParser.seqR (Grip.Json.wsByte Ascii.colon) s2)).run arr pos) := by
-  simp only [GParser.map2, GParser.bind, GParser.pure, GParser.map, GParser.seqR]
+  simp only [GParser.map2, GParser.seqR]
   cases hjstr : Grip.Json.jstr.run arr pos with
   | error _ => exact AgreeOk.refl _
   | ok k qk =>
@@ -189,7 +189,7 @@ private theorem seqR_comma_ws_pair_agree (s1 s2 : GParser conditional Json)
           (GParser.seqR GParser.ws
             (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
               (GParser.seqR (Grip.Json.wsByte Ascii.colon) s2)))).run arr r) := by
-  simp only [GParser.seqR, GParser.bind, GParser.pure, GParser.map, GParser.map2]
+  simp only [GParser.seqR, GParser.map2]
   cases hcomma : (Grip.Json.wsByte Ascii.comma).run arr r with
   | error _ => exact AgreeOk.refl _
   | ok _ rc =>
@@ -229,7 +229,7 @@ private theorem objectBody_agree (s1 s2 : GParser conditional Json)
                     (GParser.seqR (Grip.Json.wsByte Ascii.colon) s2))))))
           (GParser.pure #[])).run arr pos) := by
   have hp := pair_agree s1 s2 arr q pos hpos hpre
-  simp only [GParser.alt, GParser.bind, GParser.pure, GParser.map, GParser.foldMany]
+  simp only [GParser.alt, GParser.bind, GParser.pure, GParser.foldMany]
   rcases hp1 : (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
       (GParser.seqR (Grip.Json.wsByte Ascii.colon) s1)).run arr pos with ⟨kv1, qp1⟩ | _
     <;> rcases hp2 : (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
@@ -266,7 +266,7 @@ theorem value_body_guarded : Guarded Grip.Json.value_body := by
   have hpq : q ≤ scanFwd arr Ascii.isWs q := scanFwd_ge arr Ascii.isWs q
   set p := scanFwd arr Ascii.isWs q
   by_cases hplt : p < arr.size
-  · simp only [hplt, ↓reduceIte]
+  · simp only [hplt]
     by_cases hbrace : arr[p] == Ascii.lbrace
     · simp only [hbrace, ↓reduceIte]
       -- Set ob1/ob2 before unfolding seqR/seqL/map so they stay opaque in the goal simp.
@@ -357,7 +357,7 @@ theorem value_body_guarded : Guarded Grip.Json.value_body := by
               exact AgreeOk.refl _
       · simp only [hbrace, Bool.false_eq_true, ↓reduceIte, hbracket, Bool.false_eq_true, ↓reduceIte]
         exact AgreeOk.refl _
-  · simp only [show ¬ p < arr.size from hplt, ↓reduceIte]
+  · simp only [show ¬ p < arr.size from hplt]
     exact True.intro
 
 -- ---------------------------------------------------------------------------
@@ -687,7 +687,7 @@ private theorem foldFwd_comma_kv_run
     have h_nil_size : (commaPrefixKV ([] : List (String × Json))).toUTF8.size = 0 := by
       simp [commaPrefixKV]
     have h_la_nil : ([] : List (String × Json)).toArray = #[] := rfl
-    simp only [h_nil_size, h_la_nil, Array.append_empty, Nat.add_zero] at h_term ⊢
+    simp only [h_nil_size, Array.append_empty, Nat.add_zero] at h_term ⊢
     unfold foldFwd
     cases h_step : (GParser.seqR (Grip.Json.wsByte Ascii.comma)
         (GParser.seqR GParser.ws kv_parser)).run buf base with
@@ -805,7 +805,7 @@ private theorem foldFwd_comma_kv_run
     rw [dif_pos h_cond,
         ih (acc.push kv) (base + 1 + (renderKV kv).toUTF8.size)
           h_rest_bound h_rest_match h_rest_stop_cond h_rest_term h_rest_kvp]
-    simp only [Prod.mk.injEq, true_and]
+    simp only [Prod.mk.injEq]
     constructor
     · rw [Array.push_eq_append, List.toArray_cons]; simp
     · rw [commaPrefixKV_cons_size]; omega
@@ -837,7 +837,7 @@ private theorem foldFwd_comma_value_run (lst : List Json) (buf : ByteArray) (acc
   | nil =>
     have h_cp_nil : (commaPrefix []).toUTF8.size = 0 := rfl
     have h_la_nil : ([] : List Json).toArray = #[] := rfl
-    simp only [h_cp_nil, h_la_nil, Array.append_empty, Nat.add_zero] at h_term ⊢
+    simp only [h_cp_nil, Array.append_empty, Nat.add_zero] at h_term ⊢
     unfold foldFwd
     cases h_seqR : (GParser.seqR (Grip.Json.wsByte Ascii.comma) Grip.Json.value).run buf base with
     | ok v q' =>
@@ -946,7 +946,7 @@ private theorem foldFwd_comma_value_run (lst : List Json) (buf : ByteArray) (acc
     rw [dif_pos h_cond,
         ih (acc.push x) (base + 1 + (render x).toUTF8.size)
           h_rest_bound h_rest_match h_rest_stop h_rest_term h_rest_vp]
-    simp only [Prod.mk.injEq, true_and]
+    simp only [Prod.mk.injEq]
     constructor
     · rw [Array.push_eq_append, List.toArray_cons]; simp
     · rw [commaPrefix_cons_size]; omega
@@ -1299,7 +1299,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
               (e0 :: rest.map (fun ⟨(k, j), _h⟩ => "\"" ++ escape k ++ "\":" ++ render j))).toUTF8.size := by
             cases rest.map (fun ⟨(k, j), _h⟩ => "\"" ++ escape k ++ "\":" ++ render j) with
             | nil =>
-              simp only [joinWith, str_app, ByteArray.size_append]
+              simp only [joinWith]
               have hc : (",":String).toUTF8.size = 1 := by decide
               have he : ("":String).toUTF8.size = 0 := by decide
               omega

@@ -107,7 +107,7 @@ theorem foldl_repr (n : Nat) : (Nat.repr n).toList.foldl H 0 = n := by
       _ ≤ 10 ^ (n + 1) := Nat.le_of_lt (Nat.lt_pow_self (by omega)))
 
 private theorem toDigitsCore_head_nonzero :
-    ∀ (fuel n : Nat) (hn : 0 < n), 0 < fuel → n < 10 ^ fuel →
+    ∀ (fuel n : Nat) (_hn : 0 < n), 0 < fuel → n < 10 ^ fuel →
       ∃ c rest, Nat.toDigitsCore 10 fuel n [] = c :: rest ∧ 49 ≤ c.toNat ∧ c.toNat ≤ 57 := by
   intro fuel
   induction fuel with
