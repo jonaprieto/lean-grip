@@ -106,4 +106,55 @@ theorem foldl_repr (n : Nat) : (Nat.repr n).toList.foldl H 0 = n := by
     calc n < n + 1 := by omega
       _ ≤ 10 ^ (n + 1) := Nat.le_of_lt (Nat.lt_pow_self (by omega)))
 
+private theorem toDigitsCore_head_nonzero :
+    ∀ (fuel n : Nat) (hn : 0 < n), 0 < fuel → n < 10 ^ fuel →
+      ∃ c rest, Nat.toDigitsCore 10 fuel n [] = c :: rest ∧ 49 ≤ c.toNat ∧ c.toNat ≤ 57 := by
+  intro fuel
+  induction fuel with
+  | zero => intro n hn hf; omega
+  | succ f ih =>
+    intro n hn _ hb
+    -- Expand the definition of toDigitsCore once.
+    have core_eq : Nat.toDigitsCore 10 (f + 1) n [] =
+        if n / 10 = 0 then [Nat.digitChar (n % 10)]
+        else Nat.toDigitsCore 10 f (n / 10) [Nat.digitChar (n % 10)] := rfl
+    by_cases h10 : n / 10 = 0
+    · -- n < 10, n > 0: single digit n ∈ [1,9]
+      have hn10 : n < 10 := by omega
+      have h49 : 49 ≤ (Nat.digitChar (n % 10)).toNat := by
+        have : n % 10 = n := Nat.mod_eq_of_lt hn10
+        rw [this]; interval_cases n <;> decide
+      have h57 : (Nat.digitChar (n % 10)).toNat ≤ 57 :=
+        (digitChar_bound (n % 10) (Nat.mod_lt _ (by omega))).2
+      exact ⟨Nat.digitChar (n % 10), [], by rw [core_eq, if_pos h10], h49, h57⟩
+    · -- n ≥ 10: head comes from recursive call on n/10
+      have hqpos : 0 < n / 10 := Nat.div_pos (by omega) (by omega)
+      have hfuel : 0 < f := by
+        rcases Nat.eq_zero_or_pos f with rfl | hfp
+        · norm_num at hb
+          exact absurd (Nat.div_eq_of_lt hb) h10
+        · exact hfp
+      have hbound : n / 10 < 10 ^ f := by
+        apply Nat.div_lt_of_lt_mul
+        have : 10 ^ (f + 1) = 10 * 10 ^ f := by ring
+        linarith
+      obtain ⟨c, rest, hceq, h49, h57⟩ := ih (n / 10) hqpos hfuel hbound
+      refine ⟨c, rest ++ [Nat.digitChar (n % 10)], ?_, h49, h57⟩
+      rw [core_eq, if_neg h10, toDigitsCore_append f (n / 10) [Nat.digitChar (n % 10)], hceq]
+      simp [List.cons_append]
+
+/-- For a positive natural, the most-significant decimal digit is in 1-9.
+This means `Ascii.isDigit19` of its byte holds in the rendered string. -/
+theorem toDigits_head_pos (n : Nat) (hn : 0 < n) :
+    49 ≤ (Nat.toDigits 10 n).head!.toNat ∧ (Nat.toDigits 10 n).head!.toNat ≤ 57 := by
+  rw [Nat.toDigits]
+  obtain ⟨c, rest, hceq, h49, h57⟩ := toDigitsCore_head_nonzero (n + 1) n hn (by omega) (by
+    calc n < n + 1 := by omega
+      _ ≤ 10 ^ (n + 1) := Nat.le_of_lt (Nat.lt_pow_self (by omega)))
+  rw [hceq]
+  simp [h49, h57]
+
+theorem toDigits_nonempty (n : Nat) (hn : 0 < n) : Nat.toDigits 10 n ≠ [] := fun h => by
+  have := (toDigits_head_pos n hn).2; rw [h] at this; exact absurd this (by decide)
+
 end GripProps.NatDigits
