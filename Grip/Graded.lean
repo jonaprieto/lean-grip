@@ -144,10 +144,11 @@ through the opaque transformer `f`. Rather than fall back to `partial def`, `fix
 an explicit fuel (`GParser.fixFuel`), structurally decreasing, with the fuel set to the bytes
 remaining (`arr.size - q + 1`). A runtime clamp downgrades any non-advancing success to a
 failure, so every self-*success* advances the offset; the productive nesting depth is
-therefore bounded by the bytes remaining and the chosen fuel never truncates a guarded
-grammar. A left-recursive body (one that reaches its recursive call without consuming)
-exhausts the fuel and fails: kernel-total, in place of the `partial` loop it would once have
-been. This makes grip total throughout; see `grip-props/Productivity.lean`. -/
+therefore bounded by the bytes remaining. A separate `Guarded` proof establishes that the
+chosen fuel does not truncate acceptance for a particular body. Direct left recursion exhausts
+the fuel and fails; arbitrary non-guarded bodies remain total but may be fuel-sensitive. This
+replaces the `partial` loop the implementation once had; see
+`grip-props/GripProps/FixComplete.lean`. -/
 
 /-- Clamp a raw result so a success that did not advance past `q` becomes a failure at
 `q`. This is what makes the `conditional` (`always`-consume) witness hold for `fix`
@@ -158,10 +159,10 @@ without unfolding the fuel recursion. -/
 
 /-- The recursive run, made total by a depth `fuel`. Each self-call spends one unit of fuel;
 because the clamp forces every self-*success* to advance the offset, the productive nesting
-depth is bounded by the bytes remaining, so the `arr.size - q + 1` fuel `fix` supplies never
-truncates a guarded grammar. Fuel exhaustion is reached only by a left-recursive (non-advancing)
-body and returns a failure: the same outcome the clamp already forces for a non-advancing
-success, except kernel-total rather than a `partial` loop. -/
+depth is bounded by the bytes remaining. The `Guarded` hypothesis in
+`grip-props/GripProps/FixComplete.lean` proves that the `arr.size - q + 1` budget does not
+truncate a body's accepted parses. Fuel zero returns a failure; direct left recursion reaches
+it, while other non-guarded bodies may vary with the supplied budget. -/
 @[specialize] def GParser.fixFuel (f : GParser conditional α → GParser conditional α) :
     Nat → ByteArray → Nat → ParseResult α
   | 0, _, q => .error ⟨q, []⟩

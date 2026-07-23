@@ -13,11 +13,11 @@ import Grip
 larger fuel would accept, so `fix` computes the ideal fixpoint on every grammar it should.
 
 The hypothesis that makes this work is **guardedness** (`Guarded`): the body's output at offset
-`q` depends on its self-reference only at strictly greater offsets. Every grammar that consumes
-at least one byte before recurring satisfies it -- and the `conditional` consumption grade is
-exactly what forces that consumption. The negative-lookahead body `notFollowedBy self` does not
-satisfy it (it inspects `self` at the same offset), and indeed no fuel bound tames such a body:
-its result can flip with the fuel's parity.
+`q` depends on its self-reference only at strictly greater offsets. A body that sequences a
+`conditional` parser before the recursive call satisfies it, and the closure lemmas below make
+that argument compositional. The endofunction type alone does not imply guardedness: the
+negative-lookahead body `notFollowedBy self` inspects `self` at the same offset, and its result
+can flip with the fuel's parity.
 
 Because error payloads record the *furthest* offset any branch reached, they can legitimately
 grow with more fuel; completeness is therefore stated up to `AgreeOk`, agreement on the accepted
@@ -126,7 +126,7 @@ theorem agree_add (f : GParser conditional α → GParser conditional α) (hf : 
 
 /-- **Completeness of the fuel bound.** For a guarded body, the fuel `fix` uses,
 `arr.size - q + 1`, accepts every parse any larger fuel would: no accepted parse is truncated.
-The consumption grade supplies guardedness, so `fix` computes the ideal fixpoint. -/
+The explicit `Guarded f` argument supplies the required semantic premise. -/
 theorem fixFuel_complete (f : GParser conditional α → GParser conditional α) (hf : Guarded f)
     (arr : ByteArray) (q : Nat) {m : Nat} (hm : arr.size - q + 1 ≤ m) {a : α} {q' : Nat}
     (h : GParser.fixFuel f m arr q = .ok a q') :
@@ -159,13 +159,13 @@ theorem fix_complete (f : GParser conditional α → GParser conditional α) (hf
   show clampAdvance arr q (GParser.fixFuel f (arr.size - q + 1) arr q) = .ok a q'
   rw [hB]; simp only [clampAdvance]; rw [if_pos ⟨hcw, hbw⟩]
 
-/-! ### The consumption grade forces guardedness
+/-! ### Building guardedness from consumption
 
 The combinators build guarded bodies compositionally. A body that consults its self-reference
 only *after* a `conditional` (always-consuming) parser is guarded, because the consumed byte
-pushes the recursive call to a strictly greater offset -- this is the formal content of "the
-grade forces guardedness". Wrapping combinators (`map`, `alt`) preserve guardedness. A worked
-grammar (`manyTill`) is assembled from these at the end. -/
+pushes the recursive call to a strictly greater offset. The grade justifies that local step; it
+does not make every endofunction guarded. Wrapping combinators (`map`, `alt`) preserve
+guardedness. A worked grammar (`manyTill`) is assembled from these lemmas at the end. -/
 
 /-- Two failures agree on acceptance. -/
 theorem agree_error {r₁ r₂ : ParseResult α} (h₁ : ∃ e, r₁ = .error e) (h₂ : ∃ e, r₂ = .error e) :

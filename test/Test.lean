@@ -48,6 +48,16 @@ private def parenDepth : GParser conditional Nat :=
 #guard (GParser.run? parenDepth "((()))".toUTF8) == some 3
 #guard (GParser.run? parenDepth "(()".toUTF8) == none            -- unbalanced
 
+-- Direct left recursion type-checks, but the input-bounded fuel makes it terminate as a
+-- failure instead of looping. Guarded bodies such as `parenDepth` above have the stronger
+-- completeness theorem; the `conditional → conditional` transformer type alone is insufficient.
+private def directLeft : GParser conditional Unit :=
+  GParser.fix fun self => self
+
+#guard (match directLeft.run "x".toUTF8 0 with
+  | .error e => e.pos == 0
+  | .ok _ _ => false)
+
 -- BEq for ParseResult, needed by the #guard comparisons below.
 private instance instBEqParseResult {β : Type} [BEq β] : BEq (ParseResult β) where
   beq
