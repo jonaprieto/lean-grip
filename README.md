@@ -2,7 +2,9 @@
 
 A graded byte-parser library for Lean 4. The core parses over a raw `ByteArray`. On top
 of it sits an optional grade layer that records, at compile time, whether a parser can
-fail and whether it always consumes input. One thing that layer buys you: `many (pure x)`
+fail and whether it always consumes input. Its verified-parser recipe combines flat execution
+with erased proof contracts, total repetition and recursion, and language-specific output
+theorems. One thing that layer buys you: `many (pure x)`
 does not compile. That expression loops forever at runtime in parsec and attoparsec; here
 the type checker rejects it up front.
 
@@ -17,6 +19,8 @@ The core is in. That means the byte primitives, the `Parser`/graded `GParser` sp
 `Monad`/`Alternative`/`MonadExcept`, `gdo`, the always-consume `many` gate, `fix` for
 recursion, first-byte `dispatch`, `capture` for building syntax trees, and a positioned
 `ParseError` with labels and a caret. The machine-checked metatheory lives in `grip-props`.
+The JSON proof development also proves that parsing the rendering of any JSON value returns
+that value (`parse_render`), including arrays and objects.
 API documentation is generated from the docstrings by
 [doc-gen4](https://github.com/leanprover/doc-gen4) and published to
 [GitHub Pages](https://jonaprieto.github.io/grip/).
@@ -127,6 +131,39 @@ theorem can unfold, since a `partial def` is opaque to the kernel. grip stakes o
 other corner (total, verified, byte-level) where the generic libraries sit at generic and
 partial. That makes it a different point on the tradeoff curve, not a drop-in replacement.
 Reach for grip when you parse bytes in memory and want the proofs.
+
+## A verified-parser recipe
+
+The design is intended to be reused beyond the example grammars:
+
+1. Keep the executable parser flat: `ByteArray → Nat → ParseResult`.
+2. Make every primitive carry erased propositions for consumption, failure/success, and bounds.
+3. Compose those contracts through sequencing, choice, mapping, and error propagation.
+4. Require an always-consuming parser for repetition and use the remaining input size as the
+   termination measure.
+5. Tie recursive grammars with input-bounded fuel, clamp non-advancing successes, and prove
+   completeness for guarded bodies.
+6. Add a language-level theorem, such as `parse (render v) = .ok v`, at the parser boundary.
+
+Start with the ordinary `Parser α` interface and migrate selected primitives to precise
+`GParser g α` types as proofs are added. Precise parsers coerce back to `Parser`, and the
+repetition gate remains active. The executable `grip` package depends only on `batteries`;
+`grip-props` adds mathlib for the proof package.
+
+The migration can be one signature at a time:
+
+```lean
+open Grip
+
+def digits0 : Parser Nat := GParser.takeWhile1 Ascii.isDigit
+-- `GParser.many digits0` is rejected: `Parser` has forgotten the consumption proof.
+
+def digits : GParser conditional Nat := GParser.takeWhile1 Ascii.isDigit
+def groups : Parser (List Nat) := GParser.many digits
+```
+
+Only the `digits` signature changes. Its precise consumption contract admits total repetition,
+and `groups` immediately coerces back to the ordinary monadic API.
 
 ## Examples
 

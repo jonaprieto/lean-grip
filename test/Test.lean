@@ -25,6 +25,16 @@ private def sample :=
 #guard (GParser.run? sample "(42".toUTF8) == none          -- missing ')'
 #guard (GParser.run? (GParser.foldMany (· + ·) 0 digits) "".toUTF8) == some 0
 
+/-! ### Incremental migration: recover one precise primitive without grading the caller. -/
+
+private def migratedDigits : GParser conditional Nat :=
+  GParser.takeWhile1 Ascii.isDigit
+
+private def migratedGroups : Parser (List Nat) :=
+  GParser.many migratedDigits
+
+#guard (GParser.run? migratedGroups "12".toUTF8) == some [2]
+
 -- fix: a recursive nested-parens parser returning the nesting depth. Each level
 -- consumes "(" before recursing, so the always-consume clamp never fires on
 -- balanced input; unbalanced input fails.
