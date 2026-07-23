@@ -997,9 +997,16 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           from by ring] at hn
       rwa [render_str_byte_close] at hn
   | .num m e, buf, q, hq, hmatch, hstop => by
-    have hrn : render (Json.num m e) = renderNum m e := by simp [render]
+    have hrn : render (Json.num m e) = renderNumber m e := by simp [render]
     simp only [hrn] at hq hmatch hstop ⊢
-    exact value_run_num_at m e buf q hq hmatch hstop
+    by_cases he : e > Decode.maxExp
+    · have hlarge : renderNumber m e = renderNumScientific m e := by
+        simp [renderNumber, he]
+      rw [hlarge] at hq hmatch hstop ⊢
+      exact value_run_num_scientific m e buf q he hq hmatch hstop
+    · have hsmall : renderNumber m e = renderNum m e := by simp [renderNumber, he]
+      rw [hsmall] at hq hmatch hstop ⊢
+      exact value_run_num_at m e buf q hq hmatch hstop
   | .arr xs, buf, q, hq, hmatch, hstop => by
     have hrend : render (Json.arr xs) =
         "[" ++ joinWith "," (xs.attach.toList.map (fun x => render x.1)) ++ "]" := by

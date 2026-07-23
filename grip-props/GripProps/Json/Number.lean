@@ -120,9 +120,10 @@ theorem foldl_numByte_frac (ds : List Char) (st : NState) (hp : st.phase = 1)
   | nil => simp
   | cons c cs ih =>
     obtain ⟨hc1, hc2⟩ := hd c (by simp)
-    rw [List.foldl_cons, numByte_digit st c hc1 hc2, if_pos hp,
-      ih _ (by simp [hp]) (fun c hc => hd c (by simp [hc]))]
-    simp [List.foldl_cons, hp, Nat.add_assoc, Nat.add_comm 1]
+    rw [List.foldl_cons, numByte_digit st c hc1 hc2]
+    simp only [hp, ↓reduceIte]
+    rw [ih _ (by simp) (fun c hc => hd c (by simp [hc]))]
+    simp [List.foldl_cons, Nat.add_assoc, Nat.add_comm 1]
 
 /-- Folding `numByte` over an ASCII digit string's UTF-8 bytes accumulates the mantissa. -/
 theorem foldl_numByte_ascii (cs : List Char) (st : NState) (hp : st.phase = 0)
@@ -141,6 +142,22 @@ theorem foldl_numByte_frac_ascii (cs : List Char) (st : NState) (hp : st.phase =
                   fracLen := st.fracLen + cs.length } := by
   rw [flatMap_ascii cs (fun c hc => by have := hd c hc; omega), List.foldl_map]
   exact foldl_numByte_frac cs st hp hd
+
+/-- Phase-2 (exponent) `numByte` fold: accumulate the decimal exponent and preserve all
+other decoder state. -/
+theorem foldl_numByte_exp_ascii (cs : List Char) (st : NState) (hp : st.phase = 2)
+    (hd : ∀ c ∈ cs, 48 ≤ c.toNat ∧ c.toNat ≤ 57) :
+    (cs.flatMap String.utf8EncodeChar).foldl numByte st
+      = { st with expVal := cs.foldl (fun a c => a * 10 + (c.toNat - 48)) st.expVal } := by
+  rw [flatMap_ascii cs (fun c hc => by have := hd c hc; omega), List.foldl_map]
+  induction cs generalizing st with
+  | nil => simp
+  | cons c cs ih =>
+    obtain ⟨hc1, hc2⟩ := hd c (by simp)
+    rw [List.foldl_cons, numByte_digit st c hc1 hc2]
+    simp only [hp]
+    rw [ih _ (by simp) (fun c hc => hd c (by simp [hc]))]
+    simp [List.foldl_cons]
 
 /-- The decimal-point byte switches the decoder to the fractional phase. -/
 theorem numByte_dot (st : NState) : numByte st (UInt8.ofNat ('.').toNat) = { st with phase := 1 } :=
@@ -266,7 +283,7 @@ theorem decode_renderNum_frac_neg (m : Int) (hm : m < 0) (e : Nat) (he : 0 < e) 
     rw [hmant, hfrac]; simp
   unfold decodeNumberBytes?
   rw [hst]
-  simp only [Bool.false_eq_true, if_false, if_true, ite_true, CharP.cast_eq_zero, zero_sub,
+  simp only [Bool.false_eq_true, if_false, if_true, CharP.cast_eq_zero, zero_sub,
     ge_iff_le, Left.nonneg_neg_iff, Int.natCast_nonpos_iff]
   rw [if_neg (show ¬ e = 0 by omega), neg_neg, Int.toNat_natCast,
     show -(m.natAbs : Int) = m from by omega]
@@ -326,6 +343,105 @@ theorem decode_renderNum_int_neg (m : Int) (hm : m < 0) :
   norm_num [maxExp]
   rw [abs_of_neg hm, neg_neg]
 
+/-- Scientific notation round-trip for large fractional exponents. The mantissa is rendered as
+an integer followed by `e-<exponent>`, so decoding produces the same exact `num m e` without
+materializing the fractional zero padding. -/
+theorem decode_renderNumScientific (m : Int) (e : Nat) (he : 0 < e) :
+    decodeNumberBytes? (renderNumScientific m e).toUTF8 0 (renderNumScientific m e).toUTF8.size
+      = some (Json.num m e) := by
+  have hdigits : (toString m.natAbs).toList = Nat.toDigits 10 m.natAbs := by
+    show (Nat.repr m.natAbs).toList = _
+    rw [Nat.repr, String.toList_ofList]
+  have hexp : (toString e).toList = Nat.toDigits 10 e := by
+    show (Nat.repr e).toList = _
+    rw [Nat.repr, String.toList_ofList]
+  have hmant : ∀ (st : NState), st.phase = 0 → st.mant = 0 →
+      ((toString m.natAbs).toList.flatMap String.utf8EncodeChar).foldl numByte st =
+        { st with mant := m.natAbs } := by
+    intro st hp hz
+    rw [hdigits, foldl_numByte_ascii _ _ hp
+      (GripProps.NatDigits.mem_toDigits_bound m.natAbs)]
+    have hfold : (Nat.toDigits 10 m.natAbs).foldl
+        (fun a c => a * 10 + (c.toNat - 48)) st.mant = m.natAbs := by
+      rw [hz]
+      have h := GripProps.NatDigits.foldl_repr m.natAbs
+      rw [Nat.repr, String.toList_ofList] at h
+      exact h
+    rw [hfold]
+  have hexpFold : ∀ (st : NState), st.phase = 2 → st.expVal = 0 →
+      ((toString e).toList.flatMap String.utf8EncodeChar).foldl numByte st =
+        { st with expVal := e } := by
+    intro st hp hz
+    rw [hexp,
+      foldl_numByte_exp_ascii _ _ hp (GripProps.NatDigits.mem_toDigits_bound e)]
+    have hfold : (Nat.toDigits 10 e).foldl
+        (fun a c => a * 10 + (c.toNat - 48)) st.expVal = e := by
+      rw [hz]
+      have h := GripProps.NatDigits.foldl_repr e
+      rw [Nat.repr, String.toList_ofList] at h
+      exact h
+    rw [hfold]
+  by_cases hm : m < 0
+  · have hchars : (renderNumScientific m e).toList =
+        '-' :: ((toString m.natAbs).toList ++ ('e' :: '-' :: (toString e).toList)) := by
+      unfold renderNumScientific
+      simp only [if_pos hm, String.toList_append,
+        show ("-" : String).toList = ['-'] from by decide,
+        show ("e-" : String).toList = ['e', '-'] from by decide]
+      simp [List.append_assoc]
+    have hst : (renderNumScientific m e).toUTF8.foldl numByte {}
+          0 (renderNumScientific m e).toUTF8.size =
+        ({ mant := m.natAbs, mantNeg := true, expVal := e, expNeg := true, phase := 2 } : NState) := by
+      rw [GripProps.Bytes.toUTF8_foldl, hchars, List.flatMap_cons,
+        ascii_encode '-' (by decide), List.flatMap_append, List.foldl_append,
+        List.foldl_cons, List.foldl_nil]
+      rw [show numByte {} (UInt8.ofNat ('-').toNat) = ({ mantNeg := true } : NState) from rfl,
+        List.foldl_append,
+        hmant ({ mantNeg := true } : NState) rfl (by rfl),
+        List.flatMap_cons, ascii_encode 'e' (by decide),
+        List.foldl_append, List.foldl_cons, List.foldl_nil]
+      rw [show numByte { mant := m.natAbs, mantNeg := true } (UInt8.ofNat ('e').toNat) =
+          ({ mant := m.natAbs, mantNeg := true, phase := 2 } : NState) from rfl,
+        List.flatMap_cons, ascii_encode '-' (by decide), List.foldl_append,
+        List.foldl_cons, List.foldl_nil,
+        show numByte { mant := m.natAbs, mantNeg := true, phase := 2 }
+          (UInt8.ofNat ('-').toNat) =
+          ({ mant := m.natAbs, mantNeg := true, expNeg := true, phase := 2 } : NState) from rfl,
+        hexpFold _ rfl rfl]
+    unfold decodeNumberBytes?
+    rw [hst]
+    simp only [if_true, CharP.cast_eq_zero, ge_iff_le]
+    rw [show -(m.natAbs : Int) = m by omega]
+    have hexp : 0 ≤ -(-(e : Int) - 0) := by omega
+    norm_num [Int.toNat_of_nonneg hexp]
+    intro h; omega
+  · have hchars : (renderNumScientific m e).toList =
+        (toString m.natAbs).toList ++ ('e' :: '-' :: (toString e).toList) := by
+      unfold renderNumScientific
+      simp only [if_neg hm, String.toList_append,
+        show ("e-" : String).toList = ['e', '-'] from by decide]
+      simp [List.append_assoc]
+    have hst : (renderNumScientific m e).toUTF8.foldl numByte {}
+          0 (renderNumScientific m e).toUTF8.size =
+        ({ mant := m.natAbs, expVal := e, expNeg := true, phase := 2 } : NState) := by
+      rw [GripProps.Bytes.toUTF8_foldl, hchars, List.flatMap_append, List.foldl_append,
+        hmant _ rfl rfl, List.flatMap_cons, ascii_encode 'e' (by decide),
+        List.foldl_append, List.foldl_cons, List.foldl_nil]
+      rw [show numByte { mant := m.natAbs } (UInt8.ofNat ('e').toNat) =
+          ({ mant := m.natAbs, phase := 2 } : NState) from rfl,
+        List.flatMap_cons, ascii_encode '-' (by decide), List.foldl_append,
+        List.foldl_cons, List.foldl_nil]
+      rw [show numByte { mant := m.natAbs, phase := 2 } (UInt8.ofNat ('-').toNat) =
+          ({ mant := m.natAbs, expNeg := true, phase := 2 } : NState) from rfl,
+        hexpFold _ rfl rfl]
+    unfold decodeNumberBytes?
+    rw [hst]
+    simp only [Bool.false_eq_true, if_false, if_true, CharP.cast_eq_zero, ge_iff_le]
+    rw [show (m.natAbs : Int) = m by omega]
+    have hexp : 0 ≤ -(-(e : Int) - 0) := by omega
+    norm_num [Int.toNat_of_nonneg hexp]
+    intro h; omega
+
 /-- `decodeNumberBytes?` depends only on the folded state, so equal folds decode equally. -/
 theorem decodeNumberBytes?_congr {arr1 arr2 : ByteArray} {q1 q1' q2 q2' : Nat}
     (h : arr1.foldl numByte {} q1 q1' = arr2.foldl numByte {} q2 q2') :
@@ -343,5 +459,19 @@ theorem decode_renderNum_at (arr : ByteArray) (q : Nat) (m : Int) (e : Nat)
   rw [decodeNumberBytes?_congr
     (GripProps.Bytes.foldl_congr_match numByte {} arr (renderNum m e).toUTF8 q 0
       (renderNum m e).toUTF8.size hsize (by omega)
+      (fun i hi => by rw [Nat.zero_add]; exact hm i hi))]
+  simpa using hd
+
+/-- Lift the scientific-notation decoder lemma through an arbitrary matching byte slice. -/
+theorem decode_renderNumScientific_at (arr : ByteArray) (q : Nat) (m : Int) (e : Nat)
+    (hsize : q + (renderNumScientific m e).toUTF8.size ≤ arr.size)
+    (hm : ∀ j, j < (renderNumScientific m e).toUTF8.size →
+      arr[q + j]! = (renderNumScientific m e).toUTF8[j]!)
+    (hd : decodeNumberBytes? (renderNumScientific m e).toUTF8 0
+      (renderNumScientific m e).toUTF8.size = some (Json.num m e)) :
+    decodeNumberBytes? arr q (q + (renderNumScientific m e).toUTF8.size) = some (Json.num m e) := by
+  rw [decodeNumberBytes?_congr
+    (GripProps.Bytes.foldl_congr_match numByte {} arr (renderNumScientific m e).toUTF8 q 0
+      (renderNumScientific m e).toUTF8.size hsize (by omega)
       (fun i hi => by rw [Nat.zero_add]; exact hm i hi))]
   simpa using hd

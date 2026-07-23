@@ -156,10 +156,11 @@ def numByte (st : NState) (b : UInt8) : NState :=
 /-- The largest net base-10 exponent the decoder folds into the mantissa. A positive net
 exponent beyond this is rejected rather than powered: it bounds the widest integer the decoder
 will materialize (`10 ^ maxExp`), keeping it far above any real datum yet well below the
-`Nat.pow` panic threshold. Without the bound, a pathological but grammar-valid literal like the
-600-digit exponent in `test/jsontestsuite/i_number_huge_exp.json` aborts the process with
-`INTERNAL PANIC: Nat.pow exponent is too big`. `i_`-prefixed JSONTestSuite numbers are
-implementation-defined, so rejecting them stays RFC-8259-conformant. -/
+`Nat.pow` panic threshold. The renderer also uses this as its largest expanded fractional
+exponent, switching to JSON exponent notation beyond it. Without the bound, a pathological but
+grammar-valid literal like the 600-digit exponent in `test/jsontestsuite/i_number_huge_exp.json`
+aborts the process with `INTERNAL PANIC: Nat.pow exponent is too big`. `i_`-prefixed
+JSONTestSuite numbers are implementation-defined, so rejecting them stays RFC-8259-conformant. -/
 def maxExp : Nat := 1000000
 
 /-- Decode a validated number lexeme spanning `arr[start .. stop)` to an exact
@@ -492,6 +493,17 @@ def renderNum (m : Int) (e : Nat) : String :=
     let k := ds.length - e
     (if m < 0 then "-" else "") ++ String.ofList (ds.take k) ++ "." ++ String.ofList (ds.drop k)
 
+/-- Render a fractional number using JSON exponent notation. This avoids materializing `e`
+zeroes for large scales while preserving the exact `num m e` representation on parse. -/
+def renderNumScientific (m : Int) (e : Nat) : String :=
+  (if m < 0 then "-" else "") ++ toString m.natAbs ++ "e-" ++ toString e
+
+/-- Serialize a numeric DOM value. Ordinary values retain their canonical expanded decimal form;
+large fractional exponents use compact scientific notation so rendering remains proportional to
+the exponent's digit count rather than its value. -/
+def renderNumber (m : Int) (e : Nat) : String :=
+  if e > maxExp then renderNumScientific m e else renderNum m e
+
 /-- Join a list of strings with a separator, proof-friendly alternative to `String.intercalate`.
 The output is identical: `joinWith sep ss = String.intercalate sep ss`. -/
 def joinWith (sep : String) : List String → String
@@ -499,14 +511,14 @@ def joinWith (sep : String) : List String → String
   | [s]        => s
   | s :: rest  => s ++ sep ++ joinWith sep rest
 
-/-- Serialize a value to compact RFC-8259 JSON (no insignificant whitespace). Round-trips
-through `parse` (the value, not necessarily the mantissa/exponent split). Total: structural on
-`sizeOf`; `attach` carries the membership proof each recursive call decreases by. -/
+/-- Serialize a value to compact RFC-8259 JSON (no insignificant whitespace). Parsing the result
+recovers the exact `Json` value, including the numeric mantissa/exponent representation. Total:
+structural on `sizeOf`; `attach` carries the membership proof each recursive call decreases by. -/
 def render : Json → String
   | .null       => "null"
   | .bool true  => "true"
   | .bool false => "false"
-  | .num m e    => renderNum m e
+  | .num m e    => renderNumber m e
   | .str s      => "\"" ++ escape s ++ "\""
   | .arr xs     =>
     "[" ++ joinWith "," (xs.attach.toList.map (fun x => render x.1)) ++ "]"
@@ -547,6 +559,11 @@ open Grip Grip.Json
 #guard (GParser.run? parser "1e6".toUTF8) == some (Json.num 1000000 0)
 #guard (GParser.run? parser "1e999999999999".toUTF8) == none
 #guard (GParser.run? parser "1e-999999999999".toUTF8) == some (Json.num 1 999999999999)
+#guard Json.renderNumber 1 (Decode.maxExp + 1) == "1e-1000001"
+#guard (GParser.run? parser (Json.render (Json.num 1 (Decode.maxExp + 1))).toUTF8) ==
+  some (Json.num 1 (Decode.maxExp + 1))
+#guard (GParser.run? parser (Json.render (Json.num (-1) (Decode.maxExp + 1))).toUTF8) ==
+  some (Json.num (-1) (Decode.maxExp + 1))
 -- `int` smart constructor and strict `int?` extractor
 #guard Json.int 42 == Json.num 42 0
 #guard (Json.num 42 0).int? == some 42

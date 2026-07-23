@@ -9,12 +9,12 @@ import GripProps.Json.ScanStr
 import GripProps.Json.Number
 
 /-!
-# Parser run-denotation over a serialized prefix (L2, in progress)
+# Parser run-denotation over a serialized prefix
 
 The `parse ∘ render = id` proof runs the parser on `render v`'s bytes followed by an arbitrary
 suffix, so each combinator needs a `run`-characterization on inputs of the form `sv ++ rest`.
-This file starts that layer with the primitive byte combinators; the looping combinators
-(`string`, `scanStr`, `foldMany`) and the `fix` unrolling for `value` are still TODO.
+This file supplies those characterizations from the primitive byte parsers through strings,
+numbers, and the recursive `value` parser.
 -/
 
 set_option maxHeartbeats 1000000
@@ -803,8 +803,475 @@ private theorem ofList_ascii_toUTF8_getElem! (cs : List Char) (i : Nat)
       getElem!_pos _ i (by rw [List.length_map]; exact hi),
       getElem!_pos _ i hi, List.getElem_map]
 
-/-- `value` parses a number at position `q` in `buf` when bytes match `renderNum m e`
-and the next byte is not a digit, dot, or exponent indicator. -/
+private theorem renderNumScientific_append (m : Int) (e : Nat) :
+    renderNumScientific m e =
+      (if m < 0 then "-" else "") ++ toString m.natAbs ++ "e-" ++ toString e := by
+  by_cases hm : m < 0
+  · apply String.ext
+    simp [renderNumScientific, hm, String.toList_append,
+      List.append_assoc, show ("-" : String).toList = ['-'] from by decide,
+      show ("e-" : String).toList = ['e', '-'] from by decide]
+  · apply String.ext
+    simp [renderNumScientific, hm, String.toList_append,
+      List.append_assoc, show ("e-" : String).toList = ['e', '-'] from by decide]
+
+/-- Lift an already-established `number` parse through `value`'s byte dispatch. This keeps
+specialized render-shape proofs focused on the number grammar rather than duplicating dispatch
+reasoning. -/
+theorem value_run_number (arr : ByteArray) (q : Nat) (m : Int) (e n : Nat)
+    (hq : q < arr.size)
+    (hstart : Ascii.isDigit arr[q] = true ∨ arr[q] = Ascii.dash)
+    (hnum : number.run arr q = .ok (Json.num m e) (q + n)) :
+    value.run arr q = .ok (Json.num m e) (q + n) := by
+  rcases hstart with hdigit | hdash
+  · have hne : ∀ c : UInt8, Ascii.isDigit c = false → ¬ ((arr[q] == c) = true) := fun c hc => by
+      rw [beq_iff_eq]
+      intro he
+      rw [he, hc] at hdigit
+      exact absurd hdigit (by decide)
+    rw [value, fix_run_unroll]
+    simp only [value_body]
+    rw [wsDispatch_run_stop _ arr q hq (isDigit_not_ws hdigit)]
+    simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
+    rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
+      if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
+      if_pos (by rw [hdigit]; rfl), hnum]
+    exact clampAdvance_ok arr q (number.cwit hnum) (number.bwit (Nat.le_of_lt hq) hnum)
+  · have hne : ∀ c : UInt8, c ≠ 45 → ¬ ((arr[q] == c) = true) := fun c hc => by
+      rw [beq_iff_eq]
+      intro he
+      exact hc (he.symm.trans hdash)
+    have hws : Ascii.isWs arr[q] = false := by rw [hdash]; decide
+    rw [value, fix_run_unroll]
+    simp only [value_body]
+    rw [wsDispatch_run_stop _ arr q hq hws]
+    simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
+    rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
+      if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
+      if_pos (by rw [hdash]; decide), hnum]
+    exact clampAdvance_ok arr q (number.cwit hnum) (number.bwit (Nat.le_of_lt hq) hnum)
+
+private theorem expo_run_scientific (arr : ByteArray) (q ep : Nat)
+    (hq : q < arr.size) (hexp : Ascii.isExp arr[q]! = true)
+    (hsign : arr[q + 1]! = 45) (hq1 : q + 1 < arr.size) (hep : 1 ≤ ep)
+    (hdigits : ∀ i, i < ep → Ascii.isDigit arr[q + 2 + i]! = true)
+    (hstop : q + 2 + ep = arr.size ∨
+      (q + 2 + ep < arr.size ∧ Ascii.isDigit arr[q + 2 + ep]! = false)) :
+    expo.run arr q = .ok ep (q + 2 + ep) := by
+  have he : (GParser.satisfy Ascii.isExp).run arr q = .ok arr[q]! (q + 1) :=
+    satisfy_run! _ arr q hq hexp
+  have hs : (GParser.optional (GParser.satisfy Ascii.isSign)).run arr (q + 1) =
+      .ok (some arr[q + 1]!) (q + 2) :=
+    optional_run_some _ arr (q + 1) _ (q + 2)
+      (satisfy_run! _ arr (q + 1) hq1 (by rw [hsign]; decide))
+  have ht : (GParser.takeWhile1 Ascii.isDigit).run arr (q + 2) =
+      .ok ep (q + 2 + ep) := by
+    apply takeWhile1_run Ascii.isDigit arr (q + 2) ep (by omega) hep
+    · intro i hi
+      exact hdigits i hi
+    · rcases hstop with h | ⟨h, hf⟩
+      · exact Or.inl (by omega)
+      · exact Or.inr ⟨by omega, hf⟩
+  simp only [expo]
+  exact seqR_run _ _ arr q _ (q + 1) _ (q + 2 + ep) he
+    (seqR_run _ _ arr (q + 1) _ (q + 2) ep (q + 2 + ep) hs ht)
+
+theorem value_run_num_scientific (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
+    (he : maxExp < e)
+    (hq : q + (renderNumScientific m e).toUTF8.size ≤ buf.size)
+    (hmatch : ∀ i, i < (renderNumScientific m e).toUTF8.size →
+      buf[q + i]! = (renderNumScientific m e).toUTF8[i]!)
+    (hstop : q + (renderNumScientific m e).toUTF8.size = buf.size ∨
+      q + (renderNumScientific m e).toUTF8.size < buf.size ∧
+        Ascii.isDigit buf[q + (renderNumScientific m e).toUTF8.size]! = false ∧
+        buf[q + (renderNumScientific m e).toUTF8.size]! ≠ 46 ∧
+        Ascii.isExp buf[q + (renderNumScientific m e).toUTF8.size]! = false) :
+    value.run buf q = .ok (Json.num m e) (q + (renderNumScientific m e).toUTF8.size) := by
+  have he_pos : 0 < e := by omega
+  have hep_size : (toString e).toUTF8.size = (Nat.toDigits 10 e).length := by
+    show (Nat.repr e).toUTF8.size = _
+    exact repr_toUTF8_size e
+  have hep : 1 ≤ (Nat.toDigits 10 e).length :=
+    List.length_pos_of_ne_nil (GripProps.NatDigits.toDigits_nonempty e (by omega))
+  by_cases hm : 0 ≤ m
+  · set ip := (Nat.toDigits 10 m.natAbs).length
+    set ep := (Nat.toDigits 10 e).length
+    have hip : 1 ≤ ip := by
+      rcases Nat.eq_zero_or_pos m.natAbs with hm0 | hmpos
+      · have hzero : Nat.toDigits 10 0 = ['0'] := by decide
+        simp [ip, hm0, hzero]
+      · exact List.length_pos_of_ne_nil
+          (GripProps.NatDigits.toDigits_nonempty m.natAbs hmpos)
+    have hip_size : (toString m.natAbs).toUTF8.size = ip := by
+      show (Nat.repr m.natAbs).toUTF8.size = _
+      exact repr_toUTF8_size m.natAbs
+    have hrender : renderNumScientific m e = toString m.natAbs ++ "e-" ++ toString e := by
+      rw [renderNumScientific_append]
+      simp [show ¬ m < 0 by omega]
+    have hsize : (renderNumScientific m e).toUTF8.size = ip + 2 + ep := by
+      rw [hrender, string_toUTF8_append, string_toUTF8_append, ByteArray.size_append,
+        ByteArray.size_append, hip_size, hep_size,
+        show ("e-" : String).toUTF8.size = 2 from by decide]
+    have hdigits_rn : ∀ i, i < ip →
+        (renderNumScientific m e).toUTF8[i]! = (toString m.natAbs).toUTF8[i]! := by
+      intro i hi
+      rw [hrender, string_toUTF8_append, string_toUTF8_append,
+        ba_get!_append_left
+          (a := (toString m.natAbs).toUTF8 ++ ("e-" : String).toUTF8)
+          (b := (toString e).toUTF8)
+          (by rw [ByteArray.size_append, hip_size,
+            show ("e-" : String).toUTF8.size = 2 from by decide]; omega),
+        ba_get!_append_left (a := (toString m.natAbs).toUTF8)
+          (b := ("e-" : String).toUTF8) (by rw [hip_size]; exact hi)]
+    have hexp_rn : (renderNumScientific m e).toUTF8[ip]! = 101 := by
+      rw [hrender, string_toUTF8_append, string_toUTF8_append,
+        ba_get!_append_left (a := (toString m.natAbs).toUTF8 ++ ("e-" : String).toUTF8)
+          (b := (toString e).toUTF8) (by rw [ByteArray.size_append, hip_size,
+            show ("e-" : String).toUTF8.size = 2 from by decide]; omega),
+        ba_get!_append_right (a := (toString m.natAbs).toUTF8)
+          (b := ("e-" : String).toUTF8) (by rw [hip_size])
+          (by rw [ByteArray.size_append, hip_size,
+            show ("e-" : String).toUTF8.size = 2 from by decide]; omega)]
+      have hidx : ip - (toString m.natAbs).toUTF8.size = 0 := by
+        rw [hip_size]
+        omega
+      rw [hidx]
+      decide
+    have hsign_rn : (renderNumScientific m e).toUTF8[ip + 1]! = 45 := by
+      rw [hrender, string_toUTF8_append, string_toUTF8_append,
+        ba_get!_append_left (a := (toString m.natAbs).toUTF8 ++ ("e-" : String).toUTF8)
+          (b := (toString e).toUTF8) (by rw [ByteArray.size_append, hip_size,
+            show ("e-" : String).toUTF8.size = 2 from by decide]; omega),
+        ba_get!_append_right (a := (toString m.natAbs).toUTF8)
+          (b := ("e-" : String).toUTF8) (by rw [hip_size]; omega)
+          (by rw [ByteArray.size_append, hip_size,
+            show ("e-" : String).toUTF8.size = 2 from by decide]; omega)]
+      have hidx : ip + 1 - (toString m.natAbs).toUTF8.size = 1 := by
+        rw [hip_size]
+        omega
+      rw [hidx]
+      decide
+    have hexp_digits_rn : ∀ i, i < ep →
+        (renderNumScientific m e).toUTF8[ip + 2 + i]! = (toString e).toUTF8[i]! := by
+      intro i hi
+      rw [hrender, string_toUTF8_append, string_toUTF8_append,
+        ba_get!_append_right (a := (toString m.natAbs).toUTF8 ++ ("e-" : String).toUTF8)
+          (b := (toString e).toUTF8) (by rw [ByteArray.size_append, hip_size,
+            show ("e-" : String).toUTF8.size = 2 from by decide]; omega)
+          (by rw [ByteArray.size_append, ByteArray.size_append, hip_size,
+            show ("e-" : String).toUTF8.size = 2 from by decide, hep_size]; omega)]
+      have hidx : ip + 2 + i - ((toString m.natAbs).toUTF8 ++ ("e-" : String).toUTF8).size =
+          i := by rw [ByteArray.size_append, hip_size,
+            show ("e-" : String).toUTF8.size = 2 from by decide]; omega
+      rw [hidx]
+    have hq' : q + ip + 2 + ep ≤ buf.size := by
+      have := hq
+      rw [hsize] at this
+      omega
+    have hstop' : q + ip + 2 + ep = buf.size ∨
+        (q + ip + 2 + ep < buf.size ∧ Ascii.isDigit buf[q + ip + 2 + ep]! = false) := by
+      have hs := hstop
+      simp only [hsize] at hs
+      rcases hs with h | ⟨h, hd, _, _⟩
+      · exact Or.inl (by omega)
+      · exact Or.inr ⟨by omega, by simpa [Nat.add_assoc] using hd⟩
+    have hmatch_digits : ∀ i, i < ip → buf[q + i]! = (toString m.natAbs).toUTF8[i]! := by
+      intro i hi
+      rw [hmatch i (by rw [hsize]; omega), hdigits_rn i hi]
+    have hmatch_exp : ∀ i, i < ep →
+        buf[q + ip + 2 + i]! = (toString e).toUTF8[i]! := by
+      intro i hi
+      have hh := hmatch (ip + 2 + i) (by rw [hsize]; omega)
+      have hh' : buf[q + ip + 2 + i]! =
+          (renderNumScientific m e).toUTF8[ip + 2 + i]! := by
+        simpa [Nat.add_assoc] using hh
+      rw [hh', hexp_digits_rn i hi]
+    have hstart : Ascii.isDigit buf[q]! = true := by
+      have h0 : buf[q]! = (renderNumScientific m e).toUTF8[0]! := by
+        exact hmatch 0 (by rw [hsize]; omega)
+      rcases Nat.eq_zero_or_pos m.natAbs with hm0 | hmpos
+      · have hmz : m = 0 := Int.natAbs_eq_zero.mp hm0
+        have hzero : Nat.toDigits 10 0 = ['0'] := by decide
+        rw [h0, hdigits_rn 0 (by simp [ip, hm0, hzero]), hmz]
+        decide
+      · rw [h0, hdigits_rn 0 (by omega)]
+        exact isDigit19_isDigit (by
+          simpa using repr_toUTF8_head_isDigit19 m.natAbs hmpos)
+    have hstruct : (ip = 1 ∧ buf[q]! = 48) ∨
+        (Ascii.isDigit19 buf[q]! = true ∧
+          ∀ i, 1 ≤ i → i < ip → Ascii.isDigit buf[q + i]! = true) := by
+      rcases Nat.eq_zero_or_pos m.natAbs with hm0 | hmpos
+      · left
+        have hmz : m = 0 := Int.natAbs_eq_zero.mp hm0
+        rw [hmz] at hrender
+        refine ⟨?_, ?_⟩
+        · have hzero : Nat.toDigits 10 0 = ['0'] := by decide
+          simp [ip, hm0, hzero]
+        · have hzero : Nat.toDigits 10 0 = ['0'] := by decide
+          have h0 := hmatch_digits 0 (by simp [ip, hm0, hzero])
+          simpa [hmz] using h0
+      · right
+        have h0 := hmatch_digits 0 (by omega)
+        have h0' : buf[q]! = (toString m.natAbs).toUTF8[0]! := by simpa using h0
+        exact ⟨by rw [h0']; exact repr_toUTF8_head_isDigit19 m.natAbs hmpos,
+          fun i hi1 hi2 => by
+            rw [hmatch_digits i hi2]
+            exact repr_toUTF8_getElem_isDigit m.natAbs i (by simpa using hi2)⟩
+    have hint : intPart.run buf q = .ok () (q + ip) := by
+      rcases hstruct with ⟨hip1, h0⟩ | ⟨h19, hds⟩
+      · simpa [hip1] using intPart_run_zero buf q (by omega) h0
+      · refine intPart_run_nonzero buf q ip (by omega) hip h19 hds ?_
+        have hh := hmatch ip (by rw [hsize]; omega)
+        have hh' : buf[q + ip]! = (renderNumScientific m e).toUTF8[ip]! := by
+          simpa [Nat.add_assoc] using hh
+        exact Or.inr ⟨by omega, by rw [hh', hexp_rn]; decide⟩
+    have hfrac : (GParser.optional frac).run buf (q + ip) = .ok none (q + ip) := by
+      refine optional_run_none _ _ _ ⟨q + ip, []⟩ (seqR_run_fail_left _ _ _ _ _ ?_)
+      exact byte_run_fail! (Ascii.code '.') buf (q + ip) (by omega)
+        (by rw [hmatch ip (by rw [hsize]; omega), hexp_rn]; decide)
+    have hexp : (GParser.optional expo).run buf (q + ip) =
+        .ok (some ep) (q + ip + 2 + ep) := by
+      apply optional_run_some
+      apply expo_run_scientific buf (q + ip) ep (by omega)
+        (by
+          have hh := hmatch ip (by rw [hsize]; omega)
+          rw [hh, hexp_rn]
+          decide)
+        (by
+          have hh := hmatch (ip + 1) (by rw [hsize]; omega)
+          have hh' : buf[q + ip + 1]! =
+              (renderNumScientific m e).toUTF8[ip + 1]! := by
+            simpa [Nat.add_assoc] using hh
+          rw [hh', hsign_rn]) (by omega) hep
+      · intro i hi
+        rw [hmatch_exp i hi]
+        exact repr_toUTF8_getElem_isDigit e i (by simpa using hi)
+      · exact hstop'
+    have hdecode : decodeNumberBytes? buf q (q + ip + 2 + ep) = some (Json.num m e) := by
+      have h := GripProps.Number.decode_renderNumScientific_at buf q m e hq
+        (fun i hi => hmatch i hi)
+        (GripProps.Number.decode_renderNumScientific m e he_pos)
+      rw [hsize] at h
+      simpa only [Nat.add_assoc] using h
+    have hsign : (GParser.optional (GParser.ch '-')).run buf q = .ok none q := by
+      refine optional_run_none _ _ _ ⟨q, []⟩ (byte_run_fail! (Ascii.code '-') buf q (by omega) ?_)
+      intro h
+      have hbad := hstart
+      rw [h, show Ascii.isDigit (Ascii.code '-') = false by decide] at hbad
+      exact Bool.noConfusion hbad
+    have hnum : number.run buf q = .ok (Json.num m e) (q + ip + 2 + ep) := by
+      simp only [number]
+      exact captureWith?_run decodeNumberBytes? _ buf q () (q + ip + 2 + ep) (Json.num m e)
+        (seqR_run _ _ buf q none q () (q + ip + 2 + ep)
+          hsign
+          (seqL_run _ _ buf q () (q + ip) (some ep) (q + ip + 2 + ep) hint
+            (seqR_run _ _ buf (q + ip) none (q + ip) (some ep) (q + ip + 2 + ep)
+              hfrac hexp))) hdecode
+    have hstart' : Ascii.isDigit buf[q] = true := by
+      rwa [getElem!_pos buf q (by omega)] at hstart
+    have hnum' : number.run buf q = .ok (Json.num m e) (q + (ip + 2 + ep)) := by
+      simpa [Nat.add_assoc] using hnum
+    rw [hsize]
+    exact value_run_number buf q m e (ip + 2 + ep) (by omega) (Or.inl hstart') hnum'
+  · push_neg at hm
+    set ip := (Nat.toDigits 10 m.natAbs).length
+    set ep := (Nat.toDigits 10 e).length
+    have hip_size : (toString m.natAbs).toUTF8.size = ip := by
+      show (Nat.repr m.natAbs).toUTF8.size = _
+      exact repr_toUTF8_size m.natAbs
+    have hrender : renderNumScientific m e = "-" ++ toString m.natAbs ++ "e-" ++ toString e := by
+      rw [renderNumScientific_append]
+      simp [hm]
+    have hip : 1 ≤ ip := by
+      exact List.length_pos_of_ne_nil
+        (GripProps.NatDigits.toDigits_nonempty m.natAbs (Int.natAbs_pos.mpr (by omega)))
+    have hsize : (renderNumScientific m e).toUTF8.size = 1 + ip + 2 + ep := by
+      rw [hrender, string_toUTF8_append, string_toUTF8_append, string_toUTF8_append,
+        ByteArray.size_append, ByteArray.size_append, ByteArray.size_append,
+        hip_size, hep_size,
+        show ("-" : String).toUTF8.size = 1 from by decide,
+        show ("e-" : String).toUTF8.size = 2 from by decide]
+    have hminus_size : ("-" : String).toUTF8.size = 1 := by decide
+    have hmid_size : (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8).size = 1 + ip := by
+      rw [ByteArray.size_append, hminus_size, hip_size]
+    have hwhole_size : ((("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
+        ("e-" : String).toUTF8).size = 1 + ip + 2 := by
+      rw [ByteArray.size_append, hmid_size, show ("e-" : String).toUTF8.size = 2 from by decide]
+    have hdash_rn : (renderNumScientific m e).toUTF8[0]! = 45 := by
+      rw [hrender, string_toUTF8_append, string_toUTF8_append, string_toUTF8_append,
+        ba_get!_append_left (a := (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
+          ("e-" : String).toUTF8) (b := (toString e).toUTF8) (by rw [hwhole_size]; omega),
+        ba_get!_append_left (a := ("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8)
+          (b := ("e-" : String).toUTF8) (by rw [hmid_size]; omega),
+        ba_get!_append_left (a := ("-" : String).toUTF8)
+          (b := (toString m.natAbs).toUTF8) (by decide)]
+      decide
+    have hdigits_rn : ∀ i, i < ip →
+        (renderNumScientific m e).toUTF8[1 + i]! = (toString m.natAbs).toUTF8[i]! := by
+      intro i hi
+      rw [hrender, string_toUTF8_append, string_toUTF8_append, string_toUTF8_append,
+        ba_get!_append_left (a := (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
+          ("e-" : String).toUTF8) (b := (toString e).toUTF8) (by rw [hwhole_size]; omega),
+        ba_get!_append_left (a := ("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8)
+          (b := ("e-" : String).toUTF8) (by rw [hmid_size]; omega),
+        ba_get!_append_right (a := ("-" : String).toUTF8)
+          (b := (toString m.natAbs).toUTF8) (by rw [hminus_size]; omega)
+          (by rw [hmid_size]; omega)]
+      have hidx : 1 + i - ("-" : String).toUTF8.size = i := by
+        rw [hminus_size]
+        omega
+      rw [hidx]
+    have hexp_rn : (renderNumScientific m e).toUTF8[1 + ip]! = 101 := by
+      rw [hrender, string_toUTF8_append, string_toUTF8_append, string_toUTF8_append,
+        ba_get!_append_left (a := (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
+          ("e-" : String).toUTF8) (b := (toString e).toUTF8) (by rw [hwhole_size]; omega),
+        ba_get!_append_right (a := ("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8)
+          (b := ("e-" : String).toUTF8) (by rw [hmid_size])
+          (by rw [hwhole_size]; omega)]
+      have hidx : 1 + ip - (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8).size = 0 := by
+        rw [hmid_size]
+        omega
+      rw [hidx]
+      decide
+    have hsign_rn : (renderNumScientific m e).toUTF8[1 + ip + 1]! = 45 := by
+      rw [hrender, string_toUTF8_append, string_toUTF8_append, string_toUTF8_append,
+        ba_get!_append_left (a := (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
+          ("e-" : String).toUTF8) (b := (toString e).toUTF8) (by rw [hwhole_size]; omega),
+        ba_get!_append_right (a := ("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8)
+          (b := ("e-" : String).toUTF8) (by rw [hmid_size]; omega)
+          (by rw [hwhole_size]; omega)]
+      have hidx : 1 + ip + 1 - (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8).size = 1 := by
+        rw [hmid_size]
+        omega
+      rw [hidx]
+      decide
+    have hexp_digits_rn : ∀ i, i < ep →
+        (renderNumScientific m e).toUTF8[1 + ip + 2 + i]! = (toString e).toUTF8[i]! := by
+      intro i hi
+      rw [hrender, string_toUTF8_append, string_toUTF8_append, string_toUTF8_append,
+        ba_get!_append_right (a := (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
+          ("e-" : String).toUTF8) (b := (toString e).toUTF8) (by rw [hwhole_size]; omega)
+            (by rw [ByteArray.size_append, hwhole_size, hep_size]; omega)]
+      have hidx : 1 + ip + 2 + i -
+          ((("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
+            ("e-" : String).toUTF8).size = i := by
+        rw [hwhole_size]
+        omega
+      rw [hidx]
+    have hq' : q + 1 + ip + 2 + ep ≤ buf.size := by
+      have := hq
+      rw [hsize] at this
+      omega
+    have hstop' : q + 1 + ip + 2 + ep = buf.size ∨
+        (q + 1 + ip + 2 + ep < buf.size ∧ Ascii.isDigit buf[q + 1 + ip + 2 + ep]! = false) := by
+      have hs := hstop
+      simp only [hsize] at hs
+      rcases hs with h | ⟨h, hd, _, _⟩
+      · exact Or.inl (by omega)
+      · exact Or.inr ⟨by omega, by simpa [Nat.add_assoc] using hd⟩
+    have hmatch_digits : ∀ i, i < ip →
+        buf[q + 1 + i]! = (toString m.natAbs).toUTF8[i]! := by
+      intro i hi
+      have hh := hmatch (1 + i) (by rw [hsize]; omega)
+      have hh' : buf[q + 1 + i]! = (renderNumScientific m e).toUTF8[1 + i]! := by
+        simpa [Nat.add_assoc] using hh
+      rw [hh', hdigits_rn i hi]
+    have hmatch_exp : ∀ i, i < ep →
+        buf[q + 1 + ip + 2 + i]! = (toString e).toUTF8[i]! := by
+      intro i hi
+      have hh := hmatch (1 + ip + 2 + i) (by rw [hsize]; omega)
+      have hh' : buf[q + 1 + ip + 2 + i]! =
+          (renderNumScientific m e).toUTF8[1 + ip + 2 + i]! := by
+        simpa [Nat.add_assoc] using hh
+      rw [hh', hexp_digits_rn i hi]
+    have hstart : buf[q] = Ascii.dash := by
+      have hh := hmatch 0 (by rw [hsize]; omega)
+      rw [show q + 0 = q from rfl, getElem!_pos buf q (by omega)] at hh
+      rw [hh, hdash_rn]
+      decide
+    have hstruct : (ip = 1 ∧ buf[q + 1]! = 48) ∨
+        (Ascii.isDigit19 buf[q + 1]! = true ∧
+          ∀ i, 1 ≤ i → i < ip → Ascii.isDigit buf[q + 1 + i]! = true) := by
+      rcases Nat.eq_zero_or_pos m.natAbs with hm0 | hmpos
+      · left
+        have hmz : m = 0 := Int.natAbs_eq_zero.mp hm0
+        refine ⟨?_, ?_⟩
+        · have hzero : Nat.toDigits 10 0 = ['0'] := by decide
+          simp [ip, hm0, hzero]
+        · have hzero : Nat.toDigits 10 0 = ['0'] := by decide
+          have h0 := hmatch_digits 0 (by simp [ip, hm0, hzero])
+          simpa [hmz] using h0
+      · right
+        have hh := hmatch_digits 0 (by omega)
+        have hh' : buf[q + 1]! = (toString m.natAbs).toUTF8[0]! := by simpa using hh
+        exact ⟨by rw [hh']; exact repr_toUTF8_head_isDigit19 m.natAbs hmpos,
+          fun i hi1 hi2 => by
+            rw [hmatch_digits i hi2]
+            exact repr_toUTF8_getElem_isDigit m.natAbs i (by simpa using hi2)⟩
+    have hint : intPart.run buf (q + 1) = .ok () (q + 1 + ip) := by
+      rcases hstruct with ⟨hip1, h0⟩ | ⟨h19, hds⟩
+      · simpa [hip1] using intPart_run_zero buf (q + 1) (by omega) h0
+      · refine intPart_run_nonzero buf (q + 1) ip (by omega) hip h19 hds ?_
+        have hh := hmatch (1 + ip) (by rw [hsize]; omega)
+        have hh' : buf[q + 1 + ip]! = (renderNumScientific m e).toUTF8[1 + ip]! := by
+          simpa [Nat.add_assoc] using hh
+        exact Or.inr ⟨by omega, by rw [hh', hexp_rn]; decide⟩
+    have hfrac : (GParser.optional frac).run buf (q + 1 + ip) = .ok none (q + 1 + ip) := by
+      refine optional_run_none _ _ _ ⟨q + 1 + ip, []⟩ (seqR_run_fail_left _ _ _ _ _ ?_)
+      exact byte_run_fail! (Ascii.code '.') buf (q + 1 + ip) (by omega)
+        (by
+          have hh := hmatch (1 + ip) (by rw [hsize]; omega)
+          have hh' : buf[q + 1 + ip]! = (renderNumScientific m e).toUTF8[1 + ip]! := by
+            simpa [Nat.add_assoc] using hh
+          rw [hh', hexp_rn]
+          decide)
+    have hexp : (GParser.optional expo).run buf (q + 1 + ip) =
+        .ok (some ep) (q + 1 + ip + 2 + ep) := by
+      apply optional_run_some
+      apply expo_run_scientific buf (q + 1 + ip) ep (by omega)
+        (by
+          have hh := hmatch (1 + ip) (by rw [hsize]; omega)
+          have hh' : buf[q + 1 + ip]! = (renderNumScientific m e).toUTF8[1 + ip]! := by
+            simpa [Nat.add_assoc] using hh
+          rw [hh', hexp_rn]
+          decide)
+        (by
+          have hh := hmatch (1 + ip + 1) (by rw [hsize]; omega)
+          have hh' : buf[q + 1 + ip + 1]! =
+              (renderNumScientific m e).toUTF8[1 + ip + 1]! := by
+            simpa [Nat.add_assoc] using hh
+          rw [hh', hsign_rn]) (by omega) hep
+      · intro i hi
+        rw [hmatch_exp i hi]
+        exact repr_toUTF8_getElem_isDigit e i (by simpa using hi)
+      · exact hstop'
+    have hdecode : decodeNumberBytes? buf q (q + 1 + ip + 2 + ep) = some (Json.num m e) := by
+      have h := GripProps.Number.decode_renderNumScientific_at buf q m e hq
+        (fun i hi => hmatch i hi)
+        (GripProps.Number.decode_renderNumScientific m e he_pos)
+      rw [hsize] at h
+      simpa [Nat.add_assoc] using h
+    have hnum : number.run buf q = .ok (Json.num m e) (q + 1 + ip + 2 + ep) := by
+      simp only [number]
+      exact captureWith?_run decodeNumberBytes? _ buf q () (q + 1 + ip + 2 + ep) (Json.num m e)
+        (seqR_run _ _ buf q (some ()) (q + 1) () (q + 1 + ip + 2 + ep)
+          (optional_run_some _ buf q () (q + 1)
+            (byte_run! (Ascii.code '-') buf q (by omega) (by
+              have hstart! : buf[q]! = Ascii.code '-' := by
+                rw [getElem!_pos buf q (by omega)]
+                simpa using hstart
+              exact hstart!)))
+          (seqL_run _ _ buf (q + 1) () (q + 1 + ip) (some ep) (q + 1 + ip + 2 + ep) hint
+            (seqR_run _ _ buf (q + 1 + ip) none (q + 1 + ip) (some ep) (q + 1 + ip + 2 + ep)
+              hfrac hexp))) hdecode
+    have hnum' : number.run buf q = .ok (Json.num m e) (q + (1 + (ip + 2 + ep))) := by
+      simpa [Nat.add_assoc] using hnum
+    have hv := value_run_number buf q m e (1 + (ip + 2 + ep)) (by omega)
+      (Or.inr hstart) hnum'
+    rw [hsize]
+    simpa [Nat.add_assoc] using hv
+
+/-- `value` parses the compact scientific rendering used for a large negative number exponent. -/
 theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
     (hq : q + (renderNum m e).toUTF8.size ≤ buf.size)
     (hmatch : ∀ i, i < (renderNum m e).toUTF8.size → buf[q + i]! = (renderNum m e).toUTF8[i]!)

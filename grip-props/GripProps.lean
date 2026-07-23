@@ -15,12 +15,13 @@ import GripProps.Json.Number
 import GripProps.Json.Parse
 import GripProps.Json.Leaf
 import GripProps.Json.ScanStr
+import GripProps.Json.Container
 
 /-!
 # grip-props
 
 Machine-checked metatheory for grip: the lawful graded-monad instances for `GParser`,
 grade soundness, the totality-not-productivity gap, the impossible-grade result,
-output-level correctness of the scanner, and the JSON leaf round-trips that back the
-`parse ∘ render = id` proof (`GripProps.Json.Leaf`). Depends on grip + mathlib.
+output-level correctness of the scanner, and the JSON `parse ∘ render = id` theorem
+(`GripProps.Container.parse_render`). Depends on grip + mathlib.
 -/
