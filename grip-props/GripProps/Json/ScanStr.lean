@@ -83,6 +83,29 @@ theorem fromUTF8!_toUTF8 (s : String) : String.fromUTF8! s.toUTF8 = s := by
   apply String.toByteArray_inj.mp
   exact ByteArray.ext rfl
 
+private theorem scanNormal_of_ge_128 (b : UInt8) (h : 128 ≤ b.toNat) :
+    b ≠ 34 ∧ b ≠ 92 ∧ ¬ b < 32 := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro hb
+    have := congrArg UInt8.toNat hb
+    rw [show (34 : UInt8).toNat = 34 from by decide] at this
+    omega
+  · intro hb
+    have := congrArg UInt8.toNat hb
+    rw [show (92 : UInt8).toNat = 92 from by decide] at this
+    omega
+  · rw [UInt8.lt_iff_toNat_lt, show (32 : UInt8).toNat = 32 from by decide]
+    omega
+
+private theorem scanNormal_of_high_prefix (b p : UInt8)
+    (hp : p.toBitVec.msb = true) :
+    (b ||| p) ≠ 34 ∧ (b ||| p) ≠ 92 ∧ ¬ (b ||| p) < 32 := by
+  apply scanNormal_of_ge_128
+  have hmsb : (b ||| p).toBitVec.msb = true := by
+    simp [hp]
+  have hge := BitVec.toNat_ge_of_msb_true hmsb
+  simpa using hge
+
 /-- Every UTF-8 byte of a passthrough character (`≥ 0x20`, not `"` or `\`) is scan-normal: it is
 not the closing quote, not a backslash, and not a control byte. Single-byte chars carry their
 codepoint (in `[0x20, 0x7F] \ {34, 92}`); every byte of a multi-byte char has its high bit set
@@ -112,13 +135,13 @@ theorem passthrough_bytes_normal (c : Char) (h32 : 32 ≤ c.toNat) (hq : c.val �
     · rw [UInt8.lt_iff_toNat_lt, hbb, show (32 : UInt8).toNat = 32 from by decide]; omega
   · rw [String.utf8EncodeChar_eq_cons_cons h] at hb
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
-    rcases hb with rfl | rfl <;> exact ⟨by bv_decide, by bv_decide, by bv_decide⟩
+    rcases hb with rfl | rfl <;> exact scanNormal_of_high_prefix _ _ (by decide)
   · rw [String.utf8EncodeChar_eq_cons_cons_cons h] at hb
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
-    rcases hb with rfl | rfl | rfl <;> exact ⟨by bv_decide, by bv_decide, by bv_decide⟩
+    rcases hb with rfl | rfl | rfl <;> exact scanNormal_of_high_prefix _ _ (by decide)
   · rw [String.utf8EncodeChar_eq_cons_cons_cons_cons h] at hb
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
-    rcases hb with rfl | rfl | rfl | rfl <;> exact ⟨by bv_decide, by bv_decide, by bv_decide⟩
+    rcases hb with rfl | rfl | rfl | rfl <;> exact scanNormal_of_high_prefix _ _ (by decide)
 
 /-- At the closing quote, `scanStr` finishes: it builds the body `arr[q0+1 .. q)` and unescapes
 it exactly when an escape was seen. -/

@@ -968,16 +968,16 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
        Ascii.isExp buf[q + (render v).toUTF8.size]! = false) →
     Grip.Json.value.run buf q = .ok v (q + (render v).toUTF8.size)
   | .null, buf, q, hq, hmatch, _ => by
-    have hrend : render Json.null = "null" := by native_decide
-    simp only [hrend, show ("null" : String).toUTF8.size = 4 from by native_decide] at hq hmatch ⊢
+    have hrend : render Json.null = "null" := by simp [render]
+    simp only [hrend, show ("null" : String).toUTF8.size = 4 from by decide] at hq hmatch ⊢
     exact value_run_null buf q hq hmatch
   | .bool true, buf, q, hq, hmatch, _ => by
-    have hrend : render (Json.bool true) = "true" := by native_decide
-    simp only [hrend, show ("true" : String).toUTF8.size = 4 from by native_decide] at hq hmatch ⊢
+    have hrend : render (Json.bool true) = "true" := by simp [render]
+    simp only [hrend, show ("true" : String).toUTF8.size = 4 from by decide] at hq hmatch ⊢
     exact value_run_true buf q hq hmatch
   | .bool false, buf, q, hq, hmatch, _ => by
-    have hrend : render (Json.bool false) = "false" := by native_decide
-    simp only [hrend, show ("false" : String).toUTF8.size = 5 from by native_decide] at hq hmatch ⊢
+    have hrend : render (Json.bool false) = "false" := by simp [render]
+    simp only [hrend, show ("false" : String).toUTF8.size = 5 from by decide] at hq hmatch ⊢
     exact value_run_false buf q hq hmatch
   | .str s, buf, q, hq, hmatch, _ => by
     have hsize : (render (.str s)).toUTF8.size = 2 + (ebytes s.toList).length :=

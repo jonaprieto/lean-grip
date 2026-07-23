@@ -110,3 +110,8 @@ jobs:
           lake update
           lake exe cache get
           lake build
+      - name: Audit JSON round-trip theorem axioms
+        working-directory: grip-props
+        run: |
+          lake env lean GripProps/AxiomAudit.lean | tee /tmp/parse-render-axioms.txt
+          grep -Fxq "'GripProps.Container.parse_render' depends on axioms: [propext, Classical.choice, Quot.sound]" /tmp/parse-render-axioms.txt
