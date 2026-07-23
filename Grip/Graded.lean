@@ -23,8 +23,9 @@ witnesses tying the static `Grade` (error x consumption `Modality`) to that runt
 - `ewit`: an `always`-error grade never succeeds (every input yields `.error k`),
 - `swit`: a `never`-error grade always succeeds (every input yields `.ok a q'`).
 
-The witnesses erase, so `run` stays the bare `ParseResult` fast path; the `.error k`
-offset records the furthest byte any branch reached, for precise error reporting.
+The witnesses erase, so `run` stays the bare `ParseResult` fast path. The built-in ordered-choice
+combinator merges `.error` payloads by furthest offset for useful diagnostics, but `GParser` has
+no error-offset witness: a client-built parser may construct an arbitrary `Err`.
 
 This module has the type, the grade-weakening coercion, and the total, fuel-bounded
 `fix` combinator. The point combinators live in `Grip.Byte`, the total scanners in
@@ -37,15 +38,16 @@ open Grade
 namespace Grip
 
 /-- A byte-level parser with static grade `g`, producing `α`. `run` returns
-`.ok value newOffset` on success, or `.error k` on failure where `k` is the furthest byte
-offset any attempted branch reached.
+`.ok value newOffset` on success or `.error e` on failure. Built-in combinators use `e.pos` as a
+furthest-failure diagnostic, but this is not an erased contract of `GParser`; a client can
+construct an arbitrary `Err`.
 
 The three `Prop` fields are the *grade soundness* witnesses; they are erased at
 runtime (proof-irrelevant, carrying no data), so `run` is the whole runtime cost. -/
 structure GParser (g : Grade) (α : Type) where
-  /-- Run the parser at an offset, returning `.ok value newOffset` on success or
-  `.error e` on failure where `e.pos` is the furthest byte offset reached and
-  `e.expected` is the set of labels expected there. -/
+  /-- Run the parser at an offset, returning `.ok value newOffset` on success or `.error e` on
+  failure. Built-in combinators use `e.pos` as a furthest-failure diagnostic, but this is not an
+  erased contract of `GParser`; a client can construct an arbitrary `Err`. -/
   run : ByteArray → Nat → ParseResult α
   /-- Consumption soundness: a successful parse advances the offset exactly as the
   grade's `consumes` component claims (`always ⇒ q<q'`, `possibly ⇒ q≤q'`,
