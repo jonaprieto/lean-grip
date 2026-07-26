@@ -11,9 +11,12 @@ import Grip.Graded
 
 The looping combinators, all total (structural on `arr.size - q`) rather than `partial`.
 The raw scan loops `scanFwd`/`foldFwd`/`natFwd` with their forward-progress lemmas, and
-the parsers built on them: `takeWhile`/`takeWhile1`, `foldMany`/`many`, and `nat`. The
-`@[specialize]` on each loop lets a statically-known predicate monomorphize into it. The
-point combinators are in `Grip.Byte`; the graded type and `fix` in `Grip.Graded`.
+the parsers built on them: `takeWhile`/`takeWhile1`, `foldMany`/`many`, and `nat`. Also
+the JSON string scanners: the lenient `scanStrFwd`/`takeStringBody` (escape-aware, never
+fails) and the strict `scanStrBody`/`scanStrLit`/`stringLit` (validates escapes and
+control bytes). The `@[specialize]` on each loop lets a statically-known predicate
+monomorphize into it. The point combinators are in `Grip.Byte`; the graded type and
+`fix` in `Grip.Graded`.
 -/
 
 open Modality
@@ -21,7 +24,7 @@ open Grade
 
 namespace Grip
 
-variable {g g' : Grade} {ge ge' gc gc' : Modality} {α β : Type}
+variable {ge : Modality} {α β : Type}
 
 /-- Scan forward while `f` holds. Total: structural on the measure
 `arr.size - q` (each step advances one byte, bounded by `arr.size`). `@[specialize]` so

@@ -5,9 +5,13 @@ Authors: Jonathan Cubides
 -/
 
 /-!
-# Grip.Error: parse error payload and pretty-printer
+# Grip.Error: the parser result type and parse errors
 
-`Err` is the error value carried by the core parser on failure. Built-in choice uses it to report
+`ParseResult α` is the result of running a parser at an offset: `ok value newOffset` or
+`error e`. One constructor holds the value and offset inline, so a successful step
+allocates a single object.
+
+`Err` is the error value carried by `ParseResult.error`. Built-in choice uses it to report
 the furthest byte offset reached and the labels expected there; the `GParser` type does not make
 that diagnostic convention a proof obligation for client-defined parsers.
 
@@ -19,7 +23,7 @@ Nothing in this file imports from `Grip`; only core Lean / Batteries.
 
 namespace Grip
 
-/-- The error value carried inside the core `Except Err` result.
+/-- The error value carried by `ParseResult.error`.
 
 For built-in combinators, `pos` is the furthest byte offset reached during parsing and `expected`
 contains labels attached by `label`/`<?>`. These fields are diagnostic data, not a parser
@@ -61,8 +65,7 @@ the list is empty. -/
 def ParseError.message (e : ParseError) : String :=
   match e.expected with
   | []  => "unexpected input"
-  | [x] => "expected " ++ x
-  | xs  => String.intercalate " or " (xs.map ("expected " ++ ·))
+  | xs  => "expected " ++ String.intercalate " or " xs
 
 /-- `lineColLoop arr safePos i lineStart line` counts 0x0a bytes in
 `arr[i : safePos]` and returns `(lineNumber, colNumber)`, both 1-based.

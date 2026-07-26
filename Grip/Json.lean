@@ -12,8 +12,8 @@ The number representation follows Lean's `Lean.Data.Json.JsonNumber`: a number i
 exact `mantissa * 10 ^ (-exponent)` with `mantissa : Int` and `exponent : Nat`, so no
 value is rounded (unlike a `Float`).
 
-grip keeps the strict RFC-8259 grammar of `Grip.Examples.Json` and builds values with
-`GParser.capture` over the flat byte core, rather than prim-parser's size-indexed vector.
+grip keeps the strict RFC-8259 grammar of the `examples/Json.lean` validator and builds
+values over the flat byte core, rather than prim-parser's size-indexed vector.
 -/
 
 import Grip
@@ -21,22 +21,22 @@ import Grip
 /-!
 # Grip.Json: a value-producing, RFC-8259 JSON parser
 
-Where `Grip.Examples.Json` *validates* and returns a leaf count, this module builds a
+Where the `examples/Json.lean` validator returns a leaf count, this module builds a
 real `Json` value (a DOM). `import Grip.Json`, then `Grip.Json.parse : ByteArray →
-Except ParseError Json` (or `parse!` from a `String`).
+Except ParseError Json` (or `parseString` from a `String`).
 
 ## Design
 
-The grammar is the same grammar-strict RFC-8259 one as `Grip.Examples.Json`: leading
+The grammar is the same grammar-strict RFC-8259 one as the validator: leading
 zeros (`01`), trailing dots (`1.`), bare exponents (`1e`), trailing commas, bad
 escapes and trailing garbage are all rejected. Each grammar arm additionally builds a
 value:
 
-- numbers are captured (`GParser.capture`) as their verbatim lexeme and decoded to an
-  exact `.num mantissa exponent` (the value `mantissa * 10 ^ (-exponent)`); no `Float`
-  is involved, so no value is rounded;
-- strings are captured and their escapes decoded (`\n`, `\"`, `\uXXXX`, and UTF-16
-  surrogate pairs);
+- numbers are decoded straight from their consumed byte range (`GParser.captureWith?`)
+  to an exact `.num mantissa exponent` (the value `mantissa * 10 ^ (-exponent)`); no
+  `Float` is involved, so no value is rounded;
+- strings are scanned and their escapes decoded in one pass (`scanStr`: `\n`, `\"`,
+  `\uXXXX`, and UTF-16 surrogate pairs);
 - arrays and objects recurse through `GParser.fix`.
 
 This parser materializes a tree, so it does not keep the flat, allocation-free fast
@@ -201,6 +201,7 @@ open Decode
     else none
   else none
 
+/-- A valid escape strictly advances the scan (simple escape by 2, `\uXXXX` by 6). -/
 theorem escEnd_gt (arr : ByteArray) (q q' : Nat) (h : escEnd arr q = some q') : q < q' := by
   rw [escEnd] at h
   split at h
@@ -289,14 +290,17 @@ decreasing_by
 
 -- Leaf value parsers -----------------------------------------------------
 
+/-- Fractional part: a `.` then one or more digits. -/
 @[inline] def frac : GParser conditional Nat :=
   GParser.seqR (GParser.ch '.') (GParser.takeWhile1 Ascii.isDigit)
 
+/-- Exponent part: `e`/`E`, an optional sign, then one or more digits. -/
 @[inline] def expo : GParser conditional Nat :=
   GParser.seqR (GParser.satisfy Ascii.isExp)
     (GParser.seqR (GParser.optional (GParser.satisfy Ascii.isSign))
       (GParser.takeWhile1 Ascii.isDigit))
 
+/-- Integer part: a lone `0`, or a nonzero digit followed by any digits (no leading zeros). -/
 @[inline] def intPart : GParser conditional Unit :=
   GParser.alt (GParser.ch '0')
     (GParser.seqR (GParser.satisfy Ascii.isDigit19)
@@ -305,7 +309,7 @@ decreasing_by
 /-- A JSON number, decoded to `.num` straight from the consumed byte range (no `capture`
 `String`). Leading-zero and trailing-garbage rejection come from the grammar and the
 top-level EOF check. -/
-def number : GParser conditional Json :=
+@[inline] def number : GParser conditional Json :=
   GParser.captureWith? decodeNumberBytes?
     (GParser.seqR (GParser.optional (GParser.ch '-'))
       (GParser.seqL intPart
@@ -336,12 +340,16 @@ must and there is no separate backslash pass over the body. -/
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
 
-def jstring : GParser conditional Json := GParser.map Json.str jstr
-def jnull  : GParser conditional Json :=
+/-- A JSON string literal as a `Json.str` value. -/
+@[inline] def jstring : GParser conditional Json := GParser.map Json.str jstr
+/-- The keyword `null` as a `Json` value. -/
+@[inline] def jnull  : GParser conditional Json :=
   GParser.map (fun _ => Json.null) (GParser.string "null")
-def jtrue  : GParser conditional Json :=
+/-- The keyword `true` as a `Json` value. -/
+@[inline] def jtrue  : GParser conditional Json :=
   GParser.map (fun _ => Json.bool true) (GParser.string "true")
-def jfalse : GParser conditional Json :=
+/-- The keyword `false` as a `Json` value. -/
+@[inline] def jfalse : GParser conditional Json :=
   GParser.map (fun _ => Json.bool false) (GParser.string "false")
 
 -- Recursive value via `fix` ----------------------------------------------
@@ -445,6 +453,8 @@ def value_body (rec : GParser conditional Json) : GParser conditional Json :=
       -- A byte that starts no value: always fails (the mapped `null` is unreachable).
       else GParser.map (fun _ => Json.null) (GParser.satisfy (fun _ => false)))
 
+/-- A JSON value of any shape: object, array, string, number, or keyword. Recursion is
+tied by `GParser.fix`, so the grammar is total and left recursion fails rather than loops. -/
 def value : GParser conditional Json := GParser.fix value_body
 
 /-- One complete JSON document: a value, optional trailing whitespace, then EOF (so
@@ -456,12 +466,13 @@ positioned `ParseError`. -/
 def parse (arr : ByteArray) : Except ParseError Json := parser.parse arr
 
 /-- Parse a complete JSON document from a `String`. -/
-def parse! (s : String) : Except ParseError Json := parser.parse s.toUTF8
+def parseString (s : String) : Except ParseError Json := parser.parse s.toUTF8
 
 -- Serialization ----------------------------------------------------------
 
 namespace Json
 
+/-- The lowercase hex digit for `n < 16`; `'0'` for larger `n`. -/
 def hexDigit (n : Nat) : Char := "0123456789abcdef".toList.getD n '0'
 
 /-- The JSON escape of a single character, as the list of output characters: `"`, `\`, and the
@@ -606,6 +617,6 @@ open Grip Grip.Json
 #guard toString (Json.obj #[("a", Json.bool true)]) == "{\"a\":true}"
 #guard
   (let v := Json.obj #[("a", Json.arr #[Json.num 25 1, Json.null]), ("b", Json.str "x\ty")]
-   parse! (toString v) == .ok v)
+   parseString (toString v) == .ok v)
 
 end

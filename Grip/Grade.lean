@@ -12,11 +12,10 @@ consumptionWitness, re-implemented here over grip's Batteries-only Modality.
 import Grip.Modality
 
 /-!
-# Grade
+# Grip.Grade: the parser grade algebra
 
-Parser grade algebra for grip: `structure Grade` (tracking error and consumption
-`Modality`), the named grades, `Grade.mul`/`Grade.choice`, and
-`consumptionWitness` with its composition lemmas.
+`structure Grade` (tracking error and consumption `Modality`), the named grades,
+`Grade.mul`/`Grade.choice`, and `consumptionWitness` with its composition lemmas.
 
 No mathlib. `Monoid`/`Lattice` instances for `Grade` belong in grip-props.
 -/
@@ -116,10 +115,11 @@ export Grade (conditional flexible fallible pure lookahead empty impossible)
 
 -- Consumption witness ----------------------------------------------------
 
-/-- Relates remaining size `n` and result size `m` according to a `Modality` grade:
-    - `always`   requires strict decrease (`n < m`, i.e. at least one token consumed)
-    - `possibly`  allows `≤` (consumed some or none)
-    - `never`    requires equality (no input consumed) -/
+/-- Relates the start offset `n` and end offset `m` of a successful parse, according to a
+    `Modality` grade:
+    - `always`   requires `n < m` (at least one byte consumed)
+    - `possibly` allows `n ≤ m` (consumed some or none)
+    - `never`    requires `n = m` (no input consumed) -/
 abbrev consumptionWitness (n m : Nat) : Modality → Prop
   | always   => n < m
   | possibly => n ≤ m

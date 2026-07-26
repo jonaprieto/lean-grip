@@ -93,7 +93,7 @@ namespace GParser
   alt (map some p) (pure none)
 
 /-- Succeed (consuming nothing) exactly when `p` fails. -/
-@[inline] def notFollowedBy (p : GParser g α) : GParser ⟨possibly, never⟩ Unit where
+@[inline] def notFollowedBy (p : GParser g α) : GParser lookahead Unit where
   run := fun arr q => match p.run arr q with | .ok _ _ => .error ⟨q, []⟩ | .error _ => .ok () q
   cwit := by
     intro arr q a q' h
@@ -109,15 +109,17 @@ namespace GParser
     · exact absurd h (by simp)
     · simp only [ParseResult.ok.injEq] at h
       omega
+/-- Zero or more `p` until `endp` succeeds; `endp`'s result is discarded and the `p`
+results are collected. Total via `fix`; both parsers must always consume. -/
 @[inline] def manyTill (p : GParser conditional α) (endp : GParser conditional β) :
     GParser conditional (List α) :=
   fix fun rec =>
     alt (map (fun _ => ([] : List α)) endp)
       (map2 (fun x xs => x :: xs) p rec)
 
-/-- End of input: succeed (consuming nothing) exactly when no byte remains. The dual of
-`notFollowedBy` applied to "any byte", used to reject trailing input after a top-level parse. -/
-@[inline] def eof : GParser ⟨possibly, never⟩ Unit :=
+/-- End of input: succeed (consuming nothing) exactly when no byte remains. Defined as
+`notFollowedBy` of the any-byte parser; used to reject trailing input after a top-level parse. -/
+@[inline] def eof : GParser lookahead Unit :=
   notFollowedBy (satisfy (fun _ => true))
 
 /-- Ordered choice is idempotent on the grade: choosing between two parsers of the same

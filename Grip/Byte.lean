@@ -11,9 +11,9 @@ import Grip.Graded
 
 The non-looping combinators. Atomic byte readers (`satisfy`, `byte`, `takeN`), the
 functor / sequence / choice / monad algebra (`map`, `seqR`, `seqL`, `alt`, `bind`,
-`map2`), `capture` and first-byte `dispatch`, the `run?` entry point, and the `<?>`
-label. The total scanning loops are in `Grip.Scan`; the graded type, weakening, and
-`fix` are in `Grip.Graded`.
+`map2`), the `capture`/`captureWith`/`captureWith?` slice readers, first-byte
+`dispatch`, and the `<?>` label. The total scanning loops are in `Grip.Scan`; the
+graded type, weakening, `run?`, and `fix` are in `Grip.Graded`.
 -/
 
 open Modality

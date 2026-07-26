@@ -16,12 +16,13 @@ import Grip.Error
 # Grip.Graded: the graded byte-parser type
 
 `GParser g α` is a `run : ByteArray -> Nat -> ParseResult α` (`ok value pos | error e`,
-one heap object per successful step, no reified tree) plus three *erased* `Prop`
+one heap object per successful step, no reified tree) plus four *erased* `Prop`
 witnesses tying the static `Grade` (error x consumption `Modality`) to that runtime:
 
 - `cwit`: a success advances the offset exactly as `consumes` claims,
 - `ewit`: an `always`-error grade never succeeds (every input yields `.error k`),
-- `swit`: a `never`-error grade always succeeds (every input yields `.ok a q'`).
+- `swit`: a `never`-error grade always succeeds (every input yields `.ok a q'`),
+- `bwit`: a success that starts in bounds ends in bounds.
 
 The witnesses erase, so `run` stays the bare `ParseResult` fast path. The built-in ordered-choice
 combinator merges `.error` payloads by furthest offset for useful diagnostics, but `GParser` has
@@ -29,7 +30,7 @@ no error-offset witness: a client-built parser may construct an arbitrary `Err`.
 
 This module has the type, the grade-weakening coercion, and the total, fuel-bounded
 `fix` combinator. The point combinators live in `Grip.Byte`, the total scanners in
-`Grip.Scan`. Ported from `prim-parser/PrimParser/Byte.lean`. No mathlib.
+`Grip.Scan`. No mathlib.
 -/
 
 open Modality
@@ -37,17 +38,15 @@ open Grade
 
 namespace Grip
 
-/-- A byte-level parser with static grade `g`, producing `α`. `run` returns
-`.ok value newOffset` on success or `.error e` on failure. Built-in combinators use `e.pos` as a
-furthest-failure diagnostic, but this is not an erased contract of `GParser`; a client can
-construct an arbitrary `Err`.
+/-- A byte-level parser with static grade `g`, producing `α`. Built-in combinators use
+`Err.pos` as a furthest-failure diagnostic, but this is not an erased contract of `GParser`;
+a client can construct an arbitrary `Err`.
 
-The three `Prop` fields are the *grade soundness* witnesses; they are erased at
+The four `Prop` fields are the *grade soundness* witnesses; they are erased at
 runtime (proof-irrelevant, carrying no data), so `run` is the whole runtime cost. -/
 structure GParser (g : Grade) (α : Type) where
   /-- Run the parser at an offset, returning `.ok value newOffset` on success or `.error e` on
-  failure. Built-in combinators use `e.pos` as a furthest-failure diagnostic, but this is not an
-  erased contract of `GParser`; a client can construct an arbitrary `Err`. -/
+  failure. -/
   run : ByteArray → Nat → ParseResult α
   /-- Consumption soundness: a successful parse advances the offset exactly as the
   grade's `consumes` component claims (`always ⇒ q<q'`, `possibly ⇒ q≤q'`,
@@ -65,7 +64,7 @@ structure GParser (g : Grade) (α : Type) where
   `⟨never, always⟩` uninhabited outright, with no external hypothesis (see `grip-props`). -/
   bwit : ∀ {arr q a q'}, q ≤ arr.size → run arr q = .ok a q' → q' ≤ arr.size
 
-variable {g g' : Grade} {ge ge' gc gc' : Modality} {α β : Type}
+variable {g g' : Grade} {α β : Type}
 
 /-! ### Grade-algebra witness helper lemmas -/
 

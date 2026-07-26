@@ -16,7 +16,9 @@ decode of the whole input.
 
 `satisfyChar`/`anyChar`/`char` are `conditional` (they consume at least one byte on
 success). The `if q < q'` clamp in each `run` makes the always-consume witness hold
-without reasoning about the decoder's width, mirroring `GParser.fix`.
+without reasoning about the decoder's width, mirroring `GParser.fix`. The decoder
+`decodeUtf8` and the byte-level literal matcher `matchBytes` are exposed for grammars
+that mix levels; `GParser.string` matches a whole UTF-8 literal.
 -/
 
 namespace Grip
