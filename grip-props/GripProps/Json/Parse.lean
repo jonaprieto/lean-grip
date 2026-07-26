@@ -395,7 +395,7 @@ theorem value_run_num_int (arr : ByteArray) (q : Nat) (m : Int) (_hm : 0 ≤ m) 
           (seqR_run _ _ arr (q + n) none (q + n) none (q + n) hfrac hexp))) hdecode
   have hne : ∀ c : UInt8, Ascii.isDigit c = false → ¬((arr[q] == c) = true) := fun c hc => by
     rw [beq_iff_eq]; intro he; rw [he, hc] at hb; exact absurd hb (by decide)
-  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
+  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
     if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
@@ -456,7 +456,7 @@ theorem value_run_num_frac (arr : ByteArray) (q : Nat) (m : Int) (e ip n : Nat) 
             (optional_run_some frac arr (q + ip) (n - ip - 1) (q + n) hfr) hexp))) hdecode
   have hne : ∀ c : UInt8, Ascii.isDigit c = false → ¬((arr[q] == c) = true) := fun c hc => by
     rw [beq_iff_eq]; intro he; rw [he, hc] at hb; exact absurd hb (by decide)
-  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
+  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
     if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
@@ -510,7 +510,7 @@ theorem value_run_num_int_neg (arr : ByteArray) (q : Nat) (m : Int) (_hm : m < 0
   have hne : ∀ c : UInt8, c ≠ 45 → ¬((arr[q] == c) = true) := fun c hc => by
     rw [beq_iff_eq, hb]; exact fun h => hc h.symm
   have hws : Ascii.isWs arr[q] = false := by rw [hb]; decide
-  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hqs hws]
+  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs hws]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
     if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
@@ -567,7 +567,7 @@ theorem value_run_num_frac_neg (arr : ByteArray) (q : Nat) (m : Int) (e ip n : N
   have hne : ∀ c : UInt8, c ≠ 45 → ¬((arr[q] == c) = true) := fun c hc => by
     rw [beq_iff_eq, hb]; exact fun h => hc h.symm
   have hws : Ascii.isWs arr[q] = false := by rw [hb]; decide
-  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hqs hws]
+  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs hws]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
     if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
@@ -588,7 +588,7 @@ theorem value_run_null (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
     have := string_run "null" arr q (by decide) (by simpa using hq)
       (fun j hj => by have := hm j (by simpa using hj); simpa using this)
     simpa using this
-  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_neg (by decide),
     if_neg (by decide), if_pos (by decide)]
@@ -606,7 +606,7 @@ theorem value_run_true (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
     have := string_run "true" arr q (by decide) (by simpa using hq)
       (fun j hj => by have := hm j (by simpa using hj); simpa using this)
     simpa using this
-  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_pos (by decide)]
   simp only [jtrue, GParser.map, hstr]
@@ -623,7 +623,7 @@ theorem value_run_false (arr : ByteArray) (q : Nat) (hq : q + 5 ≤ arr.size)
     have := string_run "false" arr q (by decide) (by simpa using hq)
       (fun j hj => by have := hm j (by simpa using hj); simpa using this)
     simpa using this
-  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_neg (by decide),
     if_pos (by decide)]
@@ -698,7 +698,7 @@ theorem value_run_str (arr : ByteArray) (q : Nat) (s : String)
   have hqs : q < arr.size := by omega
   have hq34 : arr[q] = 34 := by rwa [getElem!_pos arr q hqs] at h34
   have hws : Ascii.isWs arr[q] = false := by rw [hq34]; decide
-  rw [value, fix_run_unroll]; simp only [value_body]; rw [wsDispatch_run_stop _ arr q hqs hws, hq34]
+  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs hws, hq34]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_pos (by decide)]
   simp only [jstring]
@@ -830,7 +830,7 @@ theorem value_run_number (arr : ByteArray) (q : Nat) (m : Int) (e n : Nat)
       rw [he, hc] at hdigit
       exact absurd hdigit (by decide)
     rw [value, fix_run_unroll]
-    simp only [value_body]
+    simp only [valueBody]
     rw [wsDispatch_run_stop _ arr q hq (isDigit_not_ws hdigit)]
     simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
     rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
@@ -843,7 +843,7 @@ theorem value_run_number (arr : ByteArray) (q : Nat) (m : Int) (e n : Nat)
       exact hc (he.symm.trans hdash)
     have hws : Ascii.isWs arr[q] = false := by rw [hdash]; decide
     rw [value, fix_run_unroll]
-    simp only [value_body]
+    simp only [valueBody]
     rw [wsDispatch_run_stop _ arr q hq hws]
     simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
     rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),

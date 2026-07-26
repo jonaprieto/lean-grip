@@ -416,8 +416,8 @@ no discarded `ws` count allocation. -/
     · exact absurd heq (by simp)
 
 /-- Named body of the recursive JSON value parser. Proofs reference
-    `GParser.fixFuel value_body` directly. -/
-def value_body (rec : GParser conditional Json) : GParser conditional Json :=
+    `GParser.fixFuel valueBody` directly. -/
+def valueBody (rec : GParser conditional Json) : GParser conditional Json :=
   -- The container sub-parsers reference `rec`, so `fix` rebuilds them on every entry.
   -- Building them inside the taken dispatch arm (not eagerly before the dispatch) means a
   -- leaf value (string/number/keyword) constructs no array/object machinery at all.
@@ -455,7 +455,7 @@ def value_body (rec : GParser conditional Json) : GParser conditional Json :=
 
 /-- A JSON value of any shape: object, array, string, number, or keyword. Recursion is
 tied by `GParser.fix`, so the grammar is total and left recursion fails rather than loops. -/
-def value : GParser conditional Json := GParser.fix value_body
+def value : GParser conditional Json := GParser.fix valueBody
 
 /-- One complete JSON document: a value, optional trailing whitespace, then EOF (so
 trailing garbage is rejected). -/
