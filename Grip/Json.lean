@@ -194,8 +194,8 @@ open Decode
       some (q + 2)
     else if arr[q + 1] == 117 then
       if h2 : q + 5 < arr.size then
-        if isHexByte arr[q + 2] && isHexByte arr[q + 3] && isHexByte arr[q + 4]
-            && isHexByte arr[q + 5] then some (q + 6)
+        if Ascii.isHexDigit arr[q + 2] && Ascii.isHexDigit arr[q + 3]
+            && Ascii.isHexDigit arr[q + 4] && Ascii.isHexDigit arr[q + 5] then some (q + 6)
         else none
       else none
     else none

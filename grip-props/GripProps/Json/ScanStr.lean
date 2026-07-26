@@ -34,14 +34,14 @@ def ebytes (cs : List Char) : List UInt8 := (cs.flatMap escapeChar).flatMap Stri
 theorem ebytes_cons (c : Char) (cs : List Char) : ebytes (c :: cs) = cbytes c ++ ebytes cs := by
   simp only [ebytes, cbytes, List.flatMap_cons, List.flatMap_append]
 
-/-- `isHexByte` accepts every `hexDigit` output: each is one of `0-9a-f`, all hex. -/
-theorem isHexByte_hexDigit (n : Nat) : isHexByte ((hexDigit n).val.toUInt8) = true := by
+/-- `Ascii.isHexDigit` accepts every `hexDigit` output: each is one of `0-9a-f`, all hex. -/
+theorem isHexDigit_hexDigit (n : Nat) : Ascii.isHexDigit ((hexDigit n).val.toUInt8) = true := by
   have hmem : hexDigit n ∈ "0123456789abcdef".toList := by
     unfold hexDigit
     rcases Nat.lt_or_ge n "0123456789abcdef".toList.length with h | h
     · rw [List.getD_eq_getElem _ _ h]; exact List.getElem_mem _
     · rw [List.getD_eq_default _ _ h]; decide
-  have key : ∀ c ∈ "0123456789abcdef".toList, isHexByte (c.val.toUInt8) = true := by
+  have key : ∀ c ∈ "0123456789abcdef".toList, Ascii.isHexDigit (c.val.toUInt8) = true := by
     intro c hc; fin_cases hc <;> rfl
   exact key _ hmem
 
@@ -211,8 +211,8 @@ theorem escEnd_simple (arr : ByteArray) (q : Nat) (hq : q + 1 < arr.size)
 /-- `escEnd` accepts a `\uXXXX` escape: `\`, `u`, then four hex bytes, advancing by six. -/
 theorem escEnd_u (arr : ByteArray) (q : Nat) (hq1 : q + 1 < arr.size) (hq5 : q + 5 < arr.size)
     (hu : arr[q + 1]! = 117)
-    (hhex : (isHexByte arr[q + 2]! && isHexByte arr[q + 3]! && isHexByte arr[q + 4]! &&
-      isHexByte arr[q + 5]!) = true) :
+    (hhex : (Ascii.isHexDigit arr[q + 2]! && Ascii.isHexDigit arr[q + 3]! && Ascii.isHexDigit arr[q + 4]! &&
+      Ascii.isHexDigit arr[q + 5]!) = true) :
     escEnd arr q = some (q + 6) := by
   rw [getElem!_pos arr (q + 1) hq1] at hu
   rw [getElem!_pos arr (q + 2) (by omega), getElem!_pos arr (q + 3) (by omega),
@@ -265,8 +265,8 @@ theorem scanStr_char_escape2 (arr : ByteArray) (q0 q : Nat) (esc : Bool) (Xb : U
 /-- A `\uXXXX` escape (a control character's rendering) is walked in six, marking `esc`. -/
 theorem scanStr_char_escapeU (arr : ByteArray) (q0 q : Nat) (esc : Bool) (hq5 : q + 5 < arr.size)
     (h92 : arr[q]! = 92) (hu : arr[q + 1]! = 117)
-    (hhex : (isHexByte arr[q + 2]! && isHexByte arr[q + 3]! && isHexByte arr[q + 4]! &&
-      isHexByte arr[q + 5]!) = true) :
+    (hhex : (Ascii.isHexDigit arr[q + 2]! && Ascii.isHexDigit arr[q + 3]! && Ascii.isHexDigit arr[q + 4]! &&
+      Ascii.isHexDigit arr[q + 5]!) = true) :
     scanStr arr q0 q esc = scanStr arr q0 (q + 6) true :=
   scanStr_esc_step arr q0 q (q + 6) esc (by omega) h92 (escEnd_u arr q (by omega) hq5 hu hhex)
 
@@ -289,8 +289,8 @@ theorem escape2_of (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Char) (Xb : 
 /-- A `\uXXXX` escape, given its byte layout `[92, 117, 48, 48, b4, b5]` with `b4 b5` hex, is
 walked in six. -/
 theorem escapeU_of (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Char) (b4 b5 : UInt8)
-    (hcb : cbytes c = [92, 117, 48, 48, b4, b5]) (hb4 : isHexByte b4 = true)
-    (hb5 : isHexByte b5 = true)
+    (hcb : cbytes c = [92, 117, 48, 48, b4, b5]) (hb4 : Ascii.isHexDigit b4 = true)
+    (hb5 : Ascii.isHexDigit b5 = true)
     (hcontent : ∀ j, j < (cbytes c).length → arr[q + j]! = (cbytes c)[j]!)
     (hbound : q + (cbytes c).length ≤ arr.size) :
     scanStr arr q0 q esc = scanStr arr q0 (q + (cbytes c).length) true := by
@@ -308,8 +308,8 @@ theorem escapeU_of (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Char) (b4 b5
     have := hcontent 4 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
   have g5 : arr[q + 5]! = b5 := by
     have := hcontent 5 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
-  have hhex : (isHexByte arr[q + 2]! && isHexByte arr[q + 3]! && isHexByte arr[q + 4]! &&
-      isHexByte arr[q + 5]!) = true := by
+  have hhex : (Ascii.isHexDigit arr[q + 2]! && Ascii.isHexDigit arr[q + 3]! && Ascii.isHexDigit arr[q + 4]! &&
+      Ascii.isHexDigit arr[q + 5]!) = true := by
     rw [g2, g3, g4, g5, hb4, hb5]; decide
   exact scanStr_char_escapeU arr q0 q esc (by rw [hlen] at hbound; omega) g92 gu hhex
 
@@ -351,7 +351,7 @@ theorem scanStr_char_escape (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Cha
         show String.utf8EncodeChar 'u' = [117] from by decide,
         show String.utf8EncodeChar '0' = [48] from by decide, List.append_assoc,
         List.nil_append, List.cons_append]
-    exact escapeU_of arr q0 q esc c _ _ hcb (isHexByte_hexDigit _) (isHexByte_hexDigit _)
+    exact escapeU_of arr q0 q esc c _ _ hcb (isHexDigit_hexDigit _) (isHexDigit_hexDigit _)
       hcontent hbound
   · exact absurd (by unfold escapeChar; simp only [beq_eq_false_iff_ne.mpr h,
       beq_eq_false_iff_ne.mpr h2, beq_eq_false_iff_ne.mpr h3, beq_eq_false_iff_ne.mpr h4,
