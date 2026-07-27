@@ -46,15 +46,7 @@ export GradedFunctor (gmap)
 export GradedApplicative (gpure gseq)
 export GradedMonad (gbind)
 
-/-- Cast a graded value across an equality of grades. -/
-def gcast {f : GradedType G} {i j : G} {α} (h : i = j) (x : f i α) : f j α := h ▸ x
-
-/-- Replace the result of a graded computation with a constant. -/
-abbrev gconst {f : GradedType G} [GradedFunctor f] {i α β} (b : β) (x : f i α) : f i β :=
-  gmap (fun _ => b) x
-
 @[inherit_doc] infixr:100 " <$>ᵍ " => gmap
-@[inherit_doc] infixr:100 " <$ᵍ "  => gconst
 @[inherit_doc] infixl:60  " <*>ᵍ " => gseq
 @[inherit_doc] infixl:55  " >>=ᵍ " => gbind
 

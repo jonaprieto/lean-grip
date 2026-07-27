@@ -189,17 +189,6 @@ theorem guarded_const {β : Type} {g : Grade} (c : GParser g β) :
     Guarded (fun (_ : GParser conditional α) => c) := by
   intro _ _ _ _ _; exact AgreeOk.refl _
 
-/-- Recurring directly after a `conditional` consumer is guarded: `seqR p rec` runs `p` first,
-whose success advances past `q` (`p.cwit`), so `rec` is read only at offsets `> q`, where the
-agreement premise already holds. -/
-theorem guarded_seqR_self {β : Type} (p : GParser conditional β) :
-    Guarded (fun (rec : GParser conditional α) => GParser.seqR p rec) := by
-  intro s₁ s₂ arr q hpre
-  simp only [GParser.seqR]
-  cases hp : p.run arr q with
-  | error e => exact AgreeOk.refl _
-  | ok x q' => exact hpre q' (p.cwit hp)
-
 /-- The recursive call as the second argument of `map2` after a `conditional` first argument is
 guarded: `p` consumes, so `rec` is read past `q`. This is the shape `manyTill` uses. -/
 theorem guarded_map2_self {β δ : Type} (f : β → α → δ) (p : GParser conditional β) :
@@ -212,16 +201,6 @@ theorem guarded_map2_self {β δ : Type} (f : β → α → δ) (p : GParser con
     have hrec := hpre q' (p.cwit hp)
     cases h1 : s₁.run arr q' <;> cases h2 : s₂.run arr q' <;>
       rw [h1, h2] at hrec <;> simp_all [AgreeOk]
-
-/-- `map` preserves guardedness: it relabels the value and leaves failure a failure. -/
-theorem guarded_map {β γ : Type} {gg : Grade} (φ : β → γ)
-    (k : GParser conditional α → GParser gg β) (hk : Guarded k) :
-    Guarded (fun rec => GParser.map φ (k rec)) := by
-  intro s₁ s₂ arr q hpre
-  have hk' := hk s₁ s₂ arr q hpre
-  simp only [GParser.map]
-  cases h1 : (k s₁).run arr q <;> cases h2 : (k s₂).run arr q <;>
-    rw [h1, h2] at hk' <;> simp_all [AgreeOk]
 
 /-- `alt` preserves guardedness: acceptance of the choice is decided by the two branches, which
 agree at `q`; the error-merge of a double failure is still a failure. -/
