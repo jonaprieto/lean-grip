@@ -1306,12 +1306,11 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
           have hh : 0 < (ds.take k).length := by rw [List.length_take, Nat.min_eq_left (by omega)]; omega
           have harr0 : (renderNum m e).toUTF8[0]! =
               UInt8.ofNat (Nat.toDigits 10 m.natAbs).head!.toNat := by
-            rw [hrn_str, toUTF8_append, toUTF8_append,
-                ba_get!_append_left (by rw [ByteArray.size_append, hint_size,
-                  show (".":String).toUTF8.size = 1 from by decide]; omega),
-                ba_get!_append_left (by rw [hint_size]; omega),
-                ofList_ascii_toUTF8_getElem! (ds.take k) 0 (fun c hc => by
-                  have := hds_dig c (List.mem_of_mem_take hc); omega) hh]
+            rw [hrn_str,
+              (dot_append_bytes (String.ofList (ds.take k)) (String.ofList (ds.drop k))).1 0
+                (by rw [hint_size]; omega),
+              ofList_ascii_toUTF8_getElem! (ds.take k) 0 (fun c hc => by
+                have := hds_dig c (List.mem_of_mem_take hc); omega) hh]
             congr 1
             rw [getElem!_pos (ds.take k) 0 hh, List.getElem_take, ← getElem!_pos ds 0 (by omega), hds_eq]
             match Nat.toDigits 10 m.natAbs, hne with | d :: _, _ => rfl
@@ -1321,20 +1320,16 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
               (by rw [UInt8.toNat_ofNat_of_lt' hlt256_0]; exact hbounds0.1)
               (by rw [UInt8.toNat_ofNat_of_lt' hlt256_0]; exact hbounds0.2),
             fun i h1i h2i => by
-              rw [Nat.zero_add, hrn_str, toUTF8_append, toUTF8_append,
-                  ba_get!_append_left (by rw [ByteArray.size_append, hint_size,
-                    show (".":String).toUTF8.size = 1 from by decide]; omega),
-                  ba_get!_append_left (by rw [hint_size]; omega)]
-              have h_lt : i < (ds.take k).length := by rw [List.length_take, Nat.min_eq_left (by omega)]; omega
+              rw [Nat.zero_add, hrn_str,
+                (dot_append_bytes (String.ofList (ds.take k)) (String.ofList (ds.drop k))).1 i
+                  (by rw [hint_size]; omega)]
+              have h_lt : i < (ds.take k).length := by
+                rw [List.length_take, Nat.min_eq_left (by omega)]; omega
               rw [ofList_ascii_toUTF8_getElem! (ds.take k) i (fun c hc => by
                     have := hds_dig c (List.mem_of_mem_take hc); omega) h_lt]
-              have hmem : (ds.take k)[i]! ∈ ds := by
-                rw [getElem!_pos _ i h_lt]; exact List.mem_of_mem_take (List.getElem_mem h_lt)
-              have hbounds := hds_dig _ hmem
-              have hlt256 : (ds.take k)[i]!.toNat < 256 := Nat.lt_of_le_of_lt hbounds.2 (by decide)
-              exact isDigit_of_toNat_bounds _
-                (by rw [UInt8.toNat_ofNat_of_lt' hlt256]; exact hbounds.1)
-                (by rw [UInt8.toNat_ofNat_of_lt' hlt256]; exact hbounds.2)⟩
+              exact isDigit_byte_of_mem hds_dig (by
+                rw [getElem!_pos _ i h_lt]
+                exact List.mem_of_mem_take (List.getElem_mem h_lt))⟩
         · have hk1 : k = 1 := by
             have hlenL : (toString m.natAbs).toList.length = len := by
               have htl : (toString m.natAbs).toList = Nat.toDigits 10 m.natAbs := by
@@ -1445,6 +1440,9 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
       have hfrac_str_size : (String.ofList (ds.drop k)).toUTF8.size = e := by
         rw [ofList_ascii_toUTF8_size _ (fun c hc => by
               have := hds_dig c (List.mem_of_mem_drop hc); omega), hfrac_len]
+      have hpre_int_size : ("-" ++ String.ofList (ds.take k)).toUTF8.size = 1 + k := by
+        rw [toUTF8_append, ByteArray.size_append, hint_size,
+          show ("-" : String).toUTF8.size = 1 from by decide]
       have harr_size : (renderNum m e).toUTF8.size = k + e + 2 := by
         rw [hrn_str, toUTF8_append, toUTF8_append, toUTF8_append,
             ByteArray.size_append, ByteArray.size_append, ByteArray.size_append,
@@ -1453,13 +1451,10 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
             show (".":String).toUTF8.size = 1 from by decide]; omega
       -- dash at position 0
       have hdash_rn : (renderNum m e).toUTF8[0]! = 45 := by
-        rw [hrn_str, toUTF8_append, toUTF8_append, toUTF8_append,
-            ba_get!_append_left (by rw [ByteArray.size_append, ByteArray.size_append,
-              show ("-":String).toUTF8.size = 1 from by decide, hint_size,
-              show (".":String).toUTF8.size = 1 from by decide]; omega),
-            ba_get!_append_left (by rw [ByteArray.size_append,
-              show ("-":String).toUTF8.size = 1 from by decide, hint_size]; omega),
-            ba_get!_append_left (by decide)]; decide
+        rw [hrn_str,
+          (dot_append_bytes ("-" ++ String.ofList (ds.take k)) (String.ofList (ds.drop k))).1 0
+            (by rw [hpre_int_size]; omega),
+          (neg_prepend_bytes _).1]
       -- hintstruct_rn: digit structure at positions 1..k
       have hintstruct_rn :
           (k = 1 ∧ (renderNum m e).toUTF8[1]! = 48) ∨
@@ -1476,16 +1471,12 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
           have hh : 0 < (ds.take k).length := by rw [List.length_take, Nat.min_eq_left (by omega)]; omega
           have harr1 : (renderNum m e).toUTF8[1]! =
               UInt8.ofNat (Nat.toDigits 10 m.natAbs).head!.toNat := by
-            rw [hrn_str, toUTF8_append, toUTF8_append, toUTF8_append,
-                ba_get!_append_left (by rw [ByteArray.size_append, ByteArray.size_append,
-                  show ("-":String).toUTF8.size = 1 from by decide]; omega),
-                ba_get!_append_left (by rw [ByteArray.size_append,
-                  show ("-":String).toUTF8.size = 1 from by decide, hint_size]; omega),
-                ba_get!_append_right (by decide)
-                  (by rw [ByteArray.size_append, show ("-":String).toUTF8.size = 1 from by decide, hint_size]; omega),
-                show (1 : Nat) - ("-":String).toUTF8.size = 0 from by decide,
-                ofList_ascii_toUTF8_getElem! (ds.take k) 0 (fun c hc => by
-                  have := hds_dig c (List.mem_of_mem_take hc); omega) hh]
+            rw [hrn_str,
+              (dot_append_bytes ("-" ++ String.ofList (ds.take k)) (String.ofList (ds.drop k))).1 1
+                (by rw [hpre_int_size]; omega),
+              (neg_prepend_bytes _).2 0 (by rw [hint_size]; omega),
+              ofList_ascii_toUTF8_getElem! (ds.take k) 0 (fun c hc => by
+                have := hds_dig c (List.mem_of_mem_take hc); omega) hh]
             congr 1
             rw [getElem!_pos (ds.take k) 0 hh, List.getElem_take, ← getElem!_pos ds 0 (by omega), hds_eq]
             match Nat.toDigits 10 m.natAbs, hne with | d :: _, _ => rfl
@@ -1495,25 +1486,17 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
               (by rw [UInt8.toNat_ofNat_of_lt' hlt256_0]; exact hbounds0.1)
               (by rw [UInt8.toNat_ofNat_of_lt' hlt256_0]; exact hbounds0.2),
             fun i h1i h2i => by
-              rw [hrn_str, toUTF8_append, toUTF8_append, toUTF8_append,
-                  ba_get!_append_left (by rw [ByteArray.size_append, ByteArray.size_append,
-                    show ("-":String).toUTF8.size = 1 from by decide]; omega),
-                  ba_get!_append_left (by rw [ByteArray.size_append,
-                    show ("-":String).toUTF8.size = 1 from by decide, hint_size]; omega),
-                  ba_get!_append_right (by rw [show ("-":String).toUTF8.size = 1 from by decide]; omega)
-                    (by rw [ByteArray.size_append, show ("-":String).toUTF8.size = 1 from by decide, hint_size]; omega),
-                  show (1 + i : Nat) - ("-":String).toUTF8.size = i from by
-                    rw [show ("-":String).toUTF8.size = 1 from by decide]; omega]
-              have h_lt : i < (ds.take k).length := by rw [List.length_take, Nat.min_eq_left (by omega)]; omega
+              rw [hrn_str,
+                (dot_append_bytes ("-" ++ String.ofList (ds.take k)) (String.ofList (ds.drop k))).1
+                  (1 + i) (by rw [hpre_int_size]; omega),
+                (neg_prepend_bytes _).2 i (by rw [hint_size]; omega)]
+              have h_lt : i < (ds.take k).length := by
+                rw [List.length_take, Nat.min_eq_left (by omega)]; omega
               rw [ofList_ascii_toUTF8_getElem! (ds.take k) i (fun c hc => by
                     have := hds_dig c (List.mem_of_mem_take hc); omega) h_lt]
-              have hmem : (ds.take k)[i]! ∈ ds := by
-                rw [getElem!_pos _ i h_lt]; exact List.mem_of_mem_take (List.getElem_mem h_lt)
-              have hbounds := hds_dig _ hmem
-              have hlt256 : (ds.take k)[i]!.toNat < 256 := Nat.lt_of_le_of_lt hbounds.2 (by decide)
-              exact isDigit_of_toNat_bounds _
-                (by rw [UInt8.toNat_ofNat_of_lt' hlt256]; exact hbounds.1)
-                (by rw [UInt8.toNat_ofNat_of_lt' hlt256]; exact hbounds.2)⟩
+              exact isDigit_byte_of_mem hds_dig (by
+                rw [getElem!_pos _ i h_lt]
+                exact List.mem_of_mem_take (List.getElem_mem h_lt))⟩
         · have hk1 : k = 1 := by
             have hlenL : (toString m.natAbs).toList.length = len := by
               have htl : (toString m.natAbs).toList = Nat.toDigits 10 m.natAbs := by
