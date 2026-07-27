@@ -716,6 +716,52 @@ private theorem expo_run_scientific (arr : ByteArray) (q ep : Nat)
   exact seqR_run _ _ arr q _ (q + 1) _ (q + 2 + ep) he
     (seqR_run _ _ arr (q + 1) _ (q + 2) ep (q + 2 + ep) hs ht)
 
+/-- Byte view of a `pre ++ "e-" ++ post` string's UTF-8 encoding: the prefix bytes, then `e`
+(101), `-` (45), then the suffix bytes. One home for the append-index arithmetic the
+scientific-notation round-trips need. -/
+private theorem eMinus_append_bytes (pre post : String) :
+    (∀ i, i < pre.toUTF8.size → (pre ++ "e-" ++ post).toUTF8[i]! = pre.toUTF8[i]!) ∧
+    (pre ++ "e-" ++ post).toUTF8[pre.toUTF8.size]! = 101 ∧
+    (pre ++ "e-" ++ post).toUTF8[pre.toUTF8.size + 1]! = 45 ∧
+    (∀ i, i < post.toUTF8.size →
+      (pre ++ "e-" ++ post).toUTF8[pre.toUTF8.size + 2 + i]! = post.toUTF8[i]!) := by
+  have hE : ("e-" : String).toUTF8.size = 2 := by decide
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · intro i hi
+    rw [toUTF8_append, toUTF8_append,
+      ba_get!_append_left (by rw [ByteArray.size_append, hE]; omega),
+      ba_get!_append_left hi]
+  · rw [toUTF8_append, toUTF8_append,
+      ba_get!_append_left (by rw [ByteArray.size_append, hE]; omega),
+      ba_get!_append_right (Nat.le_refl _) (by rw [ByteArray.size_append, hE]; omega),
+      Nat.sub_self]
+    decide
+  · rw [toUTF8_append, toUTF8_append,
+      ba_get!_append_left (by rw [ByteArray.size_append, hE]; omega),
+      ba_get!_append_right (by omega) (by rw [ByteArray.size_append, hE]; omega),
+      show pre.toUTF8.size + 1 - pre.toUTF8.size = 1 from by omega]
+    decide
+  · intro i hi
+    rw [toUTF8_append, toUTF8_append,
+      ba_get!_append_right (by rw [ByteArray.size_append, hE]; omega)
+        (by rw [ByteArray.size_append, ByteArray.size_append, hE]; omega),
+      show pre.toUTF8.size + 2 + i - (pre.toUTF8 ++ ("e-" : String).toUTF8).size = i from by
+        rw [ByteArray.size_append, hE]; omega]
+
+/-- Byte view of a `"-" ++ s` string's UTF-8 encoding: `-` (45), then `s`'s bytes. -/
+private theorem neg_prepend_bytes (s : String) :
+    ("-" ++ s).toUTF8[0]! = 45 ∧
+    (∀ i, i < s.toUTF8.size → ("-" ++ s).toUTF8[1 + i]! = s.toUTF8[i]!) := by
+  refine ⟨?_, ?_⟩
+  · rw [toUTF8_append, ba_get!_append_left (by decide)]
+    decide
+  · intro i hi
+    rw [toUTF8_append,
+      ba_get!_append_right (by rw [show ("-" : String).toUTF8.size = 1 from by decide]; omega)
+        (by rw [ByteArray.size_append, show ("-" : String).toUTF8.size = 1 from by decide]; omega),
+      show 1 + i - ("-" : String).toUTF8.size = i from by
+        rw [show ("-" : String).toUTF8.size = 1 from by decide]; omega]
+
 theorem value_run_num_scientific (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
     (he : maxExp < e)
     (hq : q + (renderNumScientific m e).toUTF8.size ≤ buf.size)
@@ -755,55 +801,23 @@ theorem value_run_num_scientific (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
     have hdigits_rn : ∀ i, i < ip →
         (renderNumScientific m e).toUTF8[i]! = (toString m.natAbs).toUTF8[i]! := by
       intro i hi
-      rw [hrender, toUTF8_append, toUTF8_append,
-        ba_get!_append_left
-          (a := (toString m.natAbs).toUTF8 ++ ("e-" : String).toUTF8)
-          (b := (toString e).toUTF8)
-          (by rw [ByteArray.size_append, hip_size,
-            show ("e-" : String).toUTF8.size = 2 from by decide]; omega),
-        ba_get!_append_left (a := (toString m.natAbs).toUTF8)
-          (b := ("e-" : String).toUTF8) (by rw [hip_size]; exact hi)]
+      rw [hrender]
+      exact (eMinus_append_bytes (toString m.natAbs) (toString e)).1 i (by rw [hip_size]; exact hi)
     have hexp_rn : (renderNumScientific m e).toUTF8[ip]! = 101 := by
-      rw [hrender, toUTF8_append, toUTF8_append,
-        ba_get!_append_left (a := (toString m.natAbs).toUTF8 ++ ("e-" : String).toUTF8)
-          (b := (toString e).toUTF8) (by rw [ByteArray.size_append, hip_size,
-            show ("e-" : String).toUTF8.size = 2 from by decide]; omega),
-        ba_get!_append_right (a := (toString m.natAbs).toUTF8)
-          (b := ("e-" : String).toUTF8) (by rw [hip_size])
-          (by rw [ByteArray.size_append, hip_size,
-            show ("e-" : String).toUTF8.size = 2 from by decide]; omega)]
-      have hidx : ip - (toString m.natAbs).toUTF8.size = 0 := by
-        rw [hip_size]
-        omega
-      rw [hidx]
-      decide
+      rw [hrender]
+      have h := (eMinus_append_bytes (toString m.natAbs) (toString e)).2.1
+      rwa [hip_size] at h
     have hsign_rn : (renderNumScientific m e).toUTF8[ip + 1]! = 45 := by
-      rw [hrender, toUTF8_append, toUTF8_append,
-        ba_get!_append_left (a := (toString m.natAbs).toUTF8 ++ ("e-" : String).toUTF8)
-          (b := (toString e).toUTF8) (by rw [ByteArray.size_append, hip_size,
-            show ("e-" : String).toUTF8.size = 2 from by decide]; omega),
-        ba_get!_append_right (a := (toString m.natAbs).toUTF8)
-          (b := ("e-" : String).toUTF8) (by rw [hip_size]; omega)
-          (by rw [ByteArray.size_append, hip_size,
-            show ("e-" : String).toUTF8.size = 2 from by decide]; omega)]
-      have hidx : ip + 1 - (toString m.natAbs).toUTF8.size = 1 := by
-        rw [hip_size]
-        omega
-      rw [hidx]
-      decide
+      rw [hrender]
+      have h := (eMinus_append_bytes (toString m.natAbs) (toString e)).2.2.1
+      rwa [hip_size] at h
     have hexp_digits_rn : ∀ i, i < ep →
         (renderNumScientific m e).toUTF8[ip + 2 + i]! = (toString e).toUTF8[i]! := by
       intro i hi
-      rw [hrender, toUTF8_append, toUTF8_append,
-        ba_get!_append_right (a := (toString m.natAbs).toUTF8 ++ ("e-" : String).toUTF8)
-          (b := (toString e).toUTF8) (by rw [ByteArray.size_append, hip_size,
-            show ("e-" : String).toUTF8.size = 2 from by decide]; omega)
-          (by rw [ByteArray.size_append, ByteArray.size_append, hip_size,
-            show ("e-" : String).toUTF8.size = 2 from by decide, hep_size]; omega)]
-      have hidx : ip + 2 + i - ((toString m.natAbs).toUTF8 ++ ("e-" : String).toUTF8).size =
-          i := by rw [ByteArray.size_append, hip_size,
-            show ("e-" : String).toUTF8.size = 2 from by decide]; omega
-      rw [hidx]
+      rw [hrender]
+      have h := (eMinus_append_bytes (toString m.natAbs) (toString e)).2.2.2 i
+        (by rw [hep_size]; exact hi)
+      rwa [hip_size] at h
     have hq' : q + ip + 2 + ep ≤ buf.size := by
       have := hq
       rw [hsize] at this
@@ -919,85 +933,42 @@ theorem value_run_num_scientific (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
     have hip_size : (toString m.natAbs).toUTF8.size = ip := by
       show (Nat.repr m.natAbs).toUTF8.size = _
       exact repr_toUTF8_size m.natAbs
-    have hrender : renderNumScientific m e = "-" ++ toString m.natAbs ++ "e-" ++ toString e := by
+    have hrender : renderNumScientific m e = ("-" ++ toString m.natAbs) ++ "e-" ++ toString e := by
       rw [renderNumScientific_append]
       simp [hm]
     have hip : 1 ≤ ip := by
       exact List.length_pos_of_ne_nil
         (GripProps.NatDigits.toDigits_nonempty m.natAbs (Int.natAbs_pos.mpr (by omega)))
+    have hpre_size : ("-" ++ toString m.natAbs).toUTF8.size = 1 + ip := by
+      rw [toUTF8_append, ByteArray.size_append, hip_size,
+        show ("-" : String).toUTF8.size = 1 from by decide]
     have hsize : (renderNumScientific m e).toUTF8.size = 1 + ip + 2 + ep := by
-      rw [hrender, toUTF8_append, toUTF8_append, toUTF8_append,
-        ByteArray.size_append, ByteArray.size_append, ByteArray.size_append,
-        hip_size, hep_size,
-        show ("-" : String).toUTF8.size = 1 from by decide,
+      rw [hrender, toUTF8_append, toUTF8_append,
+        ByteArray.size_append, ByteArray.size_append, hpre_size, hep_size,
         show ("e-" : String).toUTF8.size = 2 from by decide]
-    have hminus_size : ("-" : String).toUTF8.size = 1 := by decide
-    have hmid_size : (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8).size = 1 + ip := by
-      rw [ByteArray.size_append, hminus_size, hip_size]
-    have hwhole_size : ((("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
-        ("e-" : String).toUTF8).size = 1 + ip + 2 := by
-      rw [ByteArray.size_append, hmid_size, show ("e-" : String).toUTF8.size = 2 from by decide]
     have hdash_rn : (renderNumScientific m e).toUTF8[0]! = 45 := by
-      rw [hrender, toUTF8_append, toUTF8_append, toUTF8_append,
-        ba_get!_append_left (a := (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
-          ("e-" : String).toUTF8) (b := (toString e).toUTF8) (by rw [hwhole_size]; omega),
-        ba_get!_append_left (a := ("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8)
-          (b := ("e-" : String).toUTF8) (by rw [hmid_size]; omega),
-        ba_get!_append_left (a := ("-" : String).toUTF8)
-          (b := (toString m.natAbs).toUTF8) (by decide)]
-      decide
+      rw [hrender, (eMinus_append_bytes ("-" ++ toString m.natAbs) (toString e)).1 0
+        (by rw [hpre_size]; omega), (neg_prepend_bytes _).1]
     have hdigits_rn : ∀ i, i < ip →
         (renderNumScientific m e).toUTF8[1 + i]! = (toString m.natAbs).toUTF8[i]! := by
       intro i hi
-      rw [hrender, toUTF8_append, toUTF8_append, toUTF8_append,
-        ba_get!_append_left (a := (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
-          ("e-" : String).toUTF8) (b := (toString e).toUTF8) (by rw [hwhole_size]; omega),
-        ba_get!_append_left (a := ("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8)
-          (b := ("e-" : String).toUTF8) (by rw [hmid_size]; omega),
-        ba_get!_append_right (a := ("-" : String).toUTF8)
-          (b := (toString m.natAbs).toUTF8) (by rw [hminus_size]; omega)
-          (by rw [hmid_size]; omega)]
-      have hidx : 1 + i - ("-" : String).toUTF8.size = i := by
-        rw [hminus_size]
-        omega
-      rw [hidx]
+      rw [hrender, (eMinus_append_bytes ("-" ++ toString m.natAbs) (toString e)).1 (1 + i)
+        (by rw [hpre_size]; omega), (neg_prepend_bytes _).2 i (by rw [hip_size]; exact hi)]
     have hexp_rn : (renderNumScientific m e).toUTF8[1 + ip]! = 101 := by
-      rw [hrender, toUTF8_append, toUTF8_append, toUTF8_append,
-        ba_get!_append_left (a := (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
-          ("e-" : String).toUTF8) (b := (toString e).toUTF8) (by rw [hwhole_size]; omega),
-        ba_get!_append_right (a := ("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8)
-          (b := ("e-" : String).toUTF8) (by rw [hmid_size])
-          (by rw [hwhole_size]; omega)]
-      have hidx : 1 + ip - (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8).size = 0 := by
-        rw [hmid_size]
-        omega
-      rw [hidx]
-      decide
+      rw [hrender]
+      have h := (eMinus_append_bytes ("-" ++ toString m.natAbs) (toString e)).2.1
+      rwa [hpre_size] at h
     have hsign_rn : (renderNumScientific m e).toUTF8[1 + ip + 1]! = 45 := by
-      rw [hrender, toUTF8_append, toUTF8_append, toUTF8_append,
-        ba_get!_append_left (a := (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
-          ("e-" : String).toUTF8) (b := (toString e).toUTF8) (by rw [hwhole_size]; omega),
-        ba_get!_append_right (a := ("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8)
-          (b := ("e-" : String).toUTF8) (by rw [hmid_size]; omega)
-          (by rw [hwhole_size]; omega)]
-      have hidx : 1 + ip + 1 - (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8).size = 1 := by
-        rw [hmid_size]
-        omega
-      rw [hidx]
-      decide
+      rw [hrender]
+      have h := (eMinus_append_bytes ("-" ++ toString m.natAbs) (toString e)).2.2.1
+      rwa [hpre_size] at h
     have hexp_digits_rn : ∀ i, i < ep →
         (renderNumScientific m e).toUTF8[1 + ip + 2 + i]! = (toString e).toUTF8[i]! := by
       intro i hi
-      rw [hrender, toUTF8_append, toUTF8_append, toUTF8_append,
-        ba_get!_append_right (a := (("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
-          ("e-" : String).toUTF8) (b := (toString e).toUTF8) (by rw [hwhole_size]; omega)
-            (by rw [ByteArray.size_append, hwhole_size, hep_size]; omega)]
-      have hidx : 1 + ip + 2 + i -
-          ((("-" : String).toUTF8 ++ (toString m.natAbs).toUTF8) ++
-            ("e-" : String).toUTF8).size = i := by
-        rw [hwhole_size]
-        omega
-      rw [hidx]
+      rw [hrender]
+      have h := (eMinus_append_bytes ("-" ++ toString m.natAbs) (toString e)).2.2.2 i
+        (by rw [hep_size]; exact hi)
+      rwa [hpre_size] at h
     have hq' : q + 1 + ip + 2 + ep ≤ buf.size := by
       have := hq
       rw [hsize] at this
