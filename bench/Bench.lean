@@ -16,16 +16,18 @@ import Std.Internal.Parsec.ByteArray
 /-!
 # grip benchmark harness
 
-Times every example parser. JSON runs on `bench/data/canada.json` (~2.1 MB, the standard
-nativejson-benchmark file, the number compared against lean4-parser); the other five run
-on inputs generated at startup. Each line is `<name> size=<bytes> count=<n> ms=<best_of_20>`.
+Times every example parser. The JSON matrix runs on the three vendored nativejson-benchmark
+files; the other five run on inputs generated at startup. Each line is
+`<lib> <dataset> count=<n> ms=<min> med=<median>` (or `<name> size=<bytes> ...` for the
+generated inputs).
 
 ## Timing technique
 
-`bestMs` forces each parse as an IO-sequenced effect between two `monoNanosNow`
+`sampleMs` forces each parse as an IO-sequenced effect between two `monoNanosNow`
 timestamps by evaluating `act i == 0`. The guard is never true at runtime but depends on
 the result, so the compiler cannot hoist the work past `t1`. The barrier parameter `i`
-prevents loop-invariant lifting.
+prevents loop-invariant lifting. Twenty samples per cell; `ms` is the minimum, `med` the
+median.
 -/
 
 open Grip
@@ -75,12 +77,18 @@ partial def repeatStr (s : String) (n : Nat) : String :=
   | some _         => 1
   | none           => 0
 
-/-- Cross-library reference: Lean's built-in `Lean.Json.parse`. It builds a full DOM (a
-`Lean.Json` tree), so it does strictly more work than grip's validate-and-count; shown
-for context on the same toolchain and machine. -/
+/-- Count leaf scalars of a `Lean.Json` tree (number/string/keyword = 1, object keys not
+counted, containers sum their children), forcing the whole DOM. Mirrors `jsonLeaves`. -/
+partial def leanJsonLeaves : Lean.Json → Nat
+  | .null | .bool _ | .num _ | .str _ => 1
+  | .arr xs  => xs.foldl (fun a j => a + leanJsonLeaves j) 0
+  | .obj kvs => kvs.foldl (fun a _ v => a + leanJsonLeaves v) 0
+
+/-- Cross-library reference: Lean's built-in `Lean.Json.parse`, plus the same leaf-count
+traversal `parseGripJson` performs, so the DOM-vs-DOM rows do identical work. -/
 @[noinline] def parseLeanJson (s : String) : Nat :=
   match Lean.Json.parse s with
-  | .ok _    => 1
+  | .ok j    => leanJsonLeaves j
   | .error _ => 0
 
 /-- Count leaf nodes of a `Grip.Json.Json` tree (number/string/keyword = 1, containers sum
@@ -105,24 +113,30 @@ builds the same kind of tree `Lean.Json.parse` does. Returns the forced leaf cou
 the work past the timestamp. -/
 @[noinline] def barrier (_k : Nat) (b : ByteArray) : ByteArray := b
 
-/-- Best-of-`reps` wall time of `act` in milliseconds. `act` receives the iteration index
-so the compiler cannot memoize a loop-invariant result. Evaluating `act i == 0` forces
-the parse between the two timestamps. -/
-def bestMs (reps : Nat) (act : Nat → Nat) : IO Float := do
-  let mut best : Float := 0.0
+/-- Summary of `reps` timed runs: the minimum (noise floor) and the median (typical). -/
+structure Stats where
+  min    : Float
+  median : Float
+
+/-- Time `act` `reps` times and report min and median milliseconds. `act` receives the
+iteration index so the compiler cannot memoize a loop-invariant result. Evaluating
+`act i == 0` forces the parse between the two timestamps. -/
+def sampleMs (reps : Nat) (act : Nat → Nat) : IO Stats := do
+  let mut samples : Array Float := #[]
   for i in [0:reps] do
     let t0 ← IO.monoNanosNow
     if act i == 0 then IO.eprintln "bench: unexpected zero count"
     let t1 ← IO.monoNanosNow
-    let dt := Float.ofNat (t1 - t0) / 1000000.0
-    if i == 0 || dt < best then best := dt
-  return best
+    samples := samples.push (Float.ofNat (t1 - t0) / 1000000.0)
+  let sorted := samples.qsort (· < ·)
+  if sorted.isEmpty then return { min := 0.0, median := 0.0 }
+  return { min := sorted[0]!, median := sorted[sorted.size / 2]! }
 
-/-- Time one parser on `src` and print `<name> size=.. count=.. ms=..`. -/
+/-- Time one parser on `src` and print `<name> size=.. count=.. ms=.. med=..`. -/
 def benchOne (name : String) (src : ByteArray) (p : ByteArray → Nat) : IO Unit := do
   let count := p src
-  let ms ← bestMs 20 (fun i => p (barrier i src))
-  IO.println s!"{name} size={src.size} count={count} ms={ms}"
+  let s ← sampleMs 20 (fun i => p (barrier i src))
+  IO.println s!"{name} size={src.size} count={count} ms={s.min} med={s.median}"
 
 -- Cross-library reference: Lean's standard combinator library, `Std.Internal.Parsec`, on
 -- the same validate-and-count task. A byte-level JSON leaf-counter matching grip's semantics
@@ -383,28 +397,30 @@ def main (args : List String) : IO Unit := do
   -- Per-dataset Lean matrix over the three nativejson-benchmark files: canada (number-heavy),
   -- citm_catalog (object/key-heavy), twitter (string/escape-heavy). grip, Std.Internal.Parsec,
   -- and the hand scanner do the identical strict validate-and-count (same leaf count per file);
-  -- Lean.Json builds a full DOM (heavier task -- its count is not a leaf count). Each line is
-  -- `<lib> <dataset> count=<n> ms=<best-of-20>`; cross-language rows are in bench/cross-lang/.
+  -- grip.json and lean.json both build a full DOM and count its leaves (identical heavier
+  -- task). Each line is `<lib> <dataset> count=<n> ms=<min> med=<median>`; cross-language rows
+  -- are in bench/cross-lang/.
   for (name, file) in [("canada", "bench/data/canada.json"),
                        ("citm", "bench/data/citm_catalog.json"),
                        ("twitter", "bench/data/twitter.json")] do
     let src ← IO.FS.readBinFile file
     let str ← IO.FS.readFile file
     let gc := parseJson src
-    let gm ← bestMs 20 (fun i => parseJson (barrier i src))
-    IO.println s!"grip {name} count={gc} ms={gm}"
+    let gs ← sampleMs 20 (fun i => parseJson (barrier i src))
+    IO.println s!"grip {name} count={gc} ms={gs.min} med={gs.median}"
     let sc := parseStdParsec src
-    let sm ← bestMs 20 (fun i => parseStdParsec (barrier i src))
-    IO.println s!"std.parsec {name} count={sc} ms={sm}"
+    let ss ← sampleMs 20 (fun i => parseStdParsec (barrier i src))
+    IO.println s!"std.parsec {name} count={sc} ms={ss.min} med={ss.median}"
     let hc := parseHand src
-    let hm ← bestMs 20 (fun i => parseHand (barrier i src))
-    IO.println s!"hand {name} count={hc} ms={hm}"
-    let lm ← bestMs 20 (fun i => parseLeanJson (barrierStr i str))
-    IO.println s!"lean.json {name} ms={lm} (DOM build, count not comparable)"
-    -- Fair DOM-vs-DOM: grip.json and lean.json both build a value tree.
+    let hs ← sampleMs 20 (fun i => parseHand (barrier i src))
+    IO.println s!"hand {name} count={hc} ms={hs.min} med={hs.median}"
+    let lc := parseLeanJson str
+    let ls ← sampleMs 20 (fun i => parseLeanJson (barrierStr i str))
+    IO.println s!"lean.json {name} count={lc} ms={ls.min} med={ls.median} (DOM build)"
+    -- Fair DOM-vs-DOM: grip.json and lean.json both build a value tree and count its leaves.
     let gjc := parseGripJson src
-    let gjm ← bestMs 20 (fun i => parseGripJson (barrier i src))
-    IO.println s!"grip.json {name} count={gjc} ms={gjm} (DOM build)"
+    let gjs ← sampleMs 20 (fun i => parseGripJson (barrier i src))
+    IO.println s!"grip.json {name} count={gjc} ms={gjs.min} med={gjs.median} (DOM build)"
   -- TOML on a real file: a vendored Cargo.lock (count = number of [[package]] tables).
   let tomlSrc ← IO.FS.readBinFile "bench/data/cargo.lock"
   -- The remaining example parsers on generated inputs.
