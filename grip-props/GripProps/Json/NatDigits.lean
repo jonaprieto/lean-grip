@@ -4,6 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
 -/
 import Mathlib
+import Grip.Ascii
+import GripProps.Json.Bytes
 
 /-!
 # Decimal-digit fold inversion
@@ -11,6 +13,8 @@ import Mathlib
 `Nat.repr` / `Nat.toDigits` render a number as its decimal digit characters (most significant
 first). This file proves the Horner fold `a ↦ a*10 + (c - '0')` over those digits recovers the
 number — the arithmetic core of the JSON number round-trip, with no library support in 4.28.
+Also home to the `Nat.repr` UTF-8 rendering facts (`repr_toUTF8_*`): the rendered digits are
+ASCII, so the byte-level view of a rendered number is its digit characters' byte values.
 -/
 
 set_option maxHeartbeats 1000000
@@ -154,7 +158,71 @@ theorem toDigits_head_pos (n : Nat) (hn : 0 < n) :
   rw [hceq]
   simp [h49, h57]
 
+/-- A positive natural renders to at least one decimal digit. -/
 theorem toDigits_nonempty (n : Nat) (hn : 0 < n) : Nat.toDigits 10 n ≠ [] := fun h => by
   have := (toDigits_head_pos n hn).2; rw [h] at this; exact absurd this (by decide)
+
+/-- Byte-value bounds give the `Ascii.isDigit19` predicate. -/
+theorem isDigit19_of_toNat_bounds (b : UInt8) (h49 : 49 ≤ b.toNat) (h57 : b.toNat ≤ 57) :
+    Grip.Ascii.isDigit19 b = true := by
+  simp only [Grip.Ascii.isDigit19, Bool.and_eq_true, decide_eq_true_eq, UInt8.le_iff_toNat_le,
+    show (49 : UInt8).toNat = 49 from by decide, show (57 : UInt8).toNat = 57 from by decide]
+  exact ⟨h49, h57⟩
+
+/-- Byte-value bounds give the `Ascii.isDigit` predicate. -/
+theorem isDigit_of_toNat_bounds (b : UInt8) (h48 : 48 ≤ b.toNat) (h57 : b.toNat ≤ 57) :
+    Grip.Ascii.isDigit b = true := by
+  simp only [Grip.Ascii.isDigit, Bool.and_eq_true, decide_eq_true_eq, UInt8.le_iff_toNat_le,
+    show (48 : UInt8).toNat = 48 from by decide, show (57 : UInt8).toNat = 57 from by decide]
+  exact ⟨h48, h57⟩
+
+/-- UTF8 byte list of `Nat.repr n` = digit chars mapped to their byte values. -/
+theorem repr_toUTF8_data_eq (n : Nat) :
+    (Nat.repr n).toUTF8.data.toList =
+    (Nat.toDigits 10 n).map (fun c => UInt8.ofNat c.toNat) := by
+  rw [show (Nat.repr n).toUTF8 = (Nat.toDigits 10 n).utf8Encode from by
+    rw [String.toUTF8_eq_toByteArray, ← String.utf8Encode_toList, Nat.repr, String.toList_ofList]]
+  rw [GripProps.Bytes.utf8Encode_data_toList]
+  apply GripProps.Bytes.flatMap_ascii
+  intro c hc; have := (mem_toDigits_bound n c hc).2; omega
+
+/-- The UTF-8 size of `Nat.repr n` is its digit count. -/
+theorem repr_toUTF8_size (n : Nat) :
+    (Nat.repr n).toUTF8.size = (Nat.toDigits 10 n).length := by
+  rw [← ByteArray.size_data, ← Array.length_toList, repr_toUTF8_data_eq, List.length_map]
+
+/-- The `i`-th UTF-8 byte of `Nat.repr n` is the `i`-th digit character's byte value. -/
+theorem repr_toUTF8_getElem! (n i : Nat) (hi : i < (Nat.toDigits 10 n).length) :
+    (Nat.repr n).toUTF8[i]! = UInt8.ofNat (Nat.toDigits 10 n)[i]!.toNat := by
+  rw [GripProps.Bytes.getElem!_eq_toList, repr_toUTF8_data_eq,
+      getElem!_pos _ i (by rw [List.length_map]; exact hi),
+      getElem!_pos _ i hi, List.getElem_map]
+
+/-- For `n > 0`: first UTF-8 byte of `Nat.repr n` is `isDigit19` (byte value in [49, 57]). -/
+theorem repr_toUTF8_head_isDigit19 (n : Nat) (hn : 0 < n) :
+    Grip.Ascii.isDigit19 (Nat.repr n).toUTF8[0]! = true := by
+  have hne : Nat.toDigits 10 n ≠ [] := toDigits_nonempty n hn
+  have hlen : 0 < (Nat.toDigits 10 n).length := List.length_pos_of_ne_nil hne
+  rw [repr_toUTF8_getElem! n 0 hlen]
+  have h0 : (Nat.toDigits 10 n)[0]! = (Nat.toDigits 10 n).head! := by
+    match Nat.toDigits 10 n, hne with | _ :: _, _ => simp
+  rw [h0]
+  have hbounds := toDigits_head_pos n hn
+  have hlt : (Nat.toDigits 10 n).head!.toNat < 256 := by omega
+  exact isDigit19_of_toNat_bounds _
+    (by rw [UInt8.toNat_ofNat_of_lt' hlt]; exact hbounds.1)
+    (by rw [UInt8.toNat_ofNat_of_lt' hlt]; exact hbounds.2)
+
+/-- For `n > 0`: `i`-th UTF-8 byte of `Nat.repr n` is `isDigit` (byte value in [48, 57]). -/
+theorem repr_toUTF8_getElem_isDigit (n i : Nat) (hi : i < (Nat.toDigits 10 n).length) :
+    Grip.Ascii.isDigit (Nat.repr n).toUTF8[i]! = true := by
+  rw [repr_toUTF8_getElem! n i hi]
+  have h_mem : (Nat.toDigits 10 n)[i]! ∈ Nat.toDigits 10 n := by
+    rw [getElem!_pos (Nat.toDigits 10 n) i hi]; exact List.getElem_mem hi
+  have hmem := mem_toDigits_bound n _ h_mem
+  have hlt : (Nat.toDigits 10 n)[i]!.toNat < 256 := by omega
+  exact isDigit_of_toNat_bounds _
+    (by rw [UInt8.toNat_ofNat_of_lt' hlt]; exact hmem.1)
+    (by rw [UInt8.toNat_ofNat_of_lt' hlt]; exact hmem.2)
 
 end GripProps.NatDigits

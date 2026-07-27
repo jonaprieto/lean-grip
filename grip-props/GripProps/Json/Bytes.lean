@@ -129,6 +129,69 @@ theorem utf8Encode_data_toList (cs : List Char) :
     congr 1
     simp [List.utf8Encode]
 
+/-- String append commutes with UTF-8 encoding. -/
+theorem toUTF8_append (s t : String) :
+    (s ++ t).toUTF8 = s.toUTF8 ++ t.toUTF8 := by
+  simp [String.toUTF8_eq_toByteArray, String.toByteArray_append]
+
+/-- In-bounds index into an appended array reads from the left part. -/
+theorem ba_get!_append_left {i : Nat} {a b : ByteArray} (h : i < a.size) :
+    (a ++ b)[i]! = a[i]! := by
+  rw [getElem!_pos (a ++ b) i (by rw [ByteArray.size_append]; omega),
+      ByteArray.getElem_append_left h,
+      getElem!_pos a i h]
+
+/-- Out-of-left-range index into an appended array reads from the right part. -/
+theorem ba_get!_append_right {i : Nat} {a b : ByteArray} (h : a.size ≤ i)
+    (hi : i < (a ++ b).size) :
+    (a ++ b)[i]! = b[i - a.size]! := by
+  rw [getElem!_pos (a ++ b) i hi,
+      ByteArray.getElem_append_right h,
+      getElem!_pos b (i - a.size) (by rw [ByteArray.size_append] at hi; omega)]
+
+/-- An ASCII character encodes to a single byte, its code point. -/
+theorem ascii_encode (c : Char) (h : c.toNat ≤ 127) :
+    String.utf8EncodeChar c = [UInt8.ofNat c.toNat] := by
+  have hval : c.val ≤ 127 := by rw [UInt32.le_iff_toNat_le]; exact h
+  have hbyte : c.val.toUInt8 = UInt8.ofNat c.toNat := by
+    rw [Char.toNat]; exact UInt8.toNat_inj.mp rfl
+  rw [String.utf8EncodeChar_eq_singleton (Char.utf8Size_eq_one_iff.mpr hval), hbyte]
+
+/-- Over ASCII characters, `flatMap`-encoding is `map`ping each to its byte. -/
+theorem flatMap_ascii (cs : List Char) (h : ∀ c ∈ cs, c.toNat ≤ 127) :
+    cs.flatMap String.utf8EncodeChar = cs.map (fun c => UInt8.ofNat c.toNat) := by
+  induction cs with
+  | nil => simp
+  | cons c cs ih =>
+    rw [List.flatMap_cons, List.map_cons, ascii_encode c (h c (by simp)),
+      ih (fun c hc => h c (by simp [hc]))]
+    simp
+
+/-- The byte list of an ASCII `String.ofList`'s UTF-8 encoding is the characters' byte values. -/
+theorem ofList_ascii_toUTF8_data_eq (cs : List Char)
+    (h : ∀ c ∈ cs, c.toNat ≤ 127) :
+    (String.ofList cs).toUTF8.data.toList = cs.map (fun c => UInt8.ofNat c.toNat) := by
+  rw [show (String.ofList cs).toUTF8 = cs.utf8Encode from by
+    rw [String.toUTF8_eq_toByteArray, ← String.utf8Encode_toList, String.toList_ofList]]
+  rw [utf8Encode_data_toList]
+  apply flatMap_ascii
+  exact h
+
+/-- An ASCII `String.ofList`'s UTF-8 size is the character count. -/
+theorem ofList_ascii_toUTF8_size (cs : List Char) (h : ∀ c ∈ cs, c.toNat ≤ 127) :
+    (String.ofList cs).toUTF8.size = cs.length := by
+  rw [← ByteArray.size_data, ← Array.length_toList, ofList_ascii_toUTF8_data_eq cs h,
+      List.length_map]
+
+/-- The `i`-th byte of an ASCII `String.ofList`'s UTF-8 encoding is the `i`-th character's
+byte value. -/
+theorem ofList_ascii_toUTF8_getElem! (cs : List Char) (i : Nat)
+    (h : ∀ c ∈ cs, c.toNat ≤ 127) (hi : i < cs.length) :
+    (String.ofList cs).toUTF8[i]! = UInt8.ofNat cs[i]!.toNat := by
+  rw [getElem!_eq_toList, ofList_ascii_toUTF8_data_eq cs h,
+      getElem!_pos _ i (by rw [List.length_map]; exact hi),
+      getElem!_pos _ i hi, List.getElem_map]
+
 /-- **String-bytes fold bridge.** Folding over a string's UTF-8 bytes is folding over the byte
 list obtained by encoding each character. This turns any `ByteArray.foldl` over `s.toUTF8` (as in
 `decodeNumberBytes?` and the parser) into a `List.foldl` over `s.toList`'s encoded bytes. -/

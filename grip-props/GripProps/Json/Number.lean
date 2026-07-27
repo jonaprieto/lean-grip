@@ -19,6 +19,7 @@ digit bytes rendered for an integer.
 set_option maxHeartbeats 1000000
 
 open Grip.Json Grip.Json.Decode Grip.Json.Json
+open GripProps.Bytes
 
 namespace GripProps.Number
 
@@ -58,24 +59,6 @@ theorem foldl_numByte_digits (ds : List Char) (st : NState) (hp : st.phase = 0)
       simp [Bool.or_self, hp, hd48]
     rw [List.foldl_cons, List.foldl_cons, hstep]
     rw [ih _ (by simp [hp]) (fun c hc => hd c (by simp [hc]))]
-
-/-- An ASCII character encodes to a single byte, its code point. -/
-theorem ascii_encode (c : Char) (h : c.toNat ≤ 127) :
-    String.utf8EncodeChar c = [UInt8.ofNat c.toNat] := by
-  have hval : c.val ≤ 127 := by rw [UInt32.le_iff_toNat_le]; exact h
-  have hbyte : c.val.toUInt8 = UInt8.ofNat c.toNat := by
-    rw [Char.toNat]; exact UInt8.toNat_inj.mp rfl
-  rw [String.utf8EncodeChar_eq_singleton (Char.utf8Size_eq_one_iff.mpr hval), hbyte]
-
-/-- Over ASCII characters, `flatMap`-encoding is `map`ping each to its byte. -/
-theorem flatMap_ascii (cs : List Char) (h : ∀ c ∈ cs, c.toNat ≤ 127) :
-    cs.flatMap String.utf8EncodeChar = cs.map (fun c => UInt8.ofNat c.toNat) := by
-  induction cs with
-  | nil => simp
-  | cons c cs ih =>
-    rw [List.flatMap_cons, List.map_cons, ascii_encode c (h c (by simp)),
-      ih (fun c hc => h c (by simp [hc]))]
-    simp
 
 /-- Single `numByte` step on a decimal digit, phase 0 or 1: accumulate the mantissa (and, in
 phase 1, count a fractional digit); other fields unchanged. -/

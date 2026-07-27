@@ -18,7 +18,7 @@ Infrastructure for the array and object cases of `parse_render`:
 -/
 
 open Grip Grip.Json Grip.Json.Json
-open GripProps.Parse GripProps.ScanStr
+open GripProps.Parse GripProps.ScanStr GripProps.Bytes
 open Grip.FixComplete
 
 set_option maxHeartbeats 1600000
@@ -422,13 +422,10 @@ private theorem render_str_byte_close (s : String) :
 -- 5. Helper byte-position lemmas for array/object round-trips
 -- ---------------------------------------------------------------------------
 
-private theorem str_app (s t : String) : (s ++ t).toUTF8 = s.toUTF8 ++ t.toUTF8 := by
-  simp [String.toUTF8_eq_toByteArray, String.toByteArray_append]
-
 private theorem lbracket_last_byte (body : String) :
     ("[" ++ body ++ "]").toUTF8[("[" ++ body ++ "]").toUTF8.size - 1]! = 93 := by
   have h1 : ("]" : String).toUTF8.size = 1 := by decide
-  rw [str_app, ByteArray.size_append, h1,
+  rw [toUTF8_append, ByteArray.size_append, h1,
       ba_get!_append_right (by omega) (by rw [ByteArray.size_append, h1]; omega)]
   simp only [show ("[" ++ body).toUTF8.size + 1 - 1 - ("[" ++ body).toUTF8.size = 0 from by omega]
   decide
@@ -436,22 +433,22 @@ private theorem lbracket_last_byte (body : String) :
 private theorem lbrace_last_byte (body : String) :
     ("{" ++ body ++ "}").toUTF8[("{" ++ body ++ "}").toUTF8.size - 1]! = 125 := by
   have h1 : ("}" : String).toUTF8.size = 1 := by decide
-  rw [str_app, ByteArray.size_append, h1,
+  rw [toUTF8_append, ByteArray.size_append, h1,
       ba_get!_append_right (by omega) (by rw [ByteArray.size_append, h1]; omega)]
   simp only [show ("{" ++ body).toUTF8.size + 1 - 1 - ("{" ++ body).toUTF8.size = 0 from by omega]
   decide
 
 -- First byte of "\""-prefixed string's UTF8 is 34
 private theorem str_prepend_byte0 (s : String) : ("\"" ++ s).toUTF8[0]! = 34 := by
-  rw [str_app, ba_get!_append_left (by decide)]
+  rw [toUTF8_append, ba_get!_append_left (by decide)]
   decide
 
 -- Byte 1+j of "o"++body++"c" equals body[j] when |o|=1
 private theorem body_byte_j (open_b close_b : String) (ho : open_b.toUTF8.size = 1) (body : String)
     (j : Nat) (hj : j < body.toUTF8.size) :
     (open_b ++ body ++ close_b).toUTF8[1 + j]! = body.toUTF8[j]! := by
-  rw [str_app, ba_get!_append_left (by rw [str_app, ByteArray.size_append, ho]; omega),
-      str_app, ba_get!_append_right (by omega) (by rw [ByteArray.size_append]; omega)]
+  rw [toUTF8_append, ba_get!_append_left (by rw [toUTF8_append, ByteArray.size_append, ho]; omega),
+      toUTF8_append, ba_get!_append_right (by omega) (by rw [ByteArray.size_append]; omega)]
   simp only [show 1 + j - open_b.toUTF8.size = j from by omega]
 
 -- ---------------------------------------------------------------------------
@@ -466,14 +463,14 @@ private def commaPrefix : List Json → String
 private theorem commaPrefix_cons_size (x : Json) (rest : List Json) :
     (commaPrefix (x :: rest)).toUTF8.size =
     1 + (render x).toUTF8.size + (commaPrefix rest).toUTF8.size := by
-  simp only [commaPrefix, str_app, ByteArray.size_append]
+  simp only [commaPrefix, toUTF8_append, ByteArray.size_append]
   have h : (",":String).toUTF8.size = 1 := by decide
   omega
 
 -- Byte 0 of commaPrefix (x :: rest) is ',' (44)
 private theorem commaPrefix_byte_comma (x : Json) (rest : List Json) :
     (commaPrefix (x :: rest)).toUTF8[0]! = 44 := by
-  simp only [commaPrefix, str_app]
+  simp only [commaPrefix, toUTF8_append]
   have hc : (",":String).toUTF8.size = 1 := by decide
   rw [ba_get!_append_left (by rw [ByteArray.size_append]; omega)]
   rw [ba_get!_append_left (by omega)]
@@ -483,7 +480,7 @@ private theorem commaPrefix_byte_comma (x : Json) (rest : List Json) :
 private theorem commaPrefix_byte_x (x : Json) (rest : List Json) (j : Nat)
     (hj : j < (render x).toUTF8.size) :
     (commaPrefix (x :: rest)).toUTF8[1 + j]! = (render x).toUTF8[j]! := by
-  simp only [commaPrefix, str_app]
+  simp only [commaPrefix, toUTF8_append]
   have hc : (",":String).toUTF8.size = 1 := by decide
   rw [ba_get!_append_left (by rw [ByteArray.size_append]; omega)]
   rw [ba_get!_append_right (by omega) (by rw [ByteArray.size_append]; omega)]
@@ -493,7 +490,7 @@ private theorem commaPrefix_byte_x (x : Json) (rest : List Json) (j : Nat)
 private theorem commaPrefix_byte_rest (x : Json) (rest : List Json) (j : Nat)
     (hj : j < (commaPrefix rest).toUTF8.size) :
     (commaPrefix (x :: rest)).toUTF8[1 + (render x).toUTF8.size + j]! = (commaPrefix rest).toUTF8[j]! := by
-  simp only [commaPrefix, str_app]
+  simp only [commaPrefix, toUTF8_append]
   have hc : (",":String).toUTF8.size = 1 := by decide
   rw [ba_get!_append_right
       (by rw [ByteArray.size_append]; omega)
@@ -529,14 +526,14 @@ private def commaPrefixKV : List (String × Json) → String
 private theorem renderKV_size (k : String) (v : Json) :
     (renderKV (k, v)).toUTF8.size =
     2 + (ebytes k.toList).length + 1 + (render v).toUTF8.size := by
-  simp only [renderKV, str_app, ByteArray.size_append]
+  simp only [renderKV, toUTF8_append, ByteArray.size_append]
   rw [render_str_size k]
   have h : (":":String).toUTF8.size = 1 := by decide
   omega
 
 private theorem renderKV_byte0 (kv : String × Json) :
     (renderKV kv).toUTF8[0]! = 34 := by
-  simp only [renderKV, str_app]
+  simp only [renderKV, toUTF8_append]
   rw [ba_get!_append_left (by
     rw [ByteArray.size_append]
     have h := render_str_size kv.1
@@ -547,7 +544,7 @@ private theorem renderKV_byte0 (kv : String × Json) :
   exact render_str_byte0 kv.1
 
 private theorem renderKV_pos (kv : String × Json) : 0 < (renderKV kv).toUTF8.size := by
-  simp only [renderKV, str_app, ByteArray.size_append]
+  simp only [renderKV, toUTF8_append, ByteArray.size_append]
   have h := render_str_size kv.1
   have hc : (":":String).toUTF8.size = 1 := by decide
   omega
@@ -555,13 +552,13 @@ private theorem renderKV_pos (kv : String × Json) : 0 < (renderKV kv).toUTF8.si
 private theorem commaPrefixKV_cons_size (kv : String × Json) (rest : List (String × Json)) :
     (commaPrefixKV (kv :: rest)).toUTF8.size =
     1 + (renderKV kv).toUTF8.size + (commaPrefixKV rest).toUTF8.size := by
-  simp only [commaPrefixKV, str_app, ByteArray.size_append]
+  simp only [commaPrefixKV, toUTF8_append, ByteArray.size_append]
   have h : (",":String).toUTF8.size = 1 := by decide
   omega
 
 private theorem commaPrefixKV_byte_comma (kv : String × Json) (rest : List (String × Json)) :
     (commaPrefixKV (kv :: rest)).toUTF8[0]! = 44 := by
-  simp only [commaPrefixKV, str_app]
+  simp only [commaPrefixKV, toUTF8_append]
   have hc : (",":String).toUTF8.size = 1 := by decide
   rw [ba_get!_append_left (by rw [ByteArray.size_append]; omega)]
   rw [ba_get!_append_left (by omega)]
@@ -570,7 +567,7 @@ private theorem commaPrefixKV_byte_comma (kv : String × Json) (rest : List (Str
 private theorem commaPrefixKV_byte_kv (kv : String × Json) (rest : List (String × Json))
     (j : Nat) (hj : j < (renderKV kv).toUTF8.size) :
     (commaPrefixKV (kv :: rest)).toUTF8[1 + j]! = (renderKV kv).toUTF8[j]! := by
-  simp only [commaPrefixKV, str_app]
+  simp only [commaPrefixKV, toUTF8_append]
   have hc : (",":String).toUTF8.size = 1 := by decide
   rw [ba_get!_append_left (by rw [ByteArray.size_append]; omega)]
   rw [ba_get!_append_right (by omega) (by rw [ByteArray.size_append]; omega)]
@@ -580,7 +577,7 @@ private theorem commaPrefixKV_byte_rest (kv : String × Json) (rest : List (Stri
     (j : Nat) (hj : j < (commaPrefixKV rest).toUTF8.size) :
     (commaPrefixKV (kv :: rest)).toUTF8[1 + (renderKV kv).toUTF8.size + j]! =
     (commaPrefixKV rest).toUTF8[j]! := by
-  simp only [commaPrefixKV, str_app]
+  simp only [commaPrefixKV, toUTF8_append]
   have hc : (",":String).toUTF8.size = 1 := by decide
   rw [ba_get!_append_right
       (by rw [ByteArray.size_append]; omega)
@@ -959,7 +956,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
         "[" ++ joinWith "," (xs.attach.toList.map (fun x => render x.1)) ++ "]" := by
       simp [render]
     have hN2 : 2 ≤ (render (Json.arr xs)).toUTF8.size := by
-      rw [hrend, str_app, ByteArray.size_append, str_app, ByteArray.size_append]
+      rw [hrend, toUTF8_append, ByteArray.size_append, toUTF8_append, ByteArray.size_append]
       have h1 : ("[" : String).toUTF8.size = 1 := by decide
       have h2 : ("]" : String).toUTF8.size = 1 := by decide
       omega
@@ -968,7 +965,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
       have h0 := hmatch 0 (by omega)
       simp only [Nat.add_zero] at h0
       rw [h0, hrend]
-      simp only [str_app]
+      simp only [toUTF8_append]
       have h1 : ("[" : String).toUTF8.size = 1 := by decide
       rw [ba_get!_append_left (by simp only [ByteArray.size_append]; omega)]
       rw [ba_get!_append_left (by decide)]
@@ -1024,7 +1021,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
       have hbody_eq : joinWith "," (xs.attach.toList.map (fun x => render x.1)) = body := by
         rw [hatt_render]
       have hbody_size : (render (Json.arr xs)).toUTF8.size = 1 + body.toUTF8.size + 1 := by
-        rw [hrend, hbody_eq, str_app, ByteArray.size_append, str_app, ByteArray.size_append]
+        rw [hrend, hbody_eq, toUTF8_append, ByteArray.size_append, toUTF8_append, ByteArray.size_append]
         simp only [show ("[":String).toUTF8.size = 1 from by decide,
                    show ("]":String).toUTF8.size = 1 from by decide]
       have hend : q + (render (Json.arr xs)).toUTF8.size - 1 = q + 1 + body.toUTF8.size := by
@@ -1072,12 +1069,12 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
         have hmatch_xi : ∀ j, j < (render xi).toUTF8.size →
             buf[q + 1 + j]! = (render xi).toUTF8[j]! := by
           intro j hj
-          rw [hmatch_body j (by rw [h_body_cons, str_app, ByteArray.size_append]; omega)]
-          rw [h_body_cons, str_app, ba_get!_append_left hj]
+          rw [hmatch_body j (by rw [h_body_cons, toUTF8_append, ByteArray.size_append]; omega)]
+          rw [h_body_cons, toUTF8_append, ba_get!_append_left hj]
         -- Stop condition for xi (next byte is ',' or ']', both pass)
         have hxi_bound : q + 1 + (render xi).toUTF8.size ≤ buf.size := by
           have h_sz : body.toUTF8.size = (render xi).toUTF8.size + (commaPrefix rest_l).toUTF8.size := by
-            rw [h_body_cons, str_app, ByteArray.size_append]
+            rw [h_body_cons, toUTF8_append, ByteArray.size_append]
           omega
         have hstop_xi : q + 1 + (render xi).toUTF8.size = buf.size ∨
             (q + 1 + (render xi).toUTF8.size < buf.size ∧
@@ -1085,7 +1082,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
              buf[q + 1 + (render xi).toUTF8.size]! ≠ 46 ∧
              Ascii.isExp buf[q + 1 + (render xi).toUTF8.size]! = false) := by
           have hcp_size : body.toUTF8.size = (render xi).toUTF8.size + (commaPrefix rest_l).toUTF8.size := by
-            rw [h_body_cons, str_app, ByteArray.size_append]
+            rw [h_body_cons, toUTF8_append, ByteArray.size_append]
           have hpos_lt : q + 1 + (render xi).toUTF8.size < buf.size := by omega
           -- Determine the byte at the stop position
           have hbyte : buf[q + 1 + (render xi).toUTF8.size]! = 44 ∨
@@ -1104,7 +1101,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
               have hbound_xi : (render xi).toUTF8.size < body.toUTF8.size := by
                 rw [hrl] at hcp_size; omega
               rw [hmatch_body (render xi).toUTF8.size hbound_xi,
-                  h_body_cons, hrl, str_app,
+                  h_body_cons, hrl, toUTF8_append,
                   ba_get!_append_right (le_refl _)
                     (by rw [ByteArray.size_append]; rw [hrl] at hcp_size; omega),
                   Nat.sub_self]
@@ -1117,7 +1114,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
         -- commaPrefix rest_l bytes
         have hcp_size : (render xi).toUTF8.size + (commaPrefix rest_l).toUTF8.size =
             body.toUTF8.size := by
-          rw [h_body_cons, str_app, ByteArray.size_append]
+          rw [h_body_cons, toUTF8_append, ByteArray.size_append]
         have hrest_bound : q + 1 + (render xi).toUTF8.size + (commaPrefix rest_l).toUTF8.size ≤
             buf.size := by omega
         have hrest_match : ∀ j, j < (commaPrefix rest_l).toUTF8.size →
@@ -1126,7 +1123,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           have hm := hmatch_body ((render xi).toUTF8.size + j) (by omega)
           rw [show q + 1 + ((render xi).toUTF8.size + j) = q + 1 + (render xi).toUTF8.size + j
               from by ring] at hm
-          rw [hm, h_body_cons, str_app,
+          rw [hm, h_body_cons, toUTF8_append,
               ba_get!_append_right (by omega) (by rw [ByteArray.size_append]; omega),
               Nat.add_sub_cancel_left]
         have hrest_stop : q + 1 + (render xi).toUTF8.size + (commaPrefix rest_l).toUTF8.size =
@@ -1198,7 +1195,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
             "\"" ++ escape k ++ "\":" ++ render j)) ++ "}" := by
       simp [render]
     have hN2 : 2 ≤ (render (Json.obj kvs)).toUTF8.size := by
-      rw [hrend, str_app, ByteArray.size_append, str_app, ByteArray.size_append]
+      rw [hrend, toUTF8_append, ByteArray.size_append, toUTF8_append, ByteArray.size_append]
       have h1 : ("{" : String).toUTF8.size = 1 := by decide
       have h2 : ("}" : String).toUTF8.size = 1 := by decide
       omega
@@ -1207,7 +1204,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
       have h0 := hmatch 0 (by omega)
       simp only [Nat.add_zero] at h0
       rw [h0, hrend]
-      simp only [str_app]
+      simp only [toUTF8_append]
       have h1 : ("{" : String).toUTF8.size = 1 := by decide
       rw [ba_get!_append_left (by simp only [ByteArray.size_append]; omega)]
       rw [ba_get!_append_left (by decide)]
@@ -1243,13 +1240,13 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           | nil => simp [joinWith]
           | cons t more =>
             simp only [joinWith]
-            rw [String.append_assoc, str_app, ba_get!_append_left hs]
+            rw [String.append_assoc, toUTF8_append, ba_get!_append_left hs]
         rcases kvs.attach.toList with _ | ⟨⟨⟨k0, v0⟩, _⟩, rest⟩
         · simp only [List.map_nil, joinWith]; decide
         · simp only [List.map_cons]
           set e0 := "\"" ++ escape k0 ++ "\":" ++ render v0
           have he0_pos : 0 < e0.toUTF8.size := by
-            simp only [e0, str_app, ByteArray.size_append]
+            simp only [e0, toUTF8_append, ByteArray.size_append]
             have : ("\"" : String).toUTF8.size = 1 := by decide
             omega
           have hbody_pos : 0 < (joinWith ","
@@ -1260,7 +1257,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
               have hc : (",":String).toUTF8.size = 1 := by decide
               have he : ("":String).toUTF8.size = 0 := by decide
               omega
-            | cons e1 more => simp only [joinWith, str_app, ByteArray.size_append]; omega
+            | cons e1 more => simp only [joinWith, toUTF8_append, ByteArray.size_append]; omega
           rw [body_byte_j "{" "}" (by decide) _ 0 hbody_pos,
               hjw0 e0 _ he0_pos]
           simp only [e0, String.append_assoc]
@@ -1326,7 +1323,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
       have hbody_eq : joinWith "," (kvs.attach.toList.map (fun ⟨(k, j), _h⟩ =>
           "\"" ++ escape k ++ "\":" ++ render j)) = body := by rw [hatt_renderKV]
       have hbody_size : (render (Json.obj kvs)).toUTF8.size = 1 + body.toUTF8.size + 1 := by
-        rw [hrend, hbody_eq, str_app, ByteArray.size_append, str_app, ByteArray.size_append]
+        rw [hrend, hbody_eq, toUTF8_append, ByteArray.size_append, toUTF8_append, ByteArray.size_append]
         simp only [show ("{":String).toUTF8.size = 1 from by decide,
                    show ("}":String).toUTF8.size = 1 from by decide]
       have hend : q + (render (Json.obj kvs)).toUTF8.size - 1 = q + 1 + body.toUTF8.size := by omega
@@ -1368,12 +1365,12 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           render_str_size k0
         have hbody_sz : body.toUTF8.size =
             (renderKV (k0, v0)).toUTF8.size + (commaPrefixKV rest_kvs).toUTF8.size := by
-          rw [h_body_cons, str_app, ByteArray.size_append]
+          rw [h_body_cons, toUTF8_append, ByteArray.size_append]
         -- Bytes of renderKV (k0, v0) at buf[q+1+j]
         have hmatch_kv : ∀ j, j < (renderKV (k0, v0)).toUTF8.size →
             buf[q + 1 + j]! = (renderKV (k0, v0)).toUTF8[j]! := by
           intro j hj
-          rw [hmatch_body j (by omega), h_body_cons, str_app, ba_get!_append_left hj]
+          rw [hmatch_body j (by omega), h_body_cons, toUTF8_append, ba_get!_append_left hj]
         have hkv_bound : q + 1 + (renderKV (k0, v0)).toUTF8.size ≤ buf.size := by omega
         -- buf[q+1]! = 34 (opening quote)
         have hq1_byte! : buf[q + 1]! = 34 := by
@@ -1384,7 +1381,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           intro j hj
           rw [show q + 1 + 1 + j = q + 1 + (1 + j) from by ring,
               hmatch_kv (1 + j) (by rw [hrkv_size]; omega)]
-          simp only [renderKV, str_app]
+          simp only [renderKV, toUTF8_append]
           rw [ba_get!_append_left (by rw [ByteArray.size_append, hsk_size]; omega)]
           rw [ba_get!_append_left (by rw [hsk_size]; omega)]
           exact render_str_byte_mid k0 j hj
@@ -1393,7 +1390,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           rw [show q + 1 + 1 + (ebytes k0.toList).length =
               q + 1 + (1 + (ebytes k0.toList).length) from by ring,
               hmatch_kv (1 + (ebytes k0.toList).length) (by rw [hrkv_size]; omega)]
-          simp only [renderKV, str_app]
+          simp only [renderKV, toUTF8_append]
           rw [ba_get!_append_left (by rw [ByteArray.size_append, hsk_size]; omega)]
           rw [ba_get!_append_left (by rw [hsk_size]; omega)]
           exact render_str_byte_close k0
@@ -1410,7 +1407,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           rw [show q + 1 + 2 + (ebytes k0.toList).length =
               q + 1 + (2 + (ebytes k0.toList).length) from by ring,
               hmatch_kv (2 + (ebytes k0.toList).length) (by rw [hrkv_size]; omega)]
-          simp only [renderKV, str_app]
+          simp only [renderKV, toUTF8_append]
           have hc0 : (":":String).toUTF8.size = 1 := by decide
           rw [ba_get!_append_left (by rw [ByteArray.size_append, hsk_size, hc0]; omega)]
           rw [ba_get!_append_right (by omega) (by rw [ByteArray.size_append, hsk_size, hc0]; omega)]
@@ -1435,7 +1432,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           rw [show q + 1 + 2 + (ebytes k0.toList).length + 1 + j =
               q + 1 + (2 + (ebytes k0.toList).length + 1 + j) from by ring,
               hmatch_kv (2 + (ebytes k0.toList).length + 1 + j) (by rw [hrkv_size]; omega)]
-          simp only [renderKV, str_app]
+          simp only [renderKV, toUTF8_append]
           have hc0 : (":":String).toUTF8.size = 1 := by decide
           rw [ba_get!_append_right (by rw [ByteArray.size_append, hsk_size, hc0]; omega)
                                    (by rw [ByteArray.size_append, ByteArray.size_append, hsk_size, hc0]; omega)]
@@ -1466,7 +1463,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
               have hcp_pos : 0 < (commaPrefixKV rest_kvs).toUTF8.size := by
                 rw [hrest, commaPrefixKV_cons_size]; omega
               rw [hmatch_body (renderKV (k0, v0)).toUTF8.size (by rw [hbody_sz]; omega),
-                  h_body_cons, str_app,
+                  h_body_cons, toUTF8_append,
                   ba_get!_append_right (le_refl _) (by rw [ByteArray.size_append]; omega),
                   Nat.sub_self, hrest]
               exact commaPrefixKV_byte_comma kv2 rest2
@@ -1501,7 +1498,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           intro j hj
           rw [show (q + 1 + (renderKV (k0, v0)).toUTF8.size) + j = q + 1 + ((renderKV (k0, v0)).toUTF8.size + j) from by ring]
           rw [hmatch_body ((renderKV (k0, v0)).toUTF8.size + j) (by omega)]
-          rw [h_body_cons, str_app,
+          rw [h_body_cons, toUTF8_append,
               ba_get!_append_right (by omega) (by rw [ByteArray.size_append]; omega),
               Nat.add_sub_cancel_left]
         have hcp_term : ∀ u r, (Grip.Json.wsByte Ascii.comma).run buf
@@ -1545,14 +1542,14 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
             intro j hj
             rw [show p + 1 + j = p + (1 + j) from by ring,
                 hmatch2 (1 + j) (by rw [hrk2_size]; omega)]
-            simp only [renderKV, str_app]
+            simp only [renderKV, toUTF8_append]
             rw [ba_get!_append_left (by rw [ByteArray.size_append, hsk2]; omega)]
             rw [ba_get!_append_left (by rw [hsk2]; omega)]
             exact render_str_byte_mid k2 j hj
           have hclose2 : buf[p + 1 + (ebytes k2.toList).length]! = 34 := by
             rw [show p + 1 + (ebytes k2.toList).length = p + (1 + (ebytes k2.toList).length) from by ring,
                 hmatch2 (1 + (ebytes k2.toList).length) (by rw [hrk2_size]; omega)]
-            simp only [renderKV, str_app]
+            simp only [renderKV, toUTF8_append]
             rw [ba_get!_append_left (by rw [ByteArray.size_append, hsk2]; omega)]
             rw [ba_get!_append_left (by rw [hsk2]; omega)]
             exact render_str_byte_close k2
@@ -1562,7 +1559,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           have hcolon2! : buf[p + 2 + (ebytes k2.toList).length]! = 58 := by
             rw [show p + 2 + (ebytes k2.toList).length = p + (2 + (ebytes k2.toList).length) from by ring,
                 hmatch2 (2 + (ebytes k2.toList).length) (by rw [hrk2_size]; omega)]
-            simp only [renderKV, str_app]
+            simp only [renderKV, toUTF8_append]
             have hc2 : (":":String).toUTF8.size = 1 := by decide
             rw [ba_get!_append_left (by rw [ByteArray.size_append, hsk2, hc2]; omega)]
             rw [ba_get!_append_right (by omega) (by rw [ByteArray.size_append, hsk2, hc2]; omega)]
@@ -1581,7 +1578,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
             rw [show p + 2 + (ebytes k2.toList).length + 1 + j =
                 p + (2 + (ebytes k2.toList).length + 1 + j) from by ring,
                 hmatch2 (2 + (ebytes k2.toList).length + 1 + j) (by rw [hrk2_size]; omega)]
-            simp only [renderKV, str_app]
+            simp only [renderKV, toUTF8_append]
             have hc2 : (":":String).toUTF8.size = 1 := by decide
             rw [ba_get!_append_right (by rw [ByteArray.size_append, hsk2, hc2]; omega)
                                      (by rw [ByteArray.size_append, ByteArray.size_append, hsk2, hc2]; omega)]
