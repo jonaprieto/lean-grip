@@ -14,7 +14,6 @@ STAMP="$(date -u +%Y-%m-%dT%H%M%SZ)"
 OUT="bench/results/$STAMP"
 mkdir -p "$OUT"
 RAW="$OUT/raw.txt"
-DATA=(bench/data/canada.json bench/data/citm_catalog.json bench/data/twitter.json)
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -55,40 +54,41 @@ echo "== Lean rows (grip, std.parsec, hand, lean.json, grip.json) =="
 lake build bench >/dev/null
 run lake exe bench
 
+ABS_DATA=("$PWD/bench/data/canada.json" "$PWD/bench/data/citm_catalog.json" "$PWD/bench/data/twitter.json")
+
 if have cargo && [[ -f bench/cross-lang/nom/Cargo.toml ]]; then
   echo "== nom =="
   (cd bench/cross-lang/nom && cargo build --release --quiet)
-  for f in "${DATA[@]}"; do run bench/cross-lang/nom/target/release/nom-bench "$f"; done
+  for f in "${ABS_DATA[@]}"; do run bench/cross-lang/nom/target/release/nom-bench "$f"; done
 fi
 
 for hs in atto megaparsec; do
   if have cabal && [[ -d "bench/cross-lang/$hs" ]]; then
     echo "== $hs =="
-    (cd "bench/cross-lang/$hs" && cabal build --quiet 2>/dev/null || cabal build)
-    for f in "${DATA[@]}"; do
-      run bash -c "cd bench/cross-lang/$hs && cabal run --quiet ${hs}-bench -- ../../$f 2>/dev/null"
-    done
+    (cd "bench/cross-lang/$hs" && cabal build >/dev/null)
+    bin="$(cd "bench/cross-lang/$hs" && cabal list-bin "${hs}-bench" | tail -1)"
+    for f in "${ABS_DATA[@]}"; do run "$bin" "$f"; done
   fi
 done
 
 if have dune && [[ -d bench/cross-lang/angstrom ]]; then
   echo "== angstrom =="
-  (cd bench/cross-lang/angstrom && dune build --quiet 2>/dev/null || dune build)
-  for f in "${DATA[@]}"; do
-    run bash -c "cd bench/cross-lang/angstrom && dune exec ./main.exe -- ../../$f"
+  (cd bench/cross-lang/angstrom && dune build)
+  for f in "${ABS_DATA[@]}"; do
+    run bash -c "cd bench/cross-lang/angstrom && dune exec ./main.exe -- '$f'"
   done
 fi
 
 if [[ -d bench/cross-lang/lean4-parser ]]; then
   echo "== lean4-parser =="
   (cd bench/cross-lang/lean4-parser && lake build >/dev/null)
-  for f in "${DATA[@]}"; do run bench/cross-lang/lean4-parser/.lake/build/bin/L4pBench "$f"; done
+  for f in "${ABS_DATA[@]}"; do run bench/cross-lang/lean4-parser/.lake/build/bin/L4pBench "$f"; done
 fi
 
 if [[ -d bench/cross-lang/prim-parser && -d ../prim-parser ]]; then
   echo "== prim-parser (byte port) =="
   (cd bench/cross-lang/prim-parser && lake build >/dev/null)
-  for f in "${DATA[@]}"; do run bench/cross-lang/prim-parser/.lake/build/bin/gripjson "$f"; done
+  for f in "${ABS_DATA[@]}"; do run bench/cross-lang/prim-parser/.lake/build/bin/gripjson "$f"; done
 fi
 
 if [[ "${1:-}" == "--with-upstream" && -d bench/cross-lang/prim-parser-upstream ]]; then

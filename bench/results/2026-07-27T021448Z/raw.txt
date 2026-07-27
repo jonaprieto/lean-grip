@@ -1,0 +1,44 @@
+# bench session 2026-07-27T021448Z
+# machine: Darwin arm64, Apple M2 Pro
+# lean: Lean (version 4.28.0, arm64-apple-darwin24.6.0, commit 7e01a1bf5c70fc6167d49c345d3bf80596e9a79b, Release)
+# rustc: rustc 1.95.0 (59807616e 2026-04-14)
+# ghc: The Glorious Glasgow Haskell Compilation System, version 9.14.1
+# ocaml: 5.3.0
+grip canada count=111130 ms=19.973792 med=20.434125
+std.parsec canada count=111130 ms=22.488625 med=22.818500
+hand canada count=111130 ms=5.174125 med=5.356458
+lean.json canada count=111130 ms=73.753834 med=74.683917 (DOM build)
+grip.json canada count=111130 ms=40.201000 med=40.627208 (DOM build)
+grip citm count=16390 ms=7.797458 med=8.046000
+std.parsec citm count=16390 ms=11.560334 med=11.819125
+hand citm count=16390 ms=3.000125 med=3.121250
+lean.json citm count=16390 ms=5.964625 med=6.287583 (DOM build)
+grip.json citm count=16390 ms=9.490375 med=9.696292 (DOM build)
+grip twitter count=11600 ms=2.938250 med=3.023541
+std.parsec twitter count=11600 ms=5.034500 med=5.205000
+hand twitter count=11600 ms=1.257959 med=1.316625
+lean.json twitter count=11600 ms=4.139166 med=4.393916 (DOM build)
+grip.json twitter count=11600 ms=4.475000 med=4.700875 (DOM build)
+sexp size=200002 count=50000 ms=4.962875 med=5.150041
+lambda size=100001 count=1 ms=3.737708 med=3.904000
+http size=80018 count=10000 ms=1.010250 med=1.043458
+toml size=73642 count=307 ms=0.808125 med=0.824292
+yaml size=90003 count=30001 ms=4.371458 med=4.546250
+nom canada.json count=111130 best_ms=1.750 med_ms=1.814
+nom citm_catalog.json count=16390 best_ms=1.268 med_ms=1.290
+nom twitter.json count=11600 best_ms=0.481 med_ms=0.502
+attoparsec canada.json count=111130 best_ms=13.296 med_ms=13.579
+attoparsec citm_catalog.json count=16390 best_ms=5.319 med_ms=5.404
+attoparsec twitter.json count=11600 best_ms=2.065 med_ms=2.138
+megaparsec canada.json count=111130 best_ms=10.249 med_ms=10.621
+megaparsec citm_catalog.json count=16390 best_ms=4.581 med_ms=4.744
+megaparsec twitter.json count=11600 best_ms=1.753 med_ms=1.814
+angstrom canada.json count=111130 best_ms=42.063 med_ms=42.827
+angstrom citm_catalog.json count=16390 best_ms=13.280 med_ms=13.597
+angstrom twitter.json count=11600 best_ms=3.903 med_ms=4.032
+lean4-parser canada.json count=111130 best_ms=106.454667 med_ms=110.398541
+lean4-parser citm_catalog.json count=16390 best_ms=68.562417 med_ms=71.160000
+lean4-parser twitter.json count=11600 best_ms=18.827417 med_ms=19.255625
+prim-parser canada.json count=111130 best_ms=73.801458 med_ms=76.198542
+prim-parser citm_catalog.json count=16390 best_ms=34.229083 med_ms=34.956125
+prim-parser twitter.json count=11600 best_ms=11.555875 med_ms=11.789792
