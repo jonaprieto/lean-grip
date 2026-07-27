@@ -318,6 +318,42 @@ theorem frac_run (arr : ByteArray) (q n : Nat) (hq : q < arr.size) (hdot : arr[q
     rwa [show q + 1 + (n - 1) = q + n from by omega] at this
   exact seqR_run _ _ arr q () (q + 1) (n - 1) (q + n) hch htw1
 
+/-- Lift an already-established `number` parse through `value`'s byte dispatch. This keeps
+specialized render-shape proofs focused on the number grammar rather than duplicating dispatch
+reasoning. -/
+theorem value_run_number (arr : ByteArray) (q : Nat) (m : Int) (e n : Nat)
+    (hq : q < arr.size)
+    (hstart : Ascii.isDigit arr[q] = true ∨ arr[q] = Ascii.dash)
+    (hnum : number.run arr q = .ok (Json.num m e) (q + n)) :
+    value.run arr q = .ok (Json.num m e) (q + n) := by
+  rcases hstart with hdigit | hdash
+  · have hne : ∀ c : UInt8, Ascii.isDigit c = false → ¬ ((arr[q] == c) = true) := fun c hc => by
+      rw [beq_iff_eq]
+      intro he
+      rw [he, hc] at hdigit
+      exact absurd hdigit (by decide)
+    rw [value, fix_run_unroll]
+    simp only [valueBody]
+    rw [wsDispatch_run_stop _ arr q hq (isDigit_not_ws hdigit)]
+    simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
+    rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
+      if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
+      if_pos (by rw [hdigit]; rfl), hnum]
+    exact clampAdvance_ok arr q (number.cwit hnum) (number.bwit (Nat.le_of_lt hq) hnum)
+  · have hne : ∀ c : UInt8, c ≠ 45 → ¬ ((arr[q] == c) = true) := fun c hc => by
+      rw [beq_iff_eq]
+      intro he
+      exact hc (he.symm.trans hdash)
+    have hws : Ascii.isWs arr[q] = false := by rw [hdash]; decide
+    rw [value, fix_run_unroll]
+    simp only [valueBody]
+    rw [wsDispatch_run_stop _ arr q hq hws]
+    simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
+    rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
+      if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
+      if_pos (by rw [hdash]; decide), hnum]
+    exact clampAdvance_ok arr q (number.cwit hnum) (number.bwit (Nat.le_of_lt hq) hnum)
+
 /-- `value` parses a nonnegative integer number (`e = 0`). The `hstop` byte after the number is a
 delimiter (not a digit, `.`, or `e`), so the optional fraction/exponent parsers correctly fail. -/
 theorem value_run_num_int (arr : ByteArray) (q : Nat) (m : Int) (_hm : 0 ≤ m) (n : Nat)
@@ -363,15 +399,7 @@ theorem value_run_num_int (arr : ByteArray) (q : Nat) (m : Int) (_hm : 0 ≤ m) 
       (seqR_run _ _ arr q none q () (q + n) hsign
         (seqL_run _ _ arr q () (q + n) none (q + n) hint
           (seqR_run _ _ arr (q + n) none (q + n) none (q + n) hfrac hexp))) hdecode
-  have hne : ∀ c : UInt8, Ascii.isDigit c = false → ¬((arr[q] == c) = true) := fun c hc => by
-    rw [beq_iff_eq]; intro he; rw [he, hc] at hb; exact absurd hb (by decide)
-  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
-  simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
-  rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-    if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
-    if_pos (by rw [hb]; rfl)]
-  rw [hnum]
-  exact clampAdvance_ok arr q (by omega) (by omega)
+  exact value_run_number arr q m 0 n hqs (Or.inl hb) hnum
 
 /-- `value` parses a nonnegative fractional number (`e > 0`): integer part of length `ip`, `.`,
 then a nonempty fractional part, total length `n`. -/
@@ -424,15 +452,7 @@ theorem value_run_num_frac (arr : ByteArray) (q : Nat) (m : Int) (e ip n : Nat) 
         (seqL_run _ _ arr q () (q + ip) none (q + n) hint
           (seqR_run _ _ arr (q + ip) (some (n - ip - 1)) (q + n) none (q + n)
             (optional_run_some frac arr (q + ip) (n - ip - 1) (q + n) hfr) hexp))) hdecode
-  have hne : ∀ c : UInt8, Ascii.isDigit c = false → ¬((arr[q] == c) = true) := fun c hc => by
-    rw [beq_iff_eq]; intro he; rw [he, hc] at hb; exact absurd hb (by decide)
-  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
-  simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
-  rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-    if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
-    if_pos (by rw [hb]; rfl)]
-  rw [hnum]
-  exact clampAdvance_ok arr q (by omega) (by omega)
+  exact value_run_number arr q m e n hqs (Or.inl hb) hnum
 
 /-- `value` parses a negative integer (`m < 0`, `e = 0`): a `-` sign then an integer part of
 length `ip`. Dispatch routes `-` to `number` via the `dash` branch. -/
@@ -477,16 +497,8 @@ theorem value_run_num_int_neg (arr : ByteArray) (q : Nat) (m : Int) (_hm : m < 0
         (seqL_run _ _ arr (q + 1) () (q + 1 + ip) none (q + 1 + ip) hint
           (seqR_run _ _ arr (q + 1 + ip) none (q + 1 + ip) none (q + 1 + ip) hfrac hexp)))
       hdecode
-  have hne : ∀ c : UInt8, c ≠ 45 → ¬((arr[q] == c) = true) := fun c hc => by
-    rw [beq_iff_eq, hb]; exact fun h => hc h.symm
-  have hws : Ascii.isWs arr[q] = false := by rw [hb]; decide
-  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs hws]
-  simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
-  rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-    if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
-    if_pos (by rw [hb]; decide)]
-  rw [hnum]
-  exact clampAdvance_ok arr q (by omega) (by omega)
+  rw [Nat.add_assoc] at hnum ⊢
+  exact value_run_number arr q m 0 (1 + ip) hqs (Or.inr hb) hnum
 
 /-- `value` parses a negative fractional number (`m < 0`, `e > 0`): `-`, integer part of length
 `ip`, `.`, then a nonempty fractional part, total length `n`. -/
@@ -534,16 +546,7 @@ theorem value_run_num_frac_neg (arr : ByteArray) (q : Nat) (m : Int) (e ip n : N
           (seqR_run _ _ arr (q + 1 + ip) (some (n - 1 - ip - 1)) (q + n) none (q + n)
             (optional_run_some frac arr (q + 1 + ip) (n - 1 - ip - 1) (q + n) hfr) hexp)))
       hdecode
-  have hne : ∀ c : UInt8, c ≠ 45 → ¬((arr[q] == c) = true) := fun c hc => by
-    rw [beq_iff_eq, hb]; exact fun h => hc h.symm
-  have hws : Ascii.isWs arr[q] = false := by rw [hb]; decide
-  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs hws]
-  simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
-  rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-    if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
-    if_pos (by rw [hb]; decide)]
-  rw [hnum]
-  exact clampAdvance_ok arr q (by omega) (by omega)
+  exact value_run_number arr q m e n hqs (Or.inr hb) hnum
 
 /-- `value` parses the `null` keyword. -/
 theorem value_run_null (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
@@ -687,42 +690,6 @@ private theorem renderNumScientific_append (m : Int) (e : Nat) :
   · apply String.ext
     simp [renderNumScientific, hm, String.toList_append,
       List.append_assoc, show ("e-" : String).toList = ['e', '-'] from by decide]
-
-/-- Lift an already-established `number` parse through `value`'s byte dispatch. This keeps
-specialized render-shape proofs focused on the number grammar rather than duplicating dispatch
-reasoning. -/
-theorem value_run_number (arr : ByteArray) (q : Nat) (m : Int) (e n : Nat)
-    (hq : q < arr.size)
-    (hstart : Ascii.isDigit arr[q] = true ∨ arr[q] = Ascii.dash)
-    (hnum : number.run arr q = .ok (Json.num m e) (q + n)) :
-    value.run arr q = .ok (Json.num m e) (q + n) := by
-  rcases hstart with hdigit | hdash
-  · have hne : ∀ c : UInt8, Ascii.isDigit c = false → ¬ ((arr[q] == c) = true) := fun c hc => by
-      rw [beq_iff_eq]
-      intro he
-      rw [he, hc] at hdigit
-      exact absurd hdigit (by decide)
-    rw [value, fix_run_unroll]
-    simp only [valueBody]
-    rw [wsDispatch_run_stop _ arr q hq (isDigit_not_ws hdigit)]
-    simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
-    rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-      if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
-      if_pos (by rw [hdigit]; rfl), hnum]
-    exact clampAdvance_ok arr q (number.cwit hnum) (number.bwit (Nat.le_of_lt hq) hnum)
-  · have hne : ∀ c : UInt8, c ≠ 45 → ¬ ((arr[q] == c) = true) := fun c hc => by
-      rw [beq_iff_eq]
-      intro he
-      exact hc (he.symm.trans hdash)
-    have hws : Ascii.isWs arr[q] = false := by rw [hdash]; decide
-    rw [value, fix_run_unroll]
-    simp only [valueBody]
-    rw [wsDispatch_run_stop _ arr q hq hws]
-    simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
-    rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-      if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
-      if_pos (by rw [hdash]; decide), hnum]
-    exact clampAdvance_ok arr q (number.cwit hnum) (number.bwit (Nat.le_of_lt hq) hnum)
 
 private theorem expo_run_scientific (arr : ByteArray) (q ep : Nat)
     (hq : q < arr.size) (hexp : Ascii.isExp arr[q]! = true)
