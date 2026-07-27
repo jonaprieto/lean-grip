@@ -200,7 +200,7 @@ literal (grade `conditional`); the `if q < q'` clamp fails an empty match. -/
 
 end Grip
 
-/-! ### Sanity: the Char layer decodes and matches. -/
+/-! ### Sanity guards. -/
 section
 open Grip
 

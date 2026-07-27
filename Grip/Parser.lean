@@ -213,7 +213,7 @@ open Lean in
 @[macro gdoNotation] def expandGDo : Macro := fun stx =>
   expandGDoBlock stx[1]
 
-/-! ### Acceptance guards -/
+/-! ### Sanity guards. -/
 
 section Guards
 open Grip
