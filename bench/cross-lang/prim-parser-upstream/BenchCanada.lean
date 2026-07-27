@@ -12,8 +12,8 @@
   Strings: no escape sequences (canada.json doesn't need them).
 
   Measures:
-    vector_build_ms  : String → List.Vector Char n construction time (forced)
-    parse_best_ms    : best of 20 in-process parse runs (vector pre-built)
+    text_build_ms    : String → Text (ByteArray) conversion time (trivial since #11)
+    parse_best_ms    : best of 20 in-process parse runs (text pre-built)
 -/
 import PrimParser
 
@@ -65,9 +65,9 @@ def jsonCount : Parser Error conditional Nat :=
 
 -- ── Benchmark harness ─────────────────────────────────────────────────────
 
-/-- Convert a String to a length-indexed Text. -/
-@[noinline] def toText (s : String) : Text s.toList.length :=
-  ⟨s.toList, rfl⟩
+/-- Convert a String to a length-indexed Text (ByteArray-backed since upstream #11;
+Char decoding happens per token in the parser). -/
+@[noinline] def toText (s : String) : Text s.toUTF8.size := Text.ofString s
 
 /-- Run one parse from an IO.Ref holding the text; prevents CSE across iterations. -/
 @[noinline] def runParseIO {n : Nat} (ref : IO.Ref (Text n)) : IO Nat := do
@@ -96,8 +96,8 @@ def main (args : List String) : IO Unit := do
     IO.println s!"ERROR: expected 111130, got {firstCount}"
     return
 
-  IO.println s!"vector_build_ns={vecBuildNs}"
-  IO.println s!"vector_build_ms={vecBuildNs / 1_000_000}"
+  IO.println s!"text_build_ns={vecBuildNs}"
+  IO.println s!"text_build_ms={vecBuildNs / 1_000_000}"
 
   -- ── Best-of-20 timed parse runs ──────────────────────────────────────────
   -- Using IO.Ref to prevent CSE of runParseIO across iterations.
@@ -115,4 +115,4 @@ def main (args : List String) : IO Unit := do
   let _ ← sink.get
   IO.println s!"parse_best_ns={best}"
   IO.println s!"parse_best_ms={best / 1_000_000}"
-  IO.println s!"prim-parser commit=e1f3f7b lean=v4.28.0 mathlib=v4.28.0"
+  IO.println s!"prim-parser commit=0728704 lean=v4.28.0 mathlib=v4.28.0"

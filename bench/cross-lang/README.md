@@ -15,7 +15,7 @@ Not built in CI (they need Rust, Haskell, OCaml, or a sibling checkout); run the
 | angstrom (OCaml) | `cd angstrom && dune exec ./main.exe -- <file>` |
 | lean4-parser (Lean) | `cd lean4-parser && lake build && .lake/build/bin/L4pBench <file>` |
 | prim-parser byte port (Lean) | `cd prim-parser && lake exe cache get && lake build && .lake/build/bin/gripjson <file>` |
-| prim-parser upstream (Lean) | `cd prim-parser-upstream && lake exe cache get && lake build && .lake/build/bin/bench-canada` |
+| prim-parser upstream (Lean) | `cd prim-parser-upstream && lake exe cache get && lake build && .lake/build/bin/bench-canada ../../data/canada.json` |
 
 `<file>` is one of `bench/data/{canada.json,citm_catalog.json,twitter.json}`. The
 prim-parser byte port path-requires the sibling `research/prim-parser` repo; both
