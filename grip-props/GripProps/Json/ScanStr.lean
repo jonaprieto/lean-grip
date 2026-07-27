@@ -34,16 +34,18 @@ def ebytes (cs : List Char) : List UInt8 := (cs.flatMap escapeChar).flatMap Stri
 theorem ebytes_cons (c : Char) (cs : List Char) : ebytes (c :: cs) = cbytes c ++ ebytes cs := by
   simp only [ebytes, cbytes, List.flatMap_cons, List.flatMap_append]
 
+/-- Every `hexDigit` output is one of the sixteen hex characters. -/
+theorem hexDigit_mem (n : Nat) : hexDigit n ∈ "0123456789abcdef".toList := by
+  unfold hexDigit
+  rcases Nat.lt_or_ge n "0123456789abcdef".toList.length with h | h
+  · rw [List.getD_eq_getElem _ _ h]; exact List.getElem_mem _
+  · rw [List.getD_eq_default _ _ h]; decide
+
 /-- `Ascii.isHexDigit` accepts every `hexDigit` output: each is one of `0-9a-f`, all hex. -/
 theorem isHexDigit_hexDigit (n : Nat) : Ascii.isHexDigit ((hexDigit n).val.toUInt8) = true := by
-  have hmem : hexDigit n ∈ "0123456789abcdef".toList := by
-    unfold hexDigit
-    rcases Nat.lt_or_ge n "0123456789abcdef".toList.length with h | h
-    · rw [List.getD_eq_getElem _ _ h]; exact List.getElem_mem _
-    · rw [List.getD_eq_default _ _ h]; decide
   have key : ∀ c ∈ "0123456789abcdef".toList, Ascii.isHexDigit (c.val.toUInt8) = true := by
     intro c hc; fin_cases hc <;> rfl
-  exact key _ hmem
+  exact key _ (hexDigit_mem n)
 
 /-- Inverting `escapeChar c = [c]`: the character fell through every escape branch, so it is
 `≥ 0x20` and neither `"` nor `\`. -/
@@ -239,14 +241,9 @@ theorem scanStr_char_passthrough (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c 
 
 /-- Every `hexDigit` output is ASCII (`≤ 0x7F`). -/
 theorem hexDigit_val_le (k : Nat) : (hexDigit k).val ≤ 0x7F := by
-  have hmem : hexDigit k ∈ "0123456789abcdef".toList := by
-    unfold hexDigit
-    rcases Nat.lt_or_ge k "0123456789abcdef".toList.length with h | h
-    · rw [List.getD_eq_getElem _ _ h]; exact List.getElem_mem _
-    · rw [List.getD_eq_default _ _ h]; decide
   have key : ∀ c ∈ "0123456789abcdef".toList, c.val ≤ 0x7F := by
     intro c hc; fin_cases hc <;> decide
-  exact key _ hmem
+  exact key _ (hexDigit_mem k)
 
 /-- A `hexDigit` char is single-byte in UTF-8, carrying its codepoint. -/
 theorem hexDigit_utf8 (k : Nat) :

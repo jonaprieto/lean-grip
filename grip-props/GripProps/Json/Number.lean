@@ -23,43 +23,6 @@ open GripProps.Bytes
 
 namespace GripProps.Number
 
-/-- A decimal digit character's byte is none of the structural bytes `numByte` special-cases, so
-`numByte` takes the digit branch and, in phase 0, folds it into the mantissa. -/
-theorem foldl_numByte_digits (ds : List Char) (st : NState) (hp : st.phase = 0)
-    (hd : ∀ c ∈ ds, 48 ≤ c.toNat ∧ c.toNat ≤ 57) :
-    ds.foldl (fun s c => numByte s (UInt8.ofNat c.toNat)) st
-      = { st with mant := ds.foldl (fun a c => a * 10 + (c.toNat - 48)) st.mant } := by
-  induction ds generalizing st with
-  | nil => simp
-  | cons c cs ih =>
-    obtain ⟨hc1, hc2⟩ := hd c (by simp)
-    have hsize : UInt8.size = 256 := by decide
-    have hb : (UInt8.ofNat c.toNat).toNat = c.toNat := UInt8.toNat_ofNat_of_lt' (by omega)
-    have h48 : ((48 : UInt8)).toNat = 48 := by decide
-    have key : ∀ k : Nat, k < 256 → k ≠ c.toNat →
-        (UInt8.ofNat c.toNat == UInt8.ofNat k) = false := by
-      intro k hk256 hk
-      rw [beq_eq_false_iff_ne, ne_eq]
-      intro h
-      have hkb : (UInt8.ofNat k).toNat = k := UInt8.toNat_ofNat_of_lt' (by omega)
-      have := congrArg UInt8.toNat h
-      rw [hb, hkb] at this
-      exact hk this.symm
-    have hle : (48 : UInt8) ≤ UInt8.ofNat c.toNat := by
-      rw [UInt8.le_iff_toNat_le, hb, h48]; omega
-    have hd48 : (UInt8.ofNat c.toNat - 48).toNat = c.toNat - 48 := by
-      rw [UInt8.toNat_sub_of_le _ _ hle, hb, h48]
-    have hstep : numByte st (UInt8.ofNat c.toNat)
-        = { st with mant := st.mant * 10 + (c.toNat - 48) } := by
-      simp only [numByte, show (46 : UInt8) = UInt8.ofNat 46 from rfl,
-        show (101 : UInt8) = UInt8.ofNat 101 from rfl, show (69 : UInt8) = UInt8.ofNat 69 from rfl,
-        show (43 : UInt8) = UInt8.ofNat 43 from rfl, show (45 : UInt8) = UInt8.ofNat 45 from rfl,
-        key 46 (by omega) (by omega), key 101 (by omega) (by omega), key 69 (by omega) (by omega),
-        key 43 (by omega) (by omega), key 45 (by omega) (by omega)]
-      simp [Bool.or_self, hp, hd48]
-    rw [List.foldl_cons, List.foldl_cons, hstep]
-    rw [ih _ (by simp [hp]) (fun c hc => hd c (by simp [hc]))]
-
 /-- Single `numByte` step on a decimal digit, phase 0 or 1: accumulate the mantissa (and, in
 phase 1, count a fractional digit); other fields unchanged. -/
 theorem numByte_digit (st : NState) (c : Char) (hc1 : 48 ≤ c.toNat) (hc2 : c.toNat ≤ 57) :
@@ -92,6 +55,21 @@ theorem numByte_digit (st : NState) (c : Char) (hc1 : 48 ≤ c.toNat) (hc2 : c.t
     simp [this]
   · simp [h]
   · simp [show ¬ st.phase = 0 from by omega, show ¬ st.phase = 1 from by omega]
+
+/-- A decimal digit character's byte is none of the structural bytes `numByte` special-cases, so
+`numByte` takes the digit branch and, in phase 0, folds it into the mantissa. -/
+theorem foldl_numByte_digits (ds : List Char) (st : NState) (hp : st.phase = 0)
+    (hd : ∀ c ∈ ds, 48 ≤ c.toNat ∧ c.toNat ≤ 57) :
+    ds.foldl (fun s c => numByte s (UInt8.ofNat c.toNat)) st
+      = { st with mant := ds.foldl (fun a c => a * 10 + (c.toNat - 48)) st.mant } := by
+  induction ds generalizing st with
+  | nil => simp
+  | cons c cs ih =>
+    obtain ⟨hc1, hc2⟩ := hd c (by simp)
+    rw [List.foldl_cons, numByte_digit st c hc1 hc2]
+    simp only [hp, ↓reduceIte]
+    rw [ih _ (by simp [hp]) (fun c hc => hd c (by simp [hc]))]
+    simp [List.foldl_cons]
 
 /-- Phase-1 (fractional) `numByte` fold: accumulate the mantissa and count each digit. -/
 theorem foldl_numByte_frac (ds : List Char) (st : NState) (hp : st.phase = 1)
@@ -178,10 +156,10 @@ theorem decode_renderNum_frac (m : Int) (hm : 0 ≤ m) (e : Nat) (he : 0 < e) :
       = some (Json.num m e) := by
   have hna : m.natAbs = m.toNat := by omega
   have htl : (toString m.natAbs).toList = Nat.toDigits 10 m.toNat := by
-    rw [hna]; show (Nat.repr m.toNat).toList = _; rw [Nat.repr, String.toList_ofList]
+    rw [hna]; exact GripProps.NatDigits.repr_toList _
   set len := (toString m.natAbs).length with hlen
   have hlenL : len = (Nat.toDigits 10 m.toNat).length := by
-    rw [hlen, hna]; show (Nat.repr m.toNat).length = _; rw [Nat.repr, String.length_ofList]
+    rw [hlen, hna]; exact GripProps.NatDigits.repr_length _
   set ds := List.replicate (e + 1 - len) '0' ++ Nat.toDigits 10 m.toNat with hds
   set k := ds.length - e with hk
   have hds_dig : ∀ c ∈ ds, 48 ≤ c.toNat ∧ c.toNat ≤ 57 := by
@@ -208,9 +186,7 @@ theorem decode_renderNum_frac (m : Int) (hm : 0 ≤ m) (e : Nat) (he : 0 < e) :
     have hmant : (ds.take k ++ ds.drop k).foldl (fun a c => a * 10 + (c.toNat - 48)) 0
         = m.toNat := by
       rw [List.take_append_drop, hds, List.foldl_append, foldl_H_zeros]
-      have := GripProps.NatDigits.foldl_repr m.toNat
-      rw [Nat.repr, String.toList_ofList] at this
-      exact this
+      exact GripProps.NatDigits.foldl_toDigits _
     have hfrac : (ds.drop k).length = e := by rw [List.length_drop]; omega
     rw [show ({} : NState).mant = 0 from rfl, hmant, hfrac]
     simp
@@ -226,11 +202,11 @@ integer case there is no `String.Internal.append` obstruction. -/
 theorem decode_renderNum_frac_neg (m : Int) (hm : m < 0) (e : Nat) (he : 0 < e) :
     decodeNumberBytes? (renderNum m e).toUTF8 0 (renderNum m e).toUTF8.size
       = some (Json.num m e) := by
-  have htl : (toString m.natAbs).toList = Nat.toDigits 10 m.natAbs := by
-    show (Nat.repr m.natAbs).toList = _; rw [Nat.repr, String.toList_ofList]
+  have htl : (toString m.natAbs).toList = Nat.toDigits 10 m.natAbs :=
+    GripProps.NatDigits.repr_toList _
   set len := (toString m.natAbs).length with hlen
   have hlenL : len = (Nat.toDigits 10 m.natAbs).length := by
-    rw [hlen]; show (Nat.repr m.natAbs).length = _; rw [Nat.repr, String.length_ofList]
+    rw [hlen]; exact GripProps.NatDigits.repr_length _
   set ds := List.replicate (e + 1 - len) '0' ++ Nat.toDigits 10 m.natAbs with hds
   set k := ds.length - e with hk
   have hds_dig : ∀ c ∈ ds, 48 ≤ c.toNat ∧ c.toNat ≤ 57 := by
@@ -259,9 +235,7 @@ theorem decode_renderNum_frac_neg (m : Int) (hm : m < 0) (e : Nat) (he : 0 < e) 
     have hmant : (ds.take k ++ ds.drop k).foldl (fun a c => a * 10 + (c.toNat - 48))
         ({ mantNeg := true } : NState).mant = m.natAbs := by
       rw [List.take_append_drop, hds, List.foldl_append, foldl_H_zeros]
-      have := GripProps.NatDigits.foldl_repr m.natAbs
-      rw [Nat.repr, String.toList_ofList] at this
-      exact this
+      exact GripProps.NatDigits.foldl_toDigits _
     have hfrac : (ds.drop k).length = e := by rw [List.length_drop]; omega
     rw [hmant, hfrac]; simp
   unfold decodeNumberBytes?
@@ -281,16 +255,13 @@ theorem decode_renderNum_int (m : Int) (hm : 0 ≤ m) :
   have hrn0 : renderNum m 0 = toString m.natAbs := by
     unfold renderNum; rw [if_neg (show ¬ m < 0 from by omega)]; simp
   have hchars : (renderNum m 0).toList = Nat.toDigits 10 m.toNat := by
-    rw [hrn0, hna]; show (Nat.repr m.toNat).toList = _; rw [Nat.repr, String.toList_ofList]
+    rw [hrn0, hna]; exact GripProps.NatDigits.repr_toList _
   have hst : (renderNum m 0).toUTF8.foldl numByte {} 0 (renderNum m 0).toUTF8.size
       = ({ mant := m.toNat } : NState) := by
     rw [GripProps.Bytes.toUTF8_foldl, hchars,
       foldl_numByte_ascii _ _ rfl (GripProps.NatDigits.mem_toDigits_bound m.toNat)]
     have hfold : (Nat.toDigits 10 m.toNat).foldl (fun a c => a * 10 + (c.toNat - 48)) 0
-        = m.toNat := by
-      have := GripProps.NatDigits.foldl_repr m.toNat
-      rw [Nat.repr, String.toList_ofList] at this
-      exact this
+        = m.toNat := GripProps.NatDigits.foldl_toDigits _
     simp only [hfold]
   unfold decodeNumberBytes?
   rw [hst]
@@ -306,8 +277,8 @@ theorem decode_renderNum_int_neg (m : Int) (hm : m < 0) :
     unfold renderNum; rw [if_pos (show m < 0 from hm)]; simp
   have hrn : (renderNum m 0).toList = '-' :: Nat.toDigits 10 m.natAbs := by
     rw [hrn0, String.toList_append, show ("-" : String).toList = ['-'] from by decide,
-      show (toString m.natAbs).toList = Nat.toDigits 10 m.natAbs from by
-        show (Nat.repr m.natAbs).toList = _; rw [Nat.repr, String.toList_ofList]]
+      show (toString m.natAbs).toList = Nat.toDigits 10 m.natAbs from
+        GripProps.NatDigits.repr_toList _]
     rfl
   have hst : (renderNum m 0).toUTF8.foldl numByte {} 0 (renderNum m 0).toUTF8.size
       = ({ mant := m.natAbs, mantNeg := true } : NState) := by
@@ -316,10 +287,8 @@ theorem decode_renderNum_int_neg (m : Int) (hm : m < 0) :
       show numByte {} (UInt8.ofNat ('-').toNat) = ({ mantNeg := true } : NState) from rfl,
       foldl_numByte_ascii _ _ rfl (GripProps.NatDigits.mem_toDigits_bound m.natAbs)]
     have hfold : (Nat.toDigits 10 m.natAbs).foldl (fun a c => a * 10 + (c.toNat - 48))
-        ({ mantNeg := true } : NState).mant = m.natAbs := by
-      have := GripProps.NatDigits.foldl_repr m.natAbs
-      rw [Nat.repr, String.toList_ofList] at this
-      exact this
+        ({ mantNeg := true } : NState).mant = m.natAbs :=
+      GripProps.NatDigits.foldl_toDigits _
     rw [hfold]
   unfold decodeNumberBytes?
   rw [hst]
@@ -332,12 +301,10 @@ materializing the fractional zero padding. -/
 theorem decode_renderNumScientific (m : Int) (e : Nat) (he : 0 < e) :
     decodeNumberBytes? (renderNumScientific m e).toUTF8 0 (renderNumScientific m e).toUTF8.size
       = some (Json.num m e) := by
-  have hdigits : (toString m.natAbs).toList = Nat.toDigits 10 m.natAbs := by
-    show (Nat.repr m.natAbs).toList = _
-    rw [Nat.repr, String.toList_ofList]
-  have hexp : (toString e).toList = Nat.toDigits 10 e := by
-    show (Nat.repr e).toList = _
-    rw [Nat.repr, String.toList_ofList]
+  have hdigits : (toString m.natAbs).toList = Nat.toDigits 10 m.natAbs :=
+    GripProps.NatDigits.repr_toList _
+  have hexp : (toString e).toList = Nat.toDigits 10 e :=
+    GripProps.NatDigits.repr_toList _
   have hmant : ∀ (st : NState), st.phase = 0 → st.mant = 0 →
       ((toString m.natAbs).toList.flatMap String.utf8EncodeChar).foldl numByte st =
         { st with mant := m.natAbs } := by
@@ -346,10 +313,7 @@ theorem decode_renderNumScientific (m : Int) (e : Nat) (he : 0 < e) :
       (GripProps.NatDigits.mem_toDigits_bound m.natAbs)]
     have hfold : (Nat.toDigits 10 m.natAbs).foldl
         (fun a c => a * 10 + (c.toNat - 48)) st.mant = m.natAbs := by
-      rw [hz]
-      have h := GripProps.NatDigits.foldl_repr m.natAbs
-      rw [Nat.repr, String.toList_ofList] at h
-      exact h
+      rw [hz]; exact GripProps.NatDigits.foldl_toDigits _
     rw [hfold]
   have hexpFold : ∀ (st : NState), st.phase = 2 → st.expVal = 0 →
       ((toString e).toList.flatMap String.utf8EncodeChar).foldl numByte st =
@@ -359,10 +323,7 @@ theorem decode_renderNumScientific (m : Int) (e : Nat) (he : 0 < e) :
       foldl_numByte_exp_ascii _ _ hp (GripProps.NatDigits.mem_toDigits_bound e)]
     have hfold : (Nat.toDigits 10 e).foldl
         (fun a c => a * 10 + (c.toNat - 48)) st.expVal = e := by
-      rw [hz]
-      have h := GripProps.NatDigits.foldl_repr e
-      rw [Nat.repr, String.toList_ofList] at h
-      exact h
+      rw [hz]; exact GripProps.NatDigits.foldl_toDigits _
     rw [hfold]
   by_cases hm : m < 0
   · have hchars : (renderNumScientific m e).toList =
@@ -431,6 +392,18 @@ theorem decodeNumberBytes?_congr {arr1 arr2 : ByteArray} {q1 q1' q2 q2' : Nat}
     decodeNumberBytes? arr1 q1 q1' = decodeNumberBytes? arr2 q2 q2' := by
   unfold decodeNumberBytes?; rw [h]
 
+/-- Lift a whole-lexeme decode result through any byte slice matching that lexeme. -/
+theorem decode_at (s : String) (v : Json) (arr : ByteArray) (q : Nat)
+    (hsize : q + s.toUTF8.size ≤ arr.size)
+    (hm : ∀ j, j < s.toUTF8.size → arr[q + j]! = s.toUTF8[j]!)
+    (hd : decodeNumberBytes? s.toUTF8 0 s.toUTF8.size = some v) :
+    decodeNumberBytes? arr q (q + s.toUTF8.size) = some v := by
+  rw [decodeNumberBytes?_congr
+    (GripProps.Bytes.foldl_congr_match numByte {} arr s.toUTF8 q 0
+      s.toUTF8.size hsize (by omega)
+      (fun i hi => by rw [Nat.zero_add]; exact hm i hi))]
+  simpa using hd
+
 /-- Decoding a number that matches `renderNum m e` at offset `q` recovers `num m e`, given the
 whole-array decode result. -/
 theorem decode_renderNum_at (arr : ByteArray) (q : Nat) (m : Int) (e : Nat)
@@ -438,12 +411,8 @@ theorem decode_renderNum_at (arr : ByteArray) (q : Nat) (m : Int) (e : Nat)
     (hm : ∀ j, j < (renderNum m e).toUTF8.size → arr[q + j]! = (renderNum m e).toUTF8[j]!)
     (hd : decodeNumberBytes? (renderNum m e).toUTF8 0 (renderNum m e).toUTF8.size
       = some (Json.num m e)) :
-    decodeNumberBytes? arr q (q + (renderNum m e).toUTF8.size) = some (Json.num m e) := by
-  rw [decodeNumberBytes?_congr
-    (GripProps.Bytes.foldl_congr_match numByte {} arr (renderNum m e).toUTF8 q 0
-      (renderNum m e).toUTF8.size hsize (by omega)
-      (fun i hi => by rw [Nat.zero_add]; exact hm i hi))]
-  simpa using hd
+    decodeNumberBytes? arr q (q + (renderNum m e).toUTF8.size) = some (Json.num m e) :=
+  decode_at _ _ arr q hsize hm hd
 
 /-- Lift the scientific-notation decoder lemma through an arbitrary matching byte slice. -/
 theorem decode_renderNumScientific_at (arr : ByteArray) (q : Nat) (m : Int) (e : Nat)
@@ -452,9 +421,5 @@ theorem decode_renderNumScientific_at (arr : ByteArray) (q : Nat) (m : Int) (e :
       arr[q + j]! = (renderNumScientific m e).toUTF8[j]!)
     (hd : decodeNumberBytes? (renderNumScientific m e).toUTF8 0
       (renderNumScientific m e).toUTF8.size = some (Json.num m e)) :
-    decodeNumberBytes? arr q (q + (renderNumScientific m e).toUTF8.size) = some (Json.num m e) := by
-  rw [decodeNumberBytes?_congr
-    (GripProps.Bytes.foldl_congr_match numByte {} arr (renderNumScientific m e).toUTF8 q 0
-      (renderNumScientific m e).toUTF8.size hsize (by omega)
-      (fun i hi => by rw [Nat.zero_add]; exact hm i hi))]
-  simpa using hd
+    decodeNumberBytes? arr q (q + (renderNumScientific m e).toUTF8.size) = some (Json.num m e) :=
+  decode_at _ _ arr q hsize hm hd

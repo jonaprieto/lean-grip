@@ -110,6 +110,20 @@ theorem foldl_repr (n : Nat) : (Nat.repr n).toList.foldl H 0 = n := by
     calc n < n + 1 := by omega
       _ ≤ 10 ^ (n + 1) := Nat.le_of_lt (Nat.lt_pow_self (by omega)))
 
+/-- `Nat.repr n`'s character list is `Nat.toDigits 10 n`. -/
+theorem repr_toList (n : Nat) : (Nat.repr n).toList = Nat.toDigits 10 n := by
+  rw [Nat.repr, String.toList_ofList]
+
+/-- `Nat.repr n`'s length is the digit count. -/
+theorem repr_length (n : Nat) : (Nat.repr n).length = (Nat.toDigits 10 n).length := by
+  rw [Nat.repr, String.length_ofList]
+
+/-- The Horner fold over `Nat.toDigits 10 n` recovers `n` (the `foldl_repr` special case
+through `repr_toList`). -/
+theorem foldl_toDigits (n : Nat) : (Nat.toDigits 10 n).foldl H 0 = n := by
+  have := foldl_repr n
+  rwa [Nat.repr, String.toList_ofList] at this
+
 private theorem toDigitsCore_head_nonzero :
     ∀ (fuel n : Nat) (_hn : 0 < n), 0 < fuel → n < 10 ^ fuel →
       ∃ c rest, Nat.toDigitsCore 10 fuel n [] = c :: rest ∧ 49 ≤ c.toNat ∧ c.toNat ≤ 57 := by
