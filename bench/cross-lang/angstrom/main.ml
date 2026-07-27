@@ -169,21 +169,29 @@ let () =
   in
 
   let runs = 20 in
-  let best_ms = ref infinity in
+  let samples = ref [] in
   let final_count = ref check_count in
 
+  (* CPU time (user + sys): monotonic, unlike gettimeofday's NTP-adjustable wall
+     clock; for single-threaded CPU-bound runs the two agree up to scheduling. *)
+  let cpu_now () =
+    let t = Unix.times () in
+    t.Unix.tms_utime +. t.Unix.tms_stime
+  in
   for _ = 1 to runs do
-    let t0 = Unix.gettimeofday () in
+    let t0 = cpu_now () in
     let c =
       match parse_string ~consume:All document (Sys.opaque_identity input) with
       | Ok c -> c
       | Error e -> Printf.eprintf "parse error in run: %s\n" e; exit 1
     in
-    let t1 = Unix.gettimeofday () in
-    let ms = (t1 -. t0) *. 1000.0 in
-    if ms < !best_ms then best_ms := ms;
+    let t1 = cpu_now () in
+    samples := ((t1 -. t0) *. 1000.0) :: !samples;
     final_count := Sys.opaque_identity c
   done;
 
-  Printf.printf "angstrom %s count=%d best_ms=%.3f\n"
-    basename !final_count !best_ms
+  let sorted = List.sort compare !samples in
+  let best_ms = List.hd sorted in
+  let med_ms = List.nth sorted (List.length sorted / 2) in
+  Printf.printf "angstrom %s count=%d best_ms=%.3f med_ms=%.3f\n"
+    basename !final_count best_ms med_ms

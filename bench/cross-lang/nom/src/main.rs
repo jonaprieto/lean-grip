@@ -245,9 +245,14 @@ fn main() {
         std::process::exit(1);
     });
 
+    // Warmup + correctness gate (untimed).
+    let final_count = parse_count(black_box(&data)).unwrap_or_else(|e| {
+        eprintln!("parse failed: {}", e);
+        std::process::exit(1);
+    });
+
     const RUNS: usize = 20;
-    let mut best_ms = f64::MAX;
-    let mut final_count = 0usize;
+    let mut samples = Vec::with_capacity(RUNS);
 
     for _ in 0..RUNS {
         let t0 = Instant::now();
@@ -256,14 +261,16 @@ fn main() {
             std::process::exit(1);
         });
         let ms = t0.elapsed().as_secs_f64() * 1000.0;
-        if ms < best_ms {
-            best_ms = ms;
-        }
-        final_count = black_box(count);
+        samples.push(ms);
+        black_box(count);
     }
 
+    samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let best_ms = samples[0];
+    let med_ms = samples[samples.len() / 2];
+
     println!(
-        "nom {} count={} best_ms={:.3}",
-        basename, final_count, best_ms
+        "nom {} count={} best_ms={:.3} med_ms={:.3}",
+        basename, final_count, best_ms, med_ms
     );
 }
