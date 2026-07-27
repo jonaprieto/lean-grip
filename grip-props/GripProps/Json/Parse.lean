@@ -398,7 +398,7 @@ theorem value_run_num_int (arr : ByteArray) (q : Nat) (m : Int) (_hm : 0 ≤ m) 
   rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-    if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
+    if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
     if_pos (by rw [hb]; rfl)]
   rw [hnum]
   exact clampAdvance_ok arr q (by omega) (by omega)
@@ -459,7 +459,7 @@ theorem value_run_num_frac (arr : ByteArray) (q : Nat) (m : Int) (e ip n : Nat) 
   rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs (isDigit_not_ws hb)]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-    if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
+    if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
     if_pos (by rw [hb]; rfl)]
   rw [hnum]
   exact clampAdvance_ok arr q (by omega) (by omega)
@@ -513,7 +513,7 @@ theorem value_run_num_int_neg (arr : ByteArray) (q : Nat) (m : Int) (_hm : m < 0
   rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs hws]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-    if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
+    if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
     if_pos (by rw [hb]; decide)]
   rw [hnum]
   exact clampAdvance_ok arr q (by omega) (by omega)
@@ -570,7 +570,7 @@ theorem value_run_num_frac_neg (arr : ByteArray) (q : Nat) (m : Int) (e ip n : N
   rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hqs hws]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
   rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-    if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
+    if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
     if_pos (by rw [hb]; decide)]
   rw [hnum]
   exact clampAdvance_ok arr q (by omega) (by omega)
@@ -834,7 +834,7 @@ theorem value_run_number (arr : ByteArray) (q : Nat) (m : Int) (e n : Nat)
     rw [wsDispatch_run_stop _ arr q hq (isDigit_not_ws hdigit)]
     simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
     rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-      if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
+      if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
       if_pos (by rw [hdigit]; rfl), hnum]
     exact clampAdvance_ok arr q (number.cwit hnum) (number.bwit (Nat.le_of_lt hq) hnum)
   · have hne : ∀ c : UInt8, c ≠ 45 → ¬ ((arr[q] == c) = true) := fun c hc => by
@@ -847,7 +847,7 @@ theorem value_run_number (arr : ByteArray) (q : Nat) (m : Int) (e n : Nat)
     rw [wsDispatch_run_stop _ arr q hq hws]
     simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
     rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-      if_neg (hne 116 (by decide)), if_neg (hne 102 (by decide)), if_neg (hne 110 (by decide)),
+      if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
       if_pos (by rw [hdash]; decide), hnum]
     exact clampAdvance_ok arr q (number.cwit hnum) (number.bwit (Nat.le_of_lt hq) hnum)
 

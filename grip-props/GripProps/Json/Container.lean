@@ -1110,7 +1110,10 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           rw [Grip.Json.value, fix_run_unroll]; simp only [Grip.Json.valueBody]
           rw [wsDispatch_run_stop _ buf (q + 1) hq1lt hws1, hbuf1]
           simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
-          norm_num [Ascii.isDigit]; simp [clampAdvance, GParser.map, GParser.satisfy]
+          rw [if_neg (by decide), if_neg (by decide), if_neg (by decide),
+            if_neg (by decide), if_neg (by decide), if_neg (by decide),
+            if_neg (by decide)]
+          simp [clampAdvance, GParser.map, GParser.satisfy]
         simp only [GParser.alt, GParser.bind, GParser.pure, hval_err]
       · -- Non-empty: xs.toList = xi :: rest_l
         -- body = render xi ++ commaPrefix rest_l

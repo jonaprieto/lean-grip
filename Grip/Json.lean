@@ -446,9 +446,9 @@ def valueBody (rec : GParser conditional Json) : GParser conditional Json :=
         GParser.seqR (GParser.ch '[')
           (GParser.seqL (GParser.map Json.arr arrayBody) (wsByte Ascii.rbracket))
       else if b == Ascii.quote then jstring
-      else if b == 116 then jtrue
-      else if b == 102 then jfalse
-      else if b == 110 then jnull
+      else if b == Ascii.code 't' then jtrue
+      else if b == Ascii.code 'f' then jfalse
+      else if b == Ascii.code 'n' then jnull
       else if Ascii.isDigit b || b == Ascii.dash then number
       -- A byte that starts no value: always fails (the mapped `null` is unreachable).
       else GParser.map (fun _ => Json.null) (GParser.satisfy (fun _ => false)))
