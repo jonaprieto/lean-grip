@@ -10,11 +10,13 @@ deep-embedded reimplementation (`research/prim-parser`'s `G` framework) — not 
 ## Run
 
 ```sh
-cd bench/cross-lang/prim-parser-upstream && lake exe cache get && lake build && .lake/build/bin/bench-canada
+cd bench/cross-lang/prim-parser-upstream && lake exe cache get && lake build
+.lake/build/bin/bench-canada ../../data/canada.json
 ```
 
 Needs network (fetches upstream prim-parser + mathlib) and a mathlib cache. Prints
-`count=111130`, `parse_best_ms`, `vector_build_ms`.
+`count=111130`, `parse_best_ms`, `vector_build_ms`. The dataset defaults to
+`bench/data/canada.json` relative to the working directory.
 
 ## Result (this machine, Lean v4.28.0)
 

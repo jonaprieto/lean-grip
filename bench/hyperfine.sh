@@ -1,6 +1,6 @@
 #!/bin/sh
 # End-to-end wall-clock of a single canada.json parse via hyperfine. This is the
-# external cross-check for the self-timed `parse_ms` printed by `lake exe bench`:
+# external cross-check for the self-timed `ms=`/`med=` printed by `lake exe bench`:
 # the self-timed number is the pure parse (between two monoNanos, input preloaded);
 # hyperfine here times the whole `bench once` command (process startup + file read
 # + one parse), sampled with warmup and repeated runs.

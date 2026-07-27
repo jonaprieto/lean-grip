@@ -76,15 +76,15 @@ def jsonCount : Parser Error conditional Nat :=
          | some c => c
          | none   => 0
 
-def main : IO Unit := do
-  let path := "/Users/jonaprieto/research/grip/bench/data/canada.json"
+def main (args : List String) : IO Unit := do
+  let path := args.getD 0 "bench/data/canada.json"
   let content ← IO.FS.readFile path
 
   -- ── Build String → List Char → Text (List.Vector Char n) ──────────────
-  -- Force the entire list by storing it in an IO.Ref (makes construction observable).
+  -- Lean is eager: binding `text` already forces the list spine. Timing around it
+  -- measures the conversion; the IO.Ref below blocks CSE across the parse loop.
   let t0 ← IO.monoNanosNow
   let text := toText content
-  -- Force list spine via an IO.Ref write; this evaluates String.toList.
   let textRef ← IO.mkRef text
   let t1 ← IO.monoNanosNow
   let vecBuildNs : Int := (t1 : Int) - (t0 : Int)

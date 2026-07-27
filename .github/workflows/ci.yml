@@ -77,11 +77,13 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "$out" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          # Assert grip's leaf counts on all three nativejson datasets: a regression that
-          # changed what the parser accepts or counts would flip one of these.
-          grep -qE '^grip canada count=111130 '  <<<"$out" || { echo "grip canada count wrong"; exit 1; }
-          grep -qE '^grip citm count=16390 '      <<<"$out" || { echo "grip citm count wrong"; exit 1; }
-          grep -qE '^grip twitter count=11600 '   <<<"$out" || { echo "grip twitter count wrong"; exit 1; }
+          # Assert the leaf counts of every Lean row on all three nativejson datasets: a
+          # regression that changed what a parser accepts or counts would flip one of these.
+          for row in grip std.parsec hand grip.json lean.json; do
+            grep -qE "^$row canada count=111130 "  <<<"$out" || { echo "$row canada count wrong"; exit 1; }
+            grep -qE "^$row citm count=16390 "      <<<"$out" || { echo "$row citm count wrong"; exit 1; }
+            grep -qE "^$row twitter count=11600 "   <<<"$out" || { echo "$row twitter count wrong"; exit 1; }
+          done
 
   props:
     runs-on: ubuntu-latest

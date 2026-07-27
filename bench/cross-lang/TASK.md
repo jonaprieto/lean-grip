@@ -26,11 +26,20 @@ Counting rule:
 - keyword: exact `true` / `false` / `null`.
 - whitespace between tokens: space 0x20, tab 0x09, LF 0x0A, CR 0x0D.
 
-## Datasets (absolute paths on this machine) and REQUIRED counts
+## Datasets (vendored in `bench/data/`) and REQUIRED counts
 
-- `/Users/jonaprieto/research/grip/bench/data/canada.json`        -> 111130
-- `/Users/jonaprieto/research/grip/bench/data/citm_catalog.json`  -> 16390
-- `/Users/jonaprieto/research/grip/bench/data/twitter.json`       -> 11600
+| file | sha256 | leaves |
+|------|--------|-------:|
+| `bench/data/canada.json` | `f83b3b354030d5dd58740c68ac4fecef64cb730a0d12a90362a7f23077f50d78` | 111130 |
+| `bench/data/citm_catalog.json` | `a73e7a883f6ea8de113dff59702975e60119b4b58d451d518a929f31c92e2059` | 16390 |
+| `bench/data/twitter.json` | `a08b769f32b95f426cbc3abafcec65c1a19d3eb544d4ddf320eae142c99efc5d` | 11600 |
+
+The three JSON files are byte-identical to their namesakes in miloyip/nativejson-benchmark
+(verified via git blob sha against upstream master).
+
+`bench/data/cargo.lock` (sha256 `f680ad93ac4ac91290becedf85c877108a48fd11af66655970d77aafab21910a`,
+307 packages, root package `brainforge` 1.42.1, a Rust TUI project) is vendored as a
+real-world TOML input for the TOML example benchmark.
 
 CORRECTNESS GATE: your parser MUST produce exactly those counts. If any differs, your
 grammar/counting is wrong — fix it before reporting done.
@@ -43,13 +52,14 @@ best on this task. No DOM.
 
 ## CLI
 
-Accept the dataset path as `argv[1]`; preload it into memory (bytes), parse it best-of-20
-in-process (loop 20 times over the preloaded bytes), and print exactly one line:
+Accept the dataset path as `argv[1]`; preload it into memory (bytes), time 20 in-process
+runs over the preloaded bytes (one untimed warmup first), and print exactly one line:
 
-    <lib> <basename-of-path> count=<n> best_ms=<f>
+    <lib> <basename-of-path> count=<n> best_ms=<f> med_ms=<f>
 
-Use a barrier / `black_box` / volatile so the optimizer cannot elide the parse. Build optimized
-(Haskell `-O2`, Rust `--release`, OCaml dune release; flambda if available).
+`best_ms` is the minimum of the 20 samples, `med_ms` the median. Use a monotonic clock
+and a barrier / `black_box` / volatile so the optimizer cannot elide the parse. Build
+optimized (Haskell `-O2`, Rust `--release`, OCaml dune release; flambda if available).
 
 ## Timing note
 
