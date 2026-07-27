@@ -40,12 +40,15 @@ def AgreeOk : ParseResult α → ParseResult α → Prop
   | .error _, .ok _ _ => False
   | .error _, .error _ => True
 
+/-- Agreement is reflexive. -/
 theorem AgreeOk.refl : ∀ r : ParseResult α, AgreeOk r r := by
   intro r; cases r <;> simp [AgreeOk]
 
+/-- Agreement is symmetric. -/
 theorem AgreeOk.symm {r₁ r₂ : ParseResult α} (h : AgreeOk r₁ r₂) : AgreeOk r₂ r₁ := by
   cases r₁ <;> cases r₂ <;> simp_all [AgreeOk]
 
+/-- Agreement is transitive. -/
 theorem AgreeOk.trans {r₁ r₂ r₃ : ParseResult α}
     (h₁ : AgreeOk r₁ r₂) (h₂ : AgreeOk r₂ r₃) : AgreeOk r₁ r₃ := by
   cases r₁ <;> cases r₂ <;> cases r₃ <;> simp_all [AgreeOk]

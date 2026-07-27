@@ -23,7 +23,7 @@ set_option maxHeartbeats 1000000
 
 open Grip.Json.Decode Grip.Json.Json
 
-namespace Grip.Json.Leaf
+namespace GripProps.Leaf
 
 /-- `foldl` over a `flatMap`: fold `f`, for each element, over that element's expansion. -/
 theorem foldl_flatMap {α β γ : Type} (f : β → α → β) (init : β) (l : List γ)
@@ -78,4 +78,4 @@ theorem unescape_escape (s : String) : unescape (escape s) = s := by
   rw [out_toList_foldl _ _ rfl rfl rfl rfl]
   simp
 
-end Grip.Json.Leaf
+end GripProps.Leaf

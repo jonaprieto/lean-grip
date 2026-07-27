@@ -523,7 +523,7 @@ theorem value_run_num_frac_neg (arr : ByteArray) (q : Nat) (m : Int) (e ip n : N
     rcases hintstruct with ⟨hip1, h0⟩ | ⟨h19, hds⟩
     · subst hip1; exact intPart_run_zero arr (q + 1) hq1 h0
     · refine intPart_run_nonzero arr (q + 1) ip hq1 hip h19 hds (Or.inr ⟨by omega, ?_⟩)
-      rw [show q + 1 + ip = q + 1 + ip from rfl, hdot]; decide
+      rw [hdot]; decide
   have hfr : frac.run arr (q + 1 + ip) = .ok (n - 1 - ip - 1) (q + n) := by
     have := frac_run arr (q + 1 + ip) (n - 1 - ip) (by omega) hdot (by omega) (by omega)
       (fun i hi1 hi2 => by
@@ -628,14 +628,14 @@ theorem jstr_run (arr : ByteArray) (q : Nat) (s : String)
     rw [extract_eq_escape_toUTF8 arr q s (by omega) hcontent,
         fromUTF8!_toUTF8]
   rw [scanStr_walk arr q (escape s) s.toList (q + 1) false
-    (fun j hj => by rw [show q + 1 + j = q + 1 + j from rfl]; exact hcontent j hj)
-    (by rw [show q + 1 + k = q + 1 + k from rfl]; exact hclose)
+    (fun j hj => hcontent j hj)
+    hclose
     (by omega) hbody_eq]
   -- goal: .ok (if false || s.toList.any ... then unescape (escape s) else escape s) _ = .ok s _
   congr 1
   simp only [Bool.false_or]
   split_ifs with h
-  · exact Grip.Json.Leaf.unescape_escape s
+  · exact GripProps.Leaf.unescape_escape s
   · have hfalse : s.toList.any (fun c => !(escapeChar c == [c])) = false :=
       Bool.of_not_eq_true h
     have hall : ∀ c ∈ s.toList, escapeChar c = [c] := fun c hc => by
@@ -691,6 +691,8 @@ private theorem renderNumScientific_append (m : Int) (e : Nat) :
     simp [renderNumScientific, hm, String.toList_append,
       List.append_assoc, show ("e-" : String).toList = ['e', '-'] from by decide]
 
+/-- The `expo` parser consumes a `e-<digits>` exponent: marker, mandatory `-` sign, then `ep`
+digits, ending at a non-digit or end of input. -/
 private theorem expo_run_scientific (arr : ByteArray) (q ep : Nat)
     (hq : q < arr.size) (hexp : Ascii.isExp arr[q]! = true)
     (hsign : arr[q + 1]! = 45) (hq1 : q + 1 < arr.size) (hep : 1 ≤ ep)
@@ -797,6 +799,8 @@ private theorem isDigit_byte_of_mem {ds : List Char} {c : Char}
     (by rw [UInt8.toNat_ofNat_of_lt' hlt256]; exact hbounds.1)
     (by rw [UInt8.toNat_ofNat_of_lt' hlt256]; exact hbounds.2)
 
+/-- `value` parses any occurrence of the scientific rendering `renderNumScientific m e` (used
+for fractional exponents above `maxExp`) at offset `q`, consuming exactly the rendering. -/
 theorem value_run_num_scientific (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
     (he : maxExp < e)
     (hq : q + (renderNumScientific m e).toUTF8.size ≤ buf.size)
@@ -1117,7 +1121,9 @@ theorem value_run_num_scientific (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
     rw [hsize]
     simpa [Nat.add_assoc] using hv
 
-/-- `value` parses the compact scientific rendering used for a large negative number exponent. -/
+/-- `value` parses any occurrence of the expanded decimal rendering `renderNum m e` at offset
+`q`: dispatch and the number grammar consume exactly the rendering. The `hstop` byte after it
+must be a delimiter (not a digit, `.`, or `e`) so the optional fraction/exponent parsers fail. -/
 theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
     (hq : q + (renderNum m e).toUTF8.size ≤ buf.size)
     (hmatch : ∀ i, i < (renderNum m e).toUTF8.size → buf[q + i]! = (renderNum m e).toUTF8[i]!)

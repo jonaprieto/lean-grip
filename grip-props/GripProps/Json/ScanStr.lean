@@ -495,7 +495,7 @@ theorem extract_eq_escape_toUTF8 (arr : ByteArray) (q : Nat) (s : String)
     rw [ByteArray.size_extract,
         Nat.min_eq_left (show q + 1 + k ≤ arr.size by omega)] at hi
     rw [getElem!_extract arr (q + 1) (q + 1 + k) i (by omega) (by omega)]
-    rw [show q + 1 + i = q + 1 + i from rfl, hcontent i (by omega)]
+    rw [hcontent i (by omega)]
     exact (escape_toUTF8_getElem! s i (by omega)).symm
 
 end GripProps.ScanStr

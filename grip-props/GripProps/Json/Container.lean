@@ -8,13 +8,14 @@ import GripProps.Json.Parse
 import GripProps.Json.ScanStr
 
 /-!
-# Container round-trip lemmas
+# Container round-trip lemmas and the JSON round-trip theorem
 
-Infrastructure for the array and object cases of `parse_render`:
+The array and object cases of the round-trip, and the theorem itself:
 - `foldFwd_agree` – agreement of foldFwd under agreeing element parsers
 - `valueBody_guarded` – `Grip.Json.valueBody` is `Guarded`
 - `fixSelf_eq_value_of_gt` – `fixSelf valueBody (arr.size - q)` at offsets `> q` agrees with `value`
 - `value_run_at` – general embedding: `value` parses any occurrence of `render v` in a byte array
+- `parse_render` – the headline theorem: `Grip.Json.parse (render v).toUTF8 = .ok v` for all `v`
 -/
 
 open Grip Grip.Json Grip.Json.Json
@@ -84,6 +85,8 @@ private theorem foldFwd_agree_bounded
           · intro r hr; exact hagree r (le_trans (le_of_lt hc.1) hr)
         · simp only [dif_neg hc]
 
+/-- If two always-consuming element parsers agree on acceptance at every position reachable
+from `pos`, folding them from `pos` gives the same result. -/
 theorem foldFwd_agree
     {ge : Modality} {α β : Type}
     (step : β → α → β) (p1 p2 : GParser ⟨ge, always⟩ α)
@@ -512,7 +515,7 @@ private theorem joinWith_map_render_eq (x : Json) (rest : List Json) :
       simp [commaPrefix, String.append_assoc]
 
 -- ---------------------------------------------------------------------------
--- 6b. Key-value rendering and comma-prefixed tail for object body round-trips
+-- 7. Key-value rendering and comma-prefixed tail for object body round-trips
 -- ---------------------------------------------------------------------------
 
 -- renderKV (k, v) = render (.str k) ++ ":" ++ render v
@@ -1670,7 +1673,7 @@ decreasing_by
     simp_wf; omega
 
 -- ---------------------------------------------------------------------------
--- 6. parse_render: parse (render v) = ok v for all v
+-- 8. parse_render: parse (render v) = ok v for all v
 -- ---------------------------------------------------------------------------
 
 /-- Round-trip: parsing the rendering of any JSON value returns that value. -/
