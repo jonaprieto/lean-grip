@@ -335,7 +335,8 @@ theorem decode_renderNumScientific (m : Int) (e : Nat) (he : 0 < e) :
       simp [List.append_assoc]
     have hst : (renderNumScientific m e).toUTF8.foldl numByte {}
           0 (renderNumScientific m e).toUTF8.size =
-        ({ mant := m.natAbs, mantNeg := true, expVal := e, expNeg := true, phase := 2 } : NState) := by
+        ({ mant := m.natAbs, mantNeg := true, expVal := e, expNeg := true,
+            phase := 2 } : NState) := by
       rw [GripProps.Bytes.toUTF8_foldl, hchars, List.flatMap_cons,
         ascii_encode '-' (by decide), List.flatMap_append, List.foldl_append,
         List.foldl_cons, List.foldl_nil]

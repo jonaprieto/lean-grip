@@ -223,8 +223,8 @@ theorem escEnd_simple (arr : ByteArray) (q : Nat) (hq : q + 1 < arr.size)
 /-- `escEnd` accepts a `\uXXXX` escape: `\`, `u`, then four hex bytes, advancing by six. -/
 theorem escEnd_u (arr : ByteArray) (q : Nat) (hq1 : q + 1 < arr.size) (hq5 : q + 5 < arr.size)
     (hu : arr[q + 1]! = 117)
-    (hhex : (Ascii.isHexDigit arr[q + 2]! && Ascii.isHexDigit arr[q + 3]! && Ascii.isHexDigit arr[q + 4]! &&
-      Ascii.isHexDigit arr[q + 5]!) = true) :
+    (hhex : (Ascii.isHexDigit arr[q + 2]! && Ascii.isHexDigit arr[q + 3]! &&
+      Ascii.isHexDigit arr[q + 4]! && Ascii.isHexDigit arr[q + 5]!) = true) :
     escEnd arr q = some (q + 6) := by
   rw [getElem!_pos arr (q + 1) hq1] at hu
   rw [getElem!_pos arr (q + 2) (by omega), getElem!_pos arr (q + 3) (by omega),
@@ -272,8 +272,8 @@ theorem scanStr_char_escape2 (arr : ByteArray) (q0 q : Nat) (esc : Bool) (Xb : U
 /-- A `\uXXXX` escape (a control character's rendering) is walked in six, marking `esc`. -/
 theorem scanStr_char_escapeU (arr : ByteArray) (q0 q : Nat) (esc : Bool) (hq5 : q + 5 < arr.size)
     (h92 : arr[q]! = 92) (hu : arr[q + 1]! = 117)
-    (hhex : (Ascii.isHexDigit arr[q + 2]! && Ascii.isHexDigit arr[q + 3]! && Ascii.isHexDigit arr[q + 4]! &&
-      Ascii.isHexDigit arr[q + 5]!) = true) :
+    (hhex : (Ascii.isHexDigit arr[q + 2]! && Ascii.isHexDigit arr[q + 3]! &&
+      Ascii.isHexDigit arr[q + 4]! && Ascii.isHexDigit arr[q + 5]!) = true) :
     scanStr arr q0 q esc = scanStr arr q0 (q + 6) true :=
   scanStr_esc_step arr q0 q (q + 6) esc (by omega) h92 (escEnd_u arr q (by omega) hq5 hu hhex)
 
@@ -315,8 +315,8 @@ theorem escapeU_of (arr : ByteArray) (q0 q : Nat) (esc : Bool) (c : Char) (b4 b5
     have := hcontent 4 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
   have g5 : arr[q + 5]! = b5 := by
     have := hcontent 5 (by rw [hlen]; omega); rw [hcb] at this; simpa using this
-  have hhex : (Ascii.isHexDigit arr[q + 2]! && Ascii.isHexDigit arr[q + 3]! && Ascii.isHexDigit arr[q + 4]! &&
-      Ascii.isHexDigit arr[q + 5]!) = true := by
+  have hhex : (Ascii.isHexDigit arr[q + 2]! && Ascii.isHexDigit arr[q + 3]! &&
+      Ascii.isHexDigit arr[q + 4]! && Ascii.isHexDigit arr[q + 5]!) = true := by
     rw [g2, g3, g4, g5, hb4, hb5]; decide
   exact scanStr_char_escapeU arr q0 q esc (by rw [hlen] at hbound; omega) g92 gu hhex
 

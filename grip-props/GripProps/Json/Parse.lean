@@ -337,7 +337,8 @@ theorem value_run_number (arr : ByteArray) (q : Nat) (m : Int) (e n : Nat)
     rw [wsDispatch_run_stop _ arr q hq (isDigit_not_ws hdigit)]
     simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
     rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-      if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
+      if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)),
+      if_neg (hne (Ascii.code 'n') (by decide)),
       if_pos (by rw [hdigit]; rfl), hnum]
     exact clampAdvance_ok arr q (number.cwit hnum) (number.bwit (Nat.le_of_lt hq) hnum)
   · have hne : ∀ c : UInt8, c ≠ 45 → ¬ ((arr[q] == c) = true) := fun c hc => by
@@ -350,7 +351,8 @@ theorem value_run_number (arr : ByteArray) (q : Nat) (m : Int) (e n : Nat)
     rw [wsDispatch_run_stop _ arr q hq hws]
     simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote, Ascii.dash]
     rw [if_neg (hne 123 (by decide)), if_neg (hne 91 (by decide)), if_neg (hne 34 (by decide)),
-      if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)), if_neg (hne (Ascii.code 'n') (by decide)),
+      if_neg (hne (Ascii.code 't') (by decide)), if_neg (hne (Ascii.code 'f') (by decide)),
+      if_neg (hne (Ascii.code 'n') (by decide)),
       if_pos (by rw [hdash]; decide), hnum]
     exact clampAdvance_ok arr q (number.cwit hnum) (number.bwit (Nat.le_of_lt hq) hnum)
 
@@ -561,7 +563,8 @@ theorem value_run_null (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
     have := string_run "null" arr q (by decide) (by simpa using hq)
       (fun j hj => by have := hm j (by simpa using hj); simpa using this)
     simpa using this
-  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  rw [value, fix_run_unroll]; simp only [valueBody]
+  rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_neg (by decide),
     if_neg (by decide), if_pos (by decide)]
@@ -579,7 +582,8 @@ theorem value_run_true (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
     have := string_run "true" arr q (by decide) (by simpa using hq)
       (fun j hj => by have := hm j (by simpa using hj); simpa using this)
     simpa using this
-  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  rw [value, fix_run_unroll]; simp only [valueBody]
+  rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_pos (by decide)]
   simp only [jtrue, GParser.map, hstr]
@@ -596,7 +600,8 @@ theorem value_run_false (arr : ByteArray) (q : Nat) (hq : q + 5 ≤ arr.size)
     have := string_run "false" arr q (by decide) (by simpa using hq)
       (fun j hj => by have := hm j (by simpa using hj); simpa using this)
     simpa using this
-  rw [value, fix_run_unroll]; simp only [valueBody]; rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
+  rw [value, fix_run_unroll]; simp only [valueBody]
+  rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_neg (by decide),
     if_pos (by decide)]
@@ -1166,7 +1171,8 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
             fun i _ h2i => by
               rw [hmatch i h2i, hrn]
               exact repr_toUTF8_getElem_isDigit m.natAbs i (by rw [← hsize_eq]; exact h2i)⟩
-      have hdec : decodeNumberBytes? buf q (q + (renderNum m 0).toUTF8.size) = some (Json.num m 0) :=
+      have hdec :
+          decodeNumberBytes? buf q (q + (renderNum m 0).toUTF8.size) = some (Json.num m 0) :=
         GripProps.Number.decode_renderNum_at buf q m 0 hq hmatch
           (GripProps.Number.decode_renderNum_int m hm)
       exact value_run_num_int buf q m hm _ hn hq hstruct hstop hdec
@@ -1201,7 +1207,9 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
           (Ascii.isDigit19 (renderNum m 0).toUTF8[1]! = true ∧
            ∀ i, 1 ≤ i → i < ip → Ascii.isDigit (renderNum m 0).toUTF8[1 + i]! = true) := by
         rw [hrn]
-        have hsplit : (("-" ++ toString m.natAbs) : String).toUTF8 = "-".toUTF8 ++ (toString m.natAbs).toUTF8 :=
+        have hsplit :
+            (("-" ++ toString m.natAbs) : String).toUTF8 =
+              "-".toUTF8 ++ (toString m.natAbs).toUTF8 :=
           toUTF8_append _ _
         have hdash_size : ("-" : String).toUTF8.size = 1 := by decide
         rcases Nat.eq_zero_or_pos m.natAbs with hm0 | hm_pos
@@ -1313,7 +1321,8 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
           have hbounds0 := GripProps.NatDigits.toDigits_head_pos m.natAbs hna_pos
           have hlt256_0 : (Nat.toDigits 10 m.natAbs).head!.toNat < 256 := by omega
           have hds_eq : ds = Nat.toDigits 10 m.natAbs := by simp [hds_def, hpads0, htl]
-          have hh : 0 < (ds.take k).length := by rw [List.length_take, Nat.min_eq_left (by omega)]; omega
+          have hh : 0 < (ds.take k).length := by
+            rw [List.length_take, Nat.min_eq_left (by omega)]; omega
           have harr0 : (renderNum m e).toUTF8[0]! =
               UInt8.ofNat (Nat.toDigits 10 m.natAbs).head!.toNat := by
             rw [hrn_str,
@@ -1322,7 +1331,8 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
               ofList_ascii_toUTF8_getElem! (ds.take k) 0 (fun c hc => by
                 have := hds_dig c (List.mem_of_mem_take hc); omega) hh]
             congr 1
-            rw [getElem!_pos (ds.take k) 0 hh, List.getElem_take, ← getElem!_pos ds 0 (by omega), hds_eq]
+            rw [getElem!_pos (ds.take k) 0 hh, List.getElem_take,
+              ← getElem!_pos ds 0 (by omega), hds_eq]
             match Nat.toDigits 10 m.natAbs, hne with | d :: _, _ => rfl
           exact Or.inr ⟨by
             rw [harr0]
@@ -1478,7 +1488,8 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
           have hbounds0 := GripProps.NatDigits.toDigits_head_pos m.natAbs hna_pos
           have hlt256_0 : (Nat.toDigits 10 m.natAbs).head!.toNat < 256 := by omega
           have hds_eq : ds = Nat.toDigits 10 m.natAbs := by simp [hds_def, hpads0, htl]
-          have hh : 0 < (ds.take k).length := by rw [List.length_take, Nat.min_eq_left (by omega)]; omega
+          have hh : 0 < (ds.take k).length := by
+            rw [List.length_take, Nat.min_eq_left (by omega)]; omega
           have harr1 : (renderNum m e).toUTF8[1]! =
               UInt8.ofNat (Nat.toDigits 10 m.natAbs).head!.toNat := by
             rw [hrn_str,
@@ -1488,7 +1499,8 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
               ofList_ascii_toUTF8_getElem! (ds.take k) 0 (fun c hc => by
                 have := hds_dig c (List.mem_of_mem_take hc); omega) hh]
             congr 1
-            rw [getElem!_pos (ds.take k) 0 hh, List.getElem_take, ← getElem!_pos ds 0 (by omega), hds_eq]
+            rw [getElem!_pos (ds.take k) 0 hh, List.getElem_take,
+              ← getElem!_pos ds 0 (by omega), hds_eq]
             match Nat.toDigits 10 m.natAbs, hne with | d :: _, _ => rfl
           exact Or.inr ⟨by
             rw [harr1]
@@ -1528,7 +1540,8 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
                 ba_get!_append_left (by rw [ByteArray.size_append,
                   show ("-":String).toUTF8.size = 1 from by decide, h0size]; omega),
                 ba_get!_append_right (by decide)
-                  (by rw [ByteArray.size_append, show ("-":String).toUTF8.size = 1 from by decide, h0size]; omega),
+                  (by rw [ByteArray.size_append,
+                    show ("-":String).toUTF8.size = 1 from by decide, h0size]; omega),
                 show (1 : Nat) - ("-":String).toUTF8.size = 0 from by decide]; decide⟩
       have hpre_int_size : ("-" ++ String.ofList (ds.take k)).toUTF8.size = 1 + k := by
         rw [toUTF8_append, ByteArray.size_append, hint_size,
@@ -1564,7 +1577,8 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
         · exact Or.inl ⟨h1, by rw [hmatch 1 (by rw [harr_size]; omega)]; exact h2⟩
         · exact Or.inr ⟨by rw [hmatch 1 (by rw [harr_size]; omega)]; exact h1,
             fun i h1i h2i => by
-              rw [show q + 1 + i = q + (1 + i) from by omega, hmatch (1 + i) (by rw [harr_size]; omega)]
+              rw [show q + 1 + i = q + (1 + i) from by omega,
+                hmatch (1 + i) (by rw [harr_size]; omega)]
               exact h2 i h1i h2i⟩
       have hdot_buf : buf[q + 1 + k]! = 46 := by
         rw [show q + 1 + k = q + (1 + k) from by omega, hmatch (1 + k) (by rw [harr_size]; omega)]
@@ -1572,7 +1586,8 @@ theorem value_run_num_at (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
       have hfrac_buf : ∀ i, k + 2 ≤ i → i < k + e + 2 → Ascii.isDigit buf[q + i]! = true := by
         intro i h1i h2i; rw [hmatch i (by rw [harr_size]; omega)]; exact hfrac_rn i h1i h2i
       have hdec : decodeNumberBytes? buf q (q + (k + e + 2)) = some (Json.num m e) := by
-        have h := GripProps.Number.decode_renderNum_at buf q m e hq hmatch (GripProps.Number.decode_renderNum_frac_neg m hm e he_pos)
+        have h := GripProps.Number.decode_renderNum_at buf q m e hq hmatch
+          (GripProps.Number.decode_renderNum_frac_neg m hm e he_pos)
         rw [harr_size] at h; exact h
       have hstop' : q + (k + e + 2) = buf.size ∨ (q + (k + e + 2) < buf.size ∧
           Ascii.isDigit buf[q + (k + e + 2)]! = false ∧ buf[q + (k + e + 2)]! ≠ 46 ∧
