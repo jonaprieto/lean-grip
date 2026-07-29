@@ -10,9 +10,9 @@ here Batteries-only, without the mathlib order/lattice hierarchy.
 -/
 
 /-!
-# Modality
+# Grip.Modality: the three-valued modality
 
-Three-valued modality `never < possibly < always` for the grip parser grade algebra.
+`never < possibly < always`, the truth values of the grip parser grade algebra.
 Batteries-only: no mathlib. Join and meet are the core `Max`/`Min` classes
 (`max`/`min`); grip deliberately does not declare `Sup`/`Inf`, so grip-props can import
 mathlib (which declares those) without a duplicate-declaration clash.
@@ -101,10 +101,6 @@ def ite (sel a b : Modality) : Modality :=
 @[simp] theorem sup_always_left  (a : Modality) : max always a = always := by cases a <;> rfl
 /-- `always` absorbs on the right for join. -/
 @[simp] theorem sup_always_right (a : Modality) : max a always = always := by cases a <;> rfl
-/-- `possibly` absorbs `never` on the left for join. -/
-@[simp] theorem sup_possibly_left : max possibly never = possibly := rfl
-/-- `possibly` absorbs `never` on the right for join. -/
-@[simp] theorem sup_possibly_right : max never possibly = possibly := rfl
 
 /-- A join equals `always` iff at least one operand is `always`. -/
 @[simp] theorem max_always (a b : Modality) : max a b = always ↔ a = always ∨ b = always := by

@@ -16,7 +16,9 @@ decode of the whole input.
 
 `satisfyChar`/`anyChar`/`char` are `conditional` (they consume at least one byte on
 success). The `if q < q'` clamp in each `run` makes the always-consume witness hold
-without reasoning about the decoder's width, mirroring `GParser.fix`.
+without reasoning about the decoder's width, mirroring `GParser.fix`. The decoder
+`decodeUtf8` and the byte-level literal matcher `matchBytes` are exposed for grammars
+that mix levels; `GParser.string` matches a whole UTF-8 literal.
 -/
 
 namespace Grip
@@ -137,7 +139,7 @@ theorem decodeUtf8_le {arr : ByteArray} {q : Nat} {c : Char} {q' : Nat}
 @[inline] def GParser.char (c : Char) : GParser conditional Char := GParser.satisfyChar (· == c)
 
 /-- Do the bytes of `bs` from index `i` match `arr` from offset `q`? -/
-private def matchBytes (arr bs : ByteArray) (i q : Nat) : Bool :=
+def matchBytes (arr bs : ByteArray) (i q : Nat) : Bool :=
   if i < bs.size then
     if q < arr.size then (arr[q]! == bs[i]!) && matchBytes arr bs (i + 1) (q + 1) else false
   else true
@@ -198,7 +200,7 @@ literal (grade `conditional`); the `if q < q'` clamp fails an empty match. -/
 
 end Grip
 
-/-! ### Sanity: the Char layer decodes and matches. -/
+/-! ### Sanity guards. -/
 section
 open Grip
 

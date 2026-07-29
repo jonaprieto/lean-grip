@@ -34,7 +34,7 @@ jobs:
 
       - uses: haskell-actions/setup@v2
         with:
-          ghc-version: '9.10.1'
+          ghc-version: '9.14.1'
 
       - name: Haskell (attoparsec, megaparsec)
         run: |
@@ -55,7 +55,7 @@ jobs:
 
       - name: OCaml (angstrom)
         run: |
-          opam install -y angstrom
+          opam install -y angstrom.0.16.1
           cd bench/cross-lang/angstrom
           opam exec -- dune build --profile release
           bin=_build/default/main.exe

@@ -16,7 +16,7 @@ import Grip.Error
 (both verified by `#guard` in `Grip.Grade`), so standard `Monad` and `Alternative`
 instances work here with grade tracking disabled.
 
-`GParser.weakenFallible` bridges the precise graded layer: the `Coe` instance makes
+`GParser.weakenFallible` bridges the precise graded layer: the `CoeOut` instance makes
 the coercion transparent, so any `GParser g α` can be used where a `Parser α`
 is expected.
 
@@ -87,8 +87,8 @@ def GParser.parse {g : Grade} {α : Type} (p : GParser g α) (arr : ByteArray) :
 
 /-! ### MonadExcept instance -/
 
-/-- `throw` at `fallible` grade: immediately fail at the current offset with
-the supplied error payload. -/
+/-- `throw` at `fallible` grade: immediately fail with the supplied labels, its
+offset set to the current position. -/
 def GParser.throwErr {α : Type} (e : Err) : Parser α where
   run := fun _ p => .error { e with pos := p }
   cwit := by intro arr q a q' h; exact absurd h (by simp)
@@ -129,8 +129,6 @@ instance : MonadExcept Err Parser where
   tryCatch := GParser.tryCatch
 
 end Grip
-
-/-! ### `gdo`: graded do-notation -/
 
 /-- Trailing element in a `gdo` block: supply an equality proof to coerce the
 elaborated grade to the expected type. Example:
@@ -215,7 +213,7 @@ open Lean in
 @[macro gdoNotation] def expandGDo : Macro := fun stx =>
   expandGDoBlock stx[1]
 
-/-! ### Acceptance guards -/
+/-! ### Sanity guards. -/
 
 section Guards
 open Grip

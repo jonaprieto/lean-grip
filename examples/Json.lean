@@ -7,7 +7,7 @@ Authors: Jonathan Cubides
 import Grip
 
 /-!
-# Grip.Examples.Json -- grammar-strict RFC-8259 JSON parser
+# Examples.Json: grammar-strict RFC-8259 JSON validator
 
 Parses a JSON value and returns the count of JSON leaf-value nodes in its tree:
 each number, string, `true`/`false`/`null` contributes 1; arrays and objects

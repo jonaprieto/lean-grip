@@ -77,6 +77,15 @@ namespace GParser
     GParser flexible (List α) :=
   many (seqL p sep)
 
+/-- One or more `p` each followed by `sep`. -/
+@[inline] def endBy1 (p : GParser conditional α) (sep : GParser conditional β) :
+    GParser conditional (List α) :=
+  map2 (fun x xs => x :: xs) (seqL p sep) (endBy p sep)
+
+/-- One or more `p` (always-consuming); the grade is the element parser's. -/
+@[inline] def many1 (p : GParser ⟨ge, always⟩ α) : GParser ⟨ge, always⟩ (List α) :=
+  gcast (by cases ge <;> rfl) (map2 (fun x xs => x :: xs) p (many p))
+
 /-- Skip zero or more `p` (always-consuming); returns the count skipped. -/
 @[inline] def skipMany (p : GParser ⟨ge, always⟩ α) : GParser flexible Nat :=
   foldMany (fun n _ => n + 1) 0 p
@@ -85,15 +94,16 @@ namespace GParser
 @[inline] def skipMany1 (p : GParser conditional α) : GParser conditional Nat :=
   map2 (fun _ n => n + 1) p (skipMany p)
 
-/-- `p`, or `x` if `p` fails. -/
-@[inline] def option (x : α) (p : GParser g α) := alt p (pure x)
+/-- `p`, or `x` if `p` fails. Never fails; consumption follows `p`'s grade. -/
+@[inline] def option (x : α) (p : GParser g α) : GParser (Grade.choice g 1) α :=
+  alt p (pure x)
 
-/-- `some` of `p`, or `none`. -/
-@[inline] def optional (p : GParser g α) :=
+/-- `some` of `p`, or `none`. Never fails; consumption follows `p`'s grade. -/
+@[inline] def optional (p : GParser g α) : GParser (Grade.choice g 1) (Option α) :=
   alt (map some p) (pure none)
 
 /-- Succeed (consuming nothing) exactly when `p` fails. -/
-@[inline] def notFollowedBy (p : GParser g α) : GParser ⟨possibly, never⟩ Unit where
+@[inline] def notFollowedBy (p : GParser g α) : GParser lookahead Unit where
   run := fun arr q => match p.run arr q with | .ok _ _ => .error ⟨q, []⟩ | .error _ => .ok () q
   cwit := by
     intro arr q a q' h
@@ -109,15 +119,17 @@ namespace GParser
     · exact absurd h (by simp)
     · simp only [ParseResult.ok.injEq] at h
       omega
+/-- Zero or more `p` until `endp` succeeds; `endp`'s result is discarded and the `p`
+results are collected. Total via `fix`; both parsers must always consume. -/
 @[inline] def manyTill (p : GParser conditional α) (endp : GParser conditional β) :
     GParser conditional (List α) :=
   fix fun rec =>
     alt (map (fun _ => ([] : List α)) endp)
       (map2 (fun x xs => x :: xs) p rec)
 
-/-- End of input: succeed (consuming nothing) exactly when no byte remains. The dual of
-`notFollowedBy` applied to "any byte", used to reject trailing input after a top-level parse. -/
-@[inline] def eof : GParser ⟨possibly, never⟩ Unit :=
+/-- End of input: succeed (consuming nothing) exactly when no byte remains. Defined as
+`notFollowedBy` of the any-byte parser; used to reject trailing input after a top-level parse. -/
+@[inline] def eof : GParser lookahead Unit :=
   notFollowedBy (satisfy (fun _ => true))
 
 /-- Ordered choice is idempotent on the grade: choosing between two parsers of the same
@@ -185,6 +197,10 @@ open Grip GParser
 #guard (run? (between (ch '(') (ch ')') digit) "(5)".toUTF8)
         == some 53
 #guard (run? (endBy digit (ch ';')) "1;2;".toUTF8) == some [49, 50]
+#guard (run? (endBy1 digit (ch ';')) "1;2;".toUTF8) == some [49, 50]
+#guard (run? (endBy1 digit (ch ';')) ";".toUTF8) == none
+#guard (run? (many1 digit) "123x".toUTF8) == some [49, 50, 51]
+#guard (run? (many1 digit) "x".toUTF8) == none
 #guard (run? (skipMany digit) "123x".toUTF8) == some 3
 #guard (run? (option (65 : UInt8) digit) "x".toUTF8) == some 65
 #guard (run? (optional digit) "x".toUTF8) == some none

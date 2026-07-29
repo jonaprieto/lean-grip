@@ -13,11 +13,11 @@ import Grip
 larger fuel would accept, so `fix` computes the ideal fixpoint on every grammar it should.
 
 The hypothesis that makes this work is **guardedness** (`Guarded`): the body's output at offset
-`q` depends on its self-reference only at strictly greater offsets. Every grammar that consumes
-at least one byte before recurring satisfies it -- and the `conditional` consumption grade is
-exactly what forces that consumption. The negative-lookahead body `notFollowedBy self` does not
-satisfy it (it inspects `self` at the same offset), and indeed no fuel bound tames such a body:
-its result can flip with the fuel's parity.
+`q` depends on its self-reference only at strictly greater offsets. A body that sequences a
+`conditional` parser before the recursive call satisfies it, and the closure lemmas below make
+that argument compositional. The endofunction type alone does not imply guardedness: the
+negative-lookahead body `notFollowedBy self` inspects `self` at the same offset, and its result
+can flip with the fuel's parity.
 
 Because error payloads record the *furthest* offset any branch reached, they can legitimately
 grow with more fuel; completeness is therefore stated up to `AgreeOk`, agreement on the accepted
@@ -40,12 +40,15 @@ def AgreeOk : ParseResult α → ParseResult α → Prop
   | .error _, .ok _ _ => False
   | .error _, .error _ => True
 
+/-- Agreement is reflexive. -/
 theorem AgreeOk.refl : ∀ r : ParseResult α, AgreeOk r r := by
   intro r; cases r <;> simp [AgreeOk]
 
+/-- Agreement is symmetric. -/
 theorem AgreeOk.symm {r₁ r₂ : ParseResult α} (h : AgreeOk r₁ r₂) : AgreeOk r₂ r₁ := by
   cases r₁ <;> cases r₂ <;> simp_all [AgreeOk]
 
+/-- Agreement is transitive. -/
 theorem AgreeOk.trans {r₁ r₂ r₃ : ParseResult α}
     (h₁ : AgreeOk r₁ r₂) (h₂ : AgreeOk r₂ r₃) : AgreeOk r₁ r₃ := by
   cases r₁ <;> cases r₂ <;> cases r₃ <;> simp_all [AgreeOk]
@@ -126,7 +129,7 @@ theorem agree_add (f : GParser conditional α → GParser conditional α) (hf : 
 
 /-- **Completeness of the fuel bound.** For a guarded body, the fuel `fix` uses,
 `arr.size - q + 1`, accepts every parse any larger fuel would: no accepted parse is truncated.
-The consumption grade supplies guardedness, so `fix` computes the ideal fixpoint. -/
+The explicit `Guarded f` argument supplies the required semantic premise. -/
 theorem fixFuel_complete (f : GParser conditional α → GParser conditional α) (hf : Guarded f)
     (arr : ByteArray) (q : Nat) {m : Nat} (hm : arr.size - q + 1 ≤ m) {a : α} {q' : Nat}
     (h : GParser.fixFuel f m arr q = .ok a q') :
@@ -159,13 +162,13 @@ theorem fix_complete (f : GParser conditional α → GParser conditional α) (hf
   show clampAdvance arr q (GParser.fixFuel f (arr.size - q + 1) arr q) = .ok a q'
   rw [hB]; simp only [clampAdvance]; rw [if_pos ⟨hcw, hbw⟩]
 
-/-! ### The consumption grade forces guardedness
+/-! ### Building guardedness from consumption
 
 The combinators build guarded bodies compositionally. A body that consults its self-reference
 only *after* a `conditional` (always-consuming) parser is guarded, because the consumed byte
-pushes the recursive call to a strictly greater offset -- this is the formal content of "the
-grade forces guardedness". Wrapping combinators (`map`, `alt`) preserve guardedness. A worked
-grammar (`manyTill`) is assembled from these at the end. -/
+pushes the recursive call to a strictly greater offset. The grade justifies that local step; it
+does not make every endofunction guarded. Wrapping combinators (`map`, `alt`) preserve
+guardedness. A worked grammar (`manyTill`) is assembled from these lemmas at the end. -/
 
 /-- Two failures agree on acceptance. -/
 theorem agree_error {r₁ r₂ : ParseResult α} (h₁ : ∃ e, r₁ = .error e) (h₂ : ∃ e, r₂ = .error e) :
@@ -189,17 +192,6 @@ theorem guarded_const {β : Type} {g : Grade} (c : GParser g β) :
     Guarded (fun (_ : GParser conditional α) => c) := by
   intro _ _ _ _ _; exact AgreeOk.refl _
 
-/-- Recurring directly after a `conditional` consumer is guarded: `seqR p rec` runs `p` first,
-whose success advances past `q` (`p.cwit`), so `rec` is read only at offsets `> q`, where the
-agreement premise already holds. -/
-theorem guarded_seqR_self {β : Type} (p : GParser conditional β) :
-    Guarded (fun (rec : GParser conditional α) => GParser.seqR p rec) := by
-  intro s₁ s₂ arr q hpre
-  simp only [GParser.seqR]
-  cases hp : p.run arr q with
-  | error e => exact AgreeOk.refl _
-  | ok x q' => exact hpre q' (p.cwit hp)
-
 /-- The recursive call as the second argument of `map2` after a `conditional` first argument is
 guarded: `p` consumes, so `rec` is read past `q`. This is the shape `manyTill` uses. -/
 theorem guarded_map2_self {β δ : Type} (f : β → α → δ) (p : GParser conditional β) :
@@ -212,16 +204,6 @@ theorem guarded_map2_self {β δ : Type} (f : β → α → δ) (p : GParser con
     have hrec := hpre q' (p.cwit hp)
     cases h1 : s₁.run arr q' <;> cases h2 : s₂.run arr q' <;>
       rw [h1, h2] at hrec <;> simp_all [AgreeOk]
-
-/-- `map` preserves guardedness: it relabels the value and leaves failure a failure. -/
-theorem guarded_map {β γ : Type} {gg : Grade} (φ : β → γ)
-    (k : GParser conditional α → GParser gg β) (hk : Guarded k) :
-    Guarded (fun rec => GParser.map φ (k rec)) := by
-  intro s₁ s₂ arr q hpre
-  have hk' := hk s₁ s₂ arr q hpre
-  simp only [GParser.map]
-  cases h1 : (k s₁).run arr q <;> cases h2 : (k s₂).run arr q <;>
-    rw [h1, h2] at hk' <;> simp_all [AgreeOk]
 
 /-- `alt` preserves guardedness: acceptance of the choice is decided by the two branches, which
 agree at `q`; the error-merge of a double failure is still a failure. -/

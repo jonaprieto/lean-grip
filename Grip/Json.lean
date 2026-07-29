@@ -12,8 +12,8 @@ The number representation follows Lean's `Lean.Data.Json.JsonNumber`: a number i
 exact `mantissa * 10 ^ (-exponent)` with `mantissa : Int` and `exponent : Nat`, so no
 value is rounded (unlike a `Float`).
 
-grip keeps the strict RFC-8259 grammar of `Grip.Examples.Json` and builds values with
-`GParser.capture` over the flat byte core, rather than prim-parser's size-indexed vector.
+grip keeps the strict RFC-8259 grammar of the `examples/Json.lean` validator and builds
+values over the flat byte core, rather than prim-parser's size-indexed vector.
 -/
 
 import Grip
@@ -21,22 +21,22 @@ import Grip
 /-!
 # Grip.Json: a value-producing, RFC-8259 JSON parser
 
-Where `Grip.Examples.Json` *validates* and returns a leaf count, this module builds a
+Where the `examples/Json.lean` validator returns a leaf count, this module builds a
 real `Json` value (a DOM). `import Grip.Json`, then `Grip.Json.parse : ByteArray →
-Except ParseError Json` (or `parse!` from a `String`).
+Except ParseError Json` (or `parseString` from a `String`).
 
 ## Design
 
-The grammar is the same grammar-strict RFC-8259 one as `Grip.Examples.Json`: leading
+The grammar is the same grammar-strict RFC-8259 one as the validator: leading
 zeros (`01`), trailing dots (`1.`), bare exponents (`1e`), trailing commas, bad
 escapes and trailing garbage are all rejected. Each grammar arm additionally builds a
 value:
 
-- numbers are captured (`GParser.capture`) as their verbatim lexeme and decoded to an
-  exact `.num mantissa exponent` (the value `mantissa * 10 ^ (-exponent)`); no `Float`
-  is involved, so no value is rounded;
-- strings are captured and their escapes decoded (`\n`, `\"`, `\uXXXX`, and UTF-16
-  surrogate pairs);
+- numbers are decoded straight from their consumed byte range (`GParser.captureWith?`)
+  to an exact `.num mantissa exponent` (the value `mantissa * 10 ^ (-exponent)`); no
+  `Float` is involved, so no value is rounded;
+- strings are scanned and their escapes decoded in one pass (`scanStr`: `\n`, `\"`,
+  `\uXXXX`, and UTF-16 surrogate pairs);
 - arrays and objects recurse through `GParser.fix`.
 
 This parser materializes a tree, so it does not keep the flat, allocation-free fast
@@ -86,7 +86,7 @@ end Json
 namespace Decode
 
 /-- State threaded through `unescape`'s single left fold. -/
-private structure UState where
+structure UState where
   out   : String := ""
   esc   : Bool := false   -- previous char was a lone backslash
   uLeft : Nat := 0        -- hex digits still expected in a `\uXXXX` (0 = not in one)
@@ -96,7 +96,7 @@ private structure UState where
 /-- One step of `unescape`. Handles simple escapes, `\uXXXX`, and a high/low surrogate
 pair combined into one scalar. Assumes a grammar-validated body, so malformed input is
 handled leniently rather than rejected. -/
-private def uStep (st : UState) (c : Char) : UState :=
+def uStep (st : UState) (c : Char) : UState :=
   if st.uLeft > 0 then
     let acc := st.uAcc * 16 + Grip.Ascii.hexValue (UInt8.ofNat c.toNat)
     if st.uLeft == 1 then
@@ -124,11 +124,13 @@ private def uStep (st : UState) (c : Char) : UState :=
   else if c == '\\' then { st with esc := true }
   else { st with out := st.out.push c }
 
-/-- Decode the escapes in a JSON string body (no surrounding quotes). -/
-def unescape (s : String) : String := (s.foldl uStep {}).out
+/-- Decode the escapes in a JSON string body (no surrounding quotes). Folds over `s.toList`
+(not `s.foldl`) so the round-trip proof can rewrite with `String.toList_ofList`; this runs only
+when a body actually contained a `\`-escape, off the escape-free fast path. -/
+def unescape (s : String) : String := (s.toList.foldl uStep {}).out
 
 /-- State threaded through `decodeNumber`'s single fold over the whole lexeme. -/
-private structure NState where
+structure NState where
   mant    : Nat := 0     -- integer and fractional digits as one natural
   fracLen : Nat := 0     -- number of fractional digits
   phase   : Nat := 0     -- 0 = integer part, 1 = fraction, 2 = exponent
@@ -139,7 +141,7 @@ private structure NState where
 /-- One step of the number decode, over a raw input byte. A `-` (45) is the mantissa sign
 in phase 0 and the exponent sign in phase 2; `+` (43) only occurs in the exponent. Digit
 bytes are `48..57`. -/
-private def numByte (st : NState) (b : UInt8) : NState :=
+def numByte (st : NState) (b : UInt8) : NState :=
   if b == 46 then { st with phase := 1 }                    -- '.'
   else if b == 101 || b == 69 then { st with phase := 2 }   -- 'e' / 'E'
   else if b == 43 then st                                   -- '+'
@@ -151,17 +153,30 @@ private def numByte (st : NState) (b : UInt8) : NState :=
     else if st.phase == 1 then { st with mant := st.mant * 10 + d, fracLen := st.fracLen + 1 }
     else { st with expVal := st.expVal * 10 + d }
 
+/-- The largest net base-10 exponent the decoder folds into the mantissa. A positive net
+exponent beyond this is rejected rather than powered: it bounds the widest integer the decoder
+will materialize (`10 ^ maxExp`), keeping it far above any real datum yet well below the
+`Nat.pow` panic threshold. The renderer also uses this as its largest expanded fractional
+exponent, switching to JSON exponent notation beyond it. Without the bound, a pathological but
+grammar-valid literal like the 600-digit exponent in `test/jsontestsuite/i_number_huge_exp.json`
+aborts the process with `INTERNAL PANIC: Nat.pow exponent is too big`. `i_`-prefixed
+JSONTestSuite numbers are implementation-defined, so rejecting them stays RFC-8259-conformant. -/
+def maxExp : Nat := 1000000
+
 /-- Decode a validated number lexeme spanning `arr[start .. stop)` to an exact
-`.num mantissa exponent`. A nonnegative base-10 exponent is folded into the mantissa (so
-`2e3` is `num 2000 0`), keeping `exponent : Nat`; a negative one becomes the exponent
-(`2.5` is `num 25 1`). Folds `numByte` over the input bytes directly — no `capture`
+`.num mantissa exponent`, or `none` when the net positive exponent exceeds `maxExp` (which would
+otherwise fold into an unbounded `10 ^ n` and panic). A nonnegative base-10 exponent is folded
+into the mantissa (so `2e3` is `num 2000 0`), keeping `exponent : Nat`; a negative one becomes
+the exponent (`2.5` is `num 25 1`). Folds `numByte` over the input bytes directly — no `capture`
 `String`, no per-char UTF-8 decode. -/
-def decodeNumberBytes (arr : ByteArray) (start stop : Nat) : Json :=
+def decodeNumberBytes? (arr : ByteArray) (start stop : Nat) : Option Json :=
   let st := arr.foldl numByte {} start stop
   let mant : Int := if st.mantNeg then -(st.mant : Int) else st.mant
   let decExp : Int := (if st.expNeg then -(st.expVal : Int) else (st.expVal : Int)) - st.fracLen
-  if decExp ≥ 0 then Json.num (mant * (10 ^ decExp.toNat)) 0
-  else Json.num mant (-decExp).toNat
+  if decExp ≥ 0 then
+    if decExp > (maxExp : Int) then none
+    else some (Json.num (mant * (10 ^ decExp.toNat)) 0)
+  else some (Json.num mant (-decExp).toNat)
 
 end Decode
 
@@ -179,13 +194,14 @@ open Decode
       some (q + 2)
     else if arr[q + 1] == 117 then
       if h2 : q + 5 < arr.size then
-        if isHexByte arr[q + 2] && isHexByte arr[q + 3] && isHexByte arr[q + 4]
-            && isHexByte arr[q + 5] then some (q + 6)
+        if Ascii.isHexDigit arr[q + 2] && Ascii.isHexDigit arr[q + 3]
+            && Ascii.isHexDigit arr[q + 4] && Ascii.isHexDigit arr[q + 5] then some (q + 6)
         else none
       else none
     else none
   else none
 
+/-- A valid escape strictly advances the scan (simple escape by 2, `\uXXXX` by 6). -/
 theorem escEnd_gt (arr : ByteArray) (q q' : Nat) (h : escEnd arr q = some q') : q < q' := by
   rw [escEnd] at h
   split at h
@@ -200,34 +216,19 @@ theorem escEnd_gt (arr : ByteArray) (q q' : Nat) (h : escEnd arr q = some q') : 
       · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-theorem escEnd_le (arr : ByteArray) (q q' : Nat) (h : escEnd arr q = some q') :
-    q' ≤ arr.size := by
-  rw [escEnd] at h
-  split at h
-  · rename_i h1
-    split at h
-    · simp only [Option.some.injEq] at h; omega
-    · split at h
-      · split at h
-        · rename_i h2 _
-          split at h
-          · simp only [Option.some.injEq] at h; omega
-          · exact absurd h (by simp)
-        · exact absurd h (by simp)
-      · exact absurd h (by simp)
-  · exact absurd h (by simp)
-
 /-- Scan a strict RFC-8259 string body and produce the decoded `String` in one pass. `q0` is
 the opening-quote index and `q` the current scan position; `esc` accumulates whether any `\`
-was seen. On the closing quote the body `arr[q0+1 .. q)` is built once (a single `fromUTF8!`
-copy) and unescaped only when `esc`, so there is no second backslash pass and no intermediate
-`capture`/escape-flag allocation. Escapes are validated by `escEnd`, keeping this loop flat.
-Total (structural on `arr.size - q`). -/
+was seen. On the closing quote the body `arr[q0+1 .. q)` is validated and decoded as UTF-8 in
+one pass (`String.fromUTF8?`, no separate validation walk) and unescaped only when `esc`;
+invalid UTF-8 in the body is rejected rather than silently decoded to an empty string. No
+second backslash pass and no intermediate `capture`/escape-flag allocation. Escapes are
+validated by `escEnd`, keeping this loop flat. Total (structural on `arr.size - q`). -/
 @[specialize] def scanStr (arr : ByteArray) (q0 q : Nat) (esc : Bool) : ParseResult String :=
   if h : q < arr.size then
     if arr[q] == 34 then
-      let body := String.fromUTF8! (arr.extract (q0 + 1) q)
-      .ok (if esc then unescape body else body) (q + 1)
+      match String.fromUTF8? (arr.extract (q0 + 1) q) with
+      | some body => .ok (if esc then unescape body else body) (q + 1)
+      | none       => .error ⟨q0, []⟩
     else if arr[q] == 92 then
       match hE : escEnd arr q with
       | some q' => scanStr arr q0 q' true
@@ -247,7 +248,9 @@ theorem scanStr_gt (arr : ByteArray) (q0 q q' : Nat) (esc : Bool) (a : String)
   split at h
   · rename_i hq
     split at h
-    · simp only [ParseResult.ok.injEq] at h; omega
+    · split at h
+      · simp only [ParseResult.ok.injEq] at h; omega
+      · exact absurd h (by simp)
     · split at h
       · split at h
         · next q'' hE =>
@@ -273,7 +276,9 @@ theorem scanStr_le (arr : ByteArray) (q0 q q' : Nat) (esc : Bool) (a : String)
   split at h
   · rename_i hq
     split at h
-    · simp only [ParseResult.ok.injEq] at h; omega
+    · split at h
+      · simp only [ParseResult.ok.injEq] at h; omega
+      · exact absurd h (by simp)
     · split at h
       · split at h
         · next q'' hE => exact scanStr_le arr q0 q'' q' true a h
@@ -291,15 +296,18 @@ decreasing_by
 
 -- Leaf value parsers -----------------------------------------------------
 
-@[inline] private def frac : GParser conditional Nat :=
+/-- Fractional part: a `.` then one or more digits. -/
+@[inline] def frac : GParser conditional Nat :=
   GParser.seqR (GParser.ch '.') (GParser.takeWhile1 Ascii.isDigit)
 
-@[inline] private def expo : GParser conditional Nat :=
+/-- Exponent part: `e`/`E`, an optional sign, then one or more digits. -/
+@[inline] def expo : GParser conditional Nat :=
   GParser.seqR (GParser.satisfy Ascii.isExp)
     (GParser.seqR (GParser.optional (GParser.satisfy Ascii.isSign))
       (GParser.takeWhile1 Ascii.isDigit))
 
-@[inline] private def intPart : GParser conditional Unit :=
+/-- Integer part: a lone `0`, or a nonzero digit followed by any digits (no leading zeros). -/
+@[inline] def intPart : GParser conditional Unit :=
   GParser.alt (GParser.ch '0')
     (GParser.seqR (GParser.satisfy Ascii.isDigit19)
       (GParser.seqR (GParser.takeWhile Ascii.isDigit) (GParser.pure ())))
@@ -307,8 +315,8 @@ decreasing_by
 /-- A JSON number, decoded to `.num` straight from the consumed byte range (no `capture`
 `String`). Leading-zero and trailing-garbage rejection come from the grammar and the
 top-level EOF check. -/
-private def number : GParser conditional Json :=
-  GParser.captureWith decodeNumberBytes
+@[inline] def number : GParser conditional Json :=
+  GParser.captureWith? decodeNumberBytes?
     (GParser.seqR (GParser.optional (GParser.ch '-'))
       (GParser.seqL intPart
         (GParser.seqR (GParser.optional frac) (GParser.optional expo))))
@@ -316,7 +324,7 @@ private def number : GParser conditional Json :=
 /-- A validated JSON string literal decoded to its `String` contents in a single scan. The
 escape-aware body scan reports whether any `\` occurred, so `unescape` runs only when it
 must and there is no separate backslash pass over the body. -/
-@[inline] private def jstr : GParser conditional String where
+@[inline] def jstr : GParser conditional String where
   run := fun arr q =>
     if h : q < arr.size then
       (if arr[q] == 34 then scanStr arr q (q + 1) false else .error ⟨q, []⟩)
@@ -338,12 +346,16 @@ must and there is no separate backslash pass over the body. -/
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
 
-private def jstring : GParser conditional Json := GParser.map Json.str jstr
-private def jnull  : GParser conditional Json :=
+/-- A JSON string literal as a `Json.str` value. -/
+@[inline] def jstring : GParser conditional Json := GParser.map Json.str jstr
+/-- The keyword `null` as a `Json` value. -/
+@[inline] def jnull  : GParser conditional Json :=
   GParser.map (fun _ => Json.null) (GParser.string "null")
-private def jtrue  : GParser conditional Json :=
+/-- The keyword `true` as a `Json` value. -/
+@[inline] def jtrue  : GParser conditional Json :=
   GParser.map (fun _ => Json.bool true) (GParser.string "true")
-private def jfalse : GParser conditional Json :=
+/-- The keyword `false` as a `Json` value. -/
+@[inline] def jfalse : GParser conditional Json :=
   GParser.map (fun _ => Json.bool false) (GParser.string "false")
 
 -- Recursive value via `fix` ----------------------------------------------
@@ -352,7 +364,7 @@ private def jfalse : GParser conditional Json :=
 `seqR ws (dispatch …)` this avoids allocating (and discarding) `ws`'s byte count and the
 extra combinator indirection on every value entry. Grade `conditional`: the dispatched
 parser consumes, and whitespace only advances the offset further. -/
-@[inline] private def wsDispatch (select : UInt8 → GParser conditional Json) :
+@[inline] def wsDispatch (select : UInt8 → GParser conditional Json) :
     GParser conditional Json where
   run := fun arr q =>
     let p := scanFwd arr Ascii.isWs q
@@ -378,7 +390,7 @@ parser consumes, and whitespace only advances the offset further. -/
 /-- Skip leading whitespace, then match the single byte `b`, consuming it. Fused so a
 structural token (`:`, `,`, `]`, `}`) after whitespace costs one scan and one compare with
 no discarded `ws` count allocation. -/
-@[inline] private def wsByte (b : UInt8) : GParser conditional Unit where
+@[inline] def wsByte (b : UInt8) : GParser conditional Unit where
   run := fun arr q =>
     let p := scanFwd arr Ascii.isWs q
     if _ : p < arr.size then
@@ -409,42 +421,47 @@ no discarded `ws` count allocation. -/
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
 
-private def value : GParser conditional Json :=
-  GParser.fix fun value =>
-    -- The container sub-parsers reference `value`, so `fix` rebuilds them on every entry.
-    -- Building them inside the taken dispatch arm (not eagerly before the dispatch) means a
-    -- leaf value (string/number/keyword) constructs no array/object machinery at all.
-    wsDispatch
-      (fun b =>
-        if b == Ascii.lbrace then
-          -- `value` skips its own leading whitespace, so no `ws` before it after `:` / `,`.
-          let pair : GParser conditional (String × Json) :=
-            GParser.map2 (fun k v => (k, v)) jstr (GParser.seqR (wsByte Ascii.colon) value)
-          let objectBody : GParser flexible (Array (String × Json)) :=
-            GParser.alt
-              (GParser.bind pair (fun p =>
-                GParser.foldMany (fun (a : Array (String × Json)) x => a.push x) #[p]
-                  (GParser.seqR (wsByte Ascii.comma) (GParser.seqR GParser.ws pair))))
-              (GParser.pure #[])
-          GParser.seqR (GParser.ch '{')
-            (GParser.seqR GParser.ws
-              (GParser.seqL (GParser.map Json.obj objectBody) (wsByte Ascii.rbrace)))
-        else if b == Ascii.lbracket then
-          let arrayBody : GParser flexible (Array Json) :=
-            GParser.alt
-              (GParser.bind value (fun x =>
-                GParser.foldMany (fun (a : Array Json) e => a.push e) #[x]
-                  (GParser.seqR (wsByte Ascii.comma) value)))
-              (GParser.pure #[])
-          GParser.seqR (GParser.ch '[')
-            (GParser.seqL (GParser.map Json.arr arrayBody) (wsByte Ascii.rbracket))
-        else if b == Ascii.quote then jstring
-        else if b == 116 then jtrue
-        else if b == 102 then jfalse
-        else if b == 110 then jnull
-        else if Ascii.isDigit b || b == Ascii.dash then number
-        -- A byte that starts no value: always fails (the mapped `null` is unreachable).
-        else GParser.map (fun _ => Json.null) (GParser.satisfy (fun _ => false)))
+/-- Named body of the recursive JSON value parser. Proofs reference
+    `GParser.fixFuel valueBody` directly. -/
+def valueBody (rec : GParser conditional Json) : GParser conditional Json :=
+  -- The container sub-parsers reference `rec`, so `fix` rebuilds them on every entry.
+  -- Building them inside the taken dispatch arm (not eagerly before the dispatch) means a
+  -- leaf value (string/number/keyword) constructs no array/object machinery at all.
+  wsDispatch
+    (fun b =>
+      if b == Ascii.lbrace then
+        -- `rec` skips its own leading whitespace, so no `ws` before it after `:` / `,`.
+        let pair : GParser conditional (String × Json) :=
+          GParser.map2 (fun k v => (k, v)) jstr (GParser.seqR (wsByte Ascii.colon) rec)
+        let objectBody : GParser flexible (Array (String × Json)) :=
+          GParser.alt
+            (GParser.bind pair (fun p =>
+              GParser.foldMany (fun (a : Array (String × Json)) x => a.push x) #[p]
+                (GParser.seqR (wsByte Ascii.comma) (GParser.seqR GParser.ws pair))))
+            (GParser.pure #[])
+        GParser.seqR (GParser.ch '{')
+          (GParser.seqR GParser.ws
+            (GParser.seqL (GParser.map Json.obj objectBody) (wsByte Ascii.rbrace)))
+      else if b == Ascii.lbracket then
+        let arrayBody : GParser flexible (Array Json) :=
+          GParser.alt
+            (GParser.bind rec (fun x =>
+              GParser.foldMany (fun (a : Array Json) e => a.push e) #[x]
+                (GParser.seqR (wsByte Ascii.comma) rec)))
+            (GParser.pure #[])
+        GParser.seqR (GParser.ch '[')
+          (GParser.seqL (GParser.map Json.arr arrayBody) (wsByte Ascii.rbracket))
+      else if b == Ascii.quote then jstring
+      else if b == Ascii.code 't' then jtrue
+      else if b == Ascii.code 'f' then jfalse
+      else if b == Ascii.code 'n' then jnull
+      else if Ascii.isDigit b || b == Ascii.dash then number
+      -- A byte that starts no value: always fails (the mapped `null` is unreachable).
+      else GParser.map (fun _ => Json.null) (GParser.satisfy (fun _ => false)))
+
+/-- A JSON value of any shape: object, array, string, number, or keyword. Recursion is
+tied by `GParser.fix`, so the grammar is total and left recursion fails rather than loops. -/
+def value : GParser conditional Json := GParser.fix valueBody
 
 /-- One complete JSON document: a value, optional trailing whitespace, then EOF (so
 trailing garbage is rejected). -/
@@ -455,52 +472,82 @@ positioned `ParseError`. -/
 def parse (arr : ByteArray) : Except ParseError Json := parser.parse arr
 
 /-- Parse a complete JSON document from a `String`. -/
-def parse! (s : String) : Except ParseError Json := parser.parse s.toUTF8
+def parseString (s : String) : Except ParseError Json := parser.parse s.toUTF8
 
 -- Serialization ----------------------------------------------------------
 
 namespace Json
 
-private def hexDigit (n : Nat) : Char := "0123456789abcdef".toList.getD n '0'
+/-- The lowercase hex digit for `n < 16`; `'0'` for larger `n`. -/
+def hexDigit (n : Nat) : Char := "0123456789abcdef".toList.getD n '0'
+
+/-- The JSON escape of a single character, as the list of output characters: `"`, `\`, and the
+named control escapes map to a two-character sequence, other control bytes to `\u00XX`, and every
+other character to itself. -/
+def escapeChar (c : Char) : List Char :=
+  if c == '"' then ['\\', '"']
+  else if c == '\\' then ['\\', '\\']
+  else if c == '\n' then ['\\', 'n']
+  else if c == '\t' then ['\\', 't']
+  else if c == '\r' then ['\\', 'r']
+  else if c == Char.ofNat 8 then ['\\', 'b']
+  else if c == Char.ofNat 12 then ['\\', 'f']
+  else if c.toNat < 0x20 then
+    ['\\', 'u', '0', '0', hexDigit (c.toNat / 16), hexDigit (c.toNat % 16)]
+  else [c]
 
 /-- Escape a string body for JSON output: `"`, `\`, and control characters. Non-ASCII is
-emitted verbatim (valid UTF-8 JSON). -/
-def escape (s : String) : String :=
-  -- ponytail: naive `++` append, quadratic in the escaped length; fine for a serializer,
-  -- switch to a `String` builder if it ever shows up in a profile.
-  s.foldl (fun acc c =>
-    acc ++
-      (if c == '"' then "\\\""
-       else if c == '\\' then "\\\\"
-       else if c == '\n' then "\\n"
-       else if c == '\t' then "\\t"
-       else if c == '\r' then "\\r"
-       else if c == Char.ofNat 8 then "\\b"
-       else if c == Char.ofNat 12 then "\\f"
-       else if c.toNat < 0x20 then
-         String.ofList ['\\', 'u', '0', '0', hexDigit (c.toNat / 16), hexDigit (c.toNat % 16)]
-       else String.singleton c)) ""
+emitted verbatim (valid UTF-8 JSON). Builds the output as one `List Char` (`flatMap`) and
+materializes it once, so it is linear rather than quadratic in the escaped length. -/
+def escape (s : String) : String := String.ofList (s.toList.flatMap escapeChar)
 
 /-- Render an exact `num mantissa exponent` to a decimal literal, inserting the point
 `exponent` digits from the right (`num 25 1` → `"2.5"`, `num 5 3` → `"0.005"`). -/
 def renderNum (m : Int) (e : Nat) : String :=
-  if e == 0 then toString m
+  if e == 0 then (if m < 0 then "-" else "") ++ toString m.natAbs
   else
     let ds := List.replicate (e + 1 - (toString m.natAbs).length) '0' ++ (toString m.natAbs).toList
     let k := ds.length - e
     (if m < 0 then "-" else "") ++ String.ofList (ds.take k) ++ "." ++ String.ofList (ds.drop k)
 
-/-- Serialize a value to compact RFC-8259 JSON (no insignificant whitespace). Round-trips
-through `parse` (the value, not necessarily the mantissa/exponent split). -/
-partial def render : Json → String
+/-- Render a fractional number using JSON exponent notation. This avoids materializing `e`
+zeroes for large scales while preserving the exact `num m e` representation on parse. -/
+def renderNumScientific (m : Int) (e : Nat) : String :=
+  (if m < 0 then "-" else "") ++ toString m.natAbs ++ "e-" ++ toString e
+
+/-- Serialize a numeric DOM value. Ordinary values retain their canonical expanded decimal form;
+large fractional exponents use compact scientific notation so rendering remains proportional to
+the exponent's digit count rather than its value. -/
+def renderNumber (m : Int) (e : Nat) : String :=
+  if e > maxExp then renderNumScientific m e else renderNum m e
+
+/-- Join a list of strings with a separator, proof-friendly alternative to `String.intercalate`.
+The output is identical: `joinWith sep ss = String.intercalate sep ss`. -/
+def joinWith (sep : String) : List String → String
+  | []         => ""
+  | [s]        => s
+  | s :: rest  => s ++ sep ++ joinWith sep rest
+
+/-- Serialize a value to compact RFC-8259 JSON (no insignificant whitespace). Parsing the result
+recovers the exact `Json` value, including the numeric mantissa/exponent representation. Total:
+structural on `sizeOf`; `attach` carries the membership proof each recursive call decreases by. -/
+def render : Json → String
   | .null       => "null"
   | .bool true  => "true"
   | .bool false => "false"
-  | .num m e    => renderNum m e
+  | .num m e    => renderNumber m e
   | .str s      => "\"" ++ escape s ++ "\""
-  | .arr xs     => "[" ++ String.intercalate "," (xs.toList.map render) ++ "]"
-  | .obj kvs    => "{" ++ String.intercalate ","
-      (kvs.toList.map fun kv => "\"" ++ escape kv.1 ++ "\":" ++ render kv.2) ++ "}"
+  | .arr xs     =>
+    "[" ++ joinWith "," (xs.attach.toList.map (fun x => render x.1)) ++ "]"
+  | .obj kvs    =>
+    "{" ++ joinWith ","
+      (kvs.attach.toList.map (fun ⟨(k, j), _h⟩ => "\"" ++ escape k ++ "\":" ++ render j)) ++ "}"
+termination_by v => sizeOf v
+decreasing_by
+  · have := Array.sizeOf_lt_of_mem x.2; simp_wf; omega
+  · have hm := Array.sizeOf_lt_of_mem _h
+    simp only [Prod.mk.sizeOf_spec] at hm
+    simp_wf; omega
 
 instance : ToString Json := ⟨render⟩
 
@@ -525,6 +572,15 @@ open Grip Grip.Json
 #guard (GParser.run? parser "2.5".toUTF8) == some (Json.num 25 1)
 #guard (GParser.run? parser "-2.5e3".toUTF8) == some (Json.num (-2500) 0)
 #guard (GParser.run? parser "5e-1".toUTF8) == some (Json.num 5 1)
+-- exponent within `maxExp` folds; a huge positive one is rejected, not powered (no panic)
+#guard (GParser.run? parser "1e6".toUTF8) == some (Json.num 1000000 0)
+#guard (GParser.run? parser "1e999999999999".toUTF8) == none
+#guard (GParser.run? parser "1e-999999999999".toUTF8) == some (Json.num 1 999999999999)
+#guard Json.renderNumber 1 (Decode.maxExp + 1) == "1e-1000001"
+#guard (GParser.run? parser (Json.render (Json.num 1 (Decode.maxExp + 1))).toUTF8) ==
+  some (Json.num 1 (Decode.maxExp + 1))
+#guard (GParser.run? parser (Json.render (Json.num (-1) (Decode.maxExp + 1))).toUTF8) ==
+  some (Json.num (-1) (Decode.maxExp + 1))
 -- `int` smart constructor and strict `int?` extractor
 #guard Json.int 42 == Json.num 42 0
 #guard (Json.num 42 0).int? == some 42
@@ -567,6 +623,6 @@ open Grip Grip.Json
 #guard toString (Json.obj #[("a", Json.bool true)]) == "{\"a\":true}"
 #guard
   (let v := Json.obj #[("a", Json.arr #[Json.num 25 1, Json.null]), ("b", Json.str "x\ty")]
-   parse! (toString v) == .ok v)
+   parseString (toString v) == .ok v)
 
 end

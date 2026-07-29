@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Cubides
 -/
 
+import Grip.Ascii
 import Grip.Graded
 
 /-!
@@ -11,9 +12,12 @@ import Grip.Graded
 
 The looping combinators, all total (structural on `arr.size - q`) rather than `partial`.
 The raw scan loops `scanFwd`/`foldFwd`/`natFwd` with their forward-progress lemmas, and
-the parsers built on them: `takeWhile`/`takeWhile1`, `foldMany`/`many`, and `nat`. The
-`@[specialize]` on each loop lets a statically-known predicate monomorphize into it. The
-point combinators are in `Grip.Byte`; the graded type and `fix` in `Grip.Graded`.
+the parsers built on them: `takeWhile`/`takeWhile1`, `foldMany`/`many`, and `nat`. Also
+the JSON string scanners: the lenient `scanStrFwd`/`takeStringBody` (escape-aware, never
+fails) and the strict `scanStrBody`/`scanStrLit`/`stringLit` (validates escapes and
+control bytes). The `@[specialize]` on each loop lets a statically-known predicate
+monomorphize into it. The point combinators are in `Grip.Byte`; the graded type and
+`fix` in `Grip.Graded`.
 -/
 
 open Modality
@@ -21,7 +25,7 @@ open Grade
 
 namespace Grip
 
-variable {g g' : Grade} {ge ge' gc gc' : Modality} {α β : Type}
+variable {ge : Modality} {α β : Type}
 
 /-- Scan forward while `f` holds. Total: structural on the measure
 `arr.size - q` (each step advances one byte, bounded by `arr.size`). `@[specialize]` so
@@ -142,10 +146,6 @@ Always succeeds (result is `.ok`). Pair with a `"` on each side for a full strin
     obtain ⟨_, rfl⟩ := heq
     exact scanStrFwd_le arr q hq
 
-/-- Hex digit byte: `0-9`, `a-f`, `A-F`. Local so `Scan` need not import `Ascii`. -/
-@[inline] def isHexByte (b : UInt8) : Bool :=
-  (48 ≤ b && b ≤ 57) || (97 ≤ b && b ≤ 102) || (65 ≤ b && b ≤ 70)
-
 /-- Scan a *strict* RFC-8259 string body: from just after the opening `"` at `q`, advance to
 and past the closing `"`, validating escapes. Returns `some end` (just past the closing quote)
 on a well-formed body, or `none` on a malformed one: an unescaped control byte (`< 0x20`), an
@@ -163,8 +163,8 @@ reject, so the parser built on it is `conditional`, not `flexible`. -/
           scanStrBody arr (q + 2)                                       -- `\" \\ \/ \b \f \n \r \t`
         else if arr[q + 1] == 117 then                                  -- `\uXXXX`
           if h2 : q + 5 < arr.size then
-            if isHexByte arr[q + 2] && isHexByte arr[q + 3] && isHexByte arr[q + 4]
-                && isHexByte arr[q + 5] then
+            if Ascii.isHexDigit arr[q + 2] && Ascii.isHexDigit arr[q + 3]
+                && Ascii.isHexDigit arr[q + 4] && Ascii.isHexDigit arr[q + 5] then
               scanStrBody arr (q + 6)
             else none
           else none

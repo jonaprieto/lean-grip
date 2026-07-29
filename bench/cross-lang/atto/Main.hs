@@ -13,6 +13,7 @@ import qualified Data.ByteString            as BS
 import           System.Clock               (Clock(Monotonic), getTime, toNanoSecs)
 import           Control.Exception          (evaluate)
 import           Data.IORef
+import           Data.List                  (sort)
 import           System.Environment         (getArgs)
 import           System.FilePath            (takeFileName)
 
@@ -224,9 +225,11 @@ main = do
         return (t1 - t0)
 
   times <- mapM (\_ -> doRun) [1..20 :: Int]
-  let bestNS = minimum times
-  let bestMS = fromIntegral bestNS / 1.0e6 :: Double
+  let sorted = sort times
+  let bestMS = fromIntegral (head sorted) / 1.0e6 :: Double
+  let medMS  = fromIntegral (sorted !! (length sorted `div` 2)) / 1.0e6 :: Double
 
   putStrLn $ "attoparsec " ++ basename
           ++ " count=" ++ show n0
           ++ " best_ms=" ++ show bestMS
+          ++ " med_ms=" ++ show medMS

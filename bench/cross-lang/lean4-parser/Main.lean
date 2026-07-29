@@ -127,15 +127,15 @@ end L4pJsonChar
   | some n => n
   | none   => 0
 
-def bestMs (reps : Nat) (act : Nat → Nat) : IO Float := do
-  let mut best : Float := 0.0
+def sampleMs (reps : Nat) (act : Nat → Nat) : IO (Float × Float) := do
+  let mut samples : Array Float := #[]
   for i in [0:reps] do
     let t0 ← IO.monoNanosNow
     if act i == 0 then IO.eprintln "bench: unexpected zero count"
     let t1 ← IO.monoNanosNow
-    let dt := Float.ofNat (t1 - t0) / 1000000.0
-    if i == 0 || dt < best then best := dt
-  return best
+    samples := samples.push (Float.ofNat (t1 - t0) / 1000000.0)
+  let sorted := samples.qsort (· < ·)
+  return (sorted[0]!, sorted[sorted.size / 2]!)
 
 def main (args : List String) : IO Unit := do
   -- Read as String (Char-level parser operates on String). Dataset path is argv[1].
@@ -146,5 +146,5 @@ def main (args : List String) : IO Unit := do
   if count == 0 then
     IO.eprintln s!"ERROR: parse failed on {base}"
     return
-  let ms ← bestMs 20 (fun i => parseL4p (barrierStr i src))
-  IO.println s!"lean4-parser {base} count={count} best_ms={ms}"
+  let (ms, med) ← sampleMs 20 (fun i => parseL4p (barrierStr i src))
+  IO.println s!"lean4-parser {base} count={count} best_ms={ms} med_ms={med}"

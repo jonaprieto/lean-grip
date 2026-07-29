@@ -5,10 +5,15 @@ Authors: Jonathan Cubides
 -/
 
 /-!
-# Grip.Error: parse error payload and pretty-printer
+# Grip.Error: the parser result type and parse errors
 
-`Err` is the error value carried by the core parser on failure.  It records the
-furthest byte offset reached and the set of labels that were expected there.
+`ParseResult α` is the result of running a parser at an offset: `ok value newOffset` or
+`error e`. One constructor holds the value and offset inline, so a successful step
+allocates a single object.
+
+`Err` is the error value carried by `ParseResult.error`. Built-in choice uses it to report
+the furthest byte offset reached and the labels expected there; the `GParser` type does not make
+that diagnostic convention a proof obligation for client-defined parsers.
 
 `ParseError` is the user-facing error produced by `GParser.parse`; it adds
 1-based `line` and `col` computed from the source bytes.
@@ -18,15 +23,15 @@ Nothing in this file imports from `Grip`; only core Lean / Batteries.
 
 namespace Grip
 
-/-- The error value carried inside the core `Except Err` result.
+/-- The error value carried by `ParseResult.error`.
 
-`pos` is the furthest byte offset any attempted branch reached during parsing.
-`expected` is the list of labels attached (via `label`/`<?>`) to the parsers
-that failed at `pos`; it is used to compose "expected a or b" messages. -/
+For built-in combinators, `pos` is the furthest byte offset reached during parsing and `expected`
+contains labels attached by `label`/`<?>`. These fields are diagnostic data, not a parser
+contract. -/
 structure Err where
-  /-- Furthest byte offset reached at failure. -/
+  /-- Diagnostic offset used by built-in failure merging. -/
   pos      : Nat
-  /-- Labels expected at `pos` (one per `label`/`<?>` annotation). -/
+  /-- Labels expected at `pos` in built-in diagnostics. -/
   expected : List String
   deriving Repr, DecidableEq, BEq, Inhabited
 
@@ -60,8 +65,7 @@ the list is empty. -/
 def ParseError.message (e : ParseError) : String :=
   match e.expected with
   | []  => "unexpected input"
-  | [x] => "expected " ++ x
-  | xs  => String.intercalate " or " (xs.map ("expected " ++ ·))
+  | xs  => "expected " ++ String.intercalate " or " xs
 
 /-- `lineColLoop arr safePos i lineStart line` counts 0x0a bytes in
 `arr[i : safePos]` and returns `(lineNumber, colNumber)`, both 1-based.

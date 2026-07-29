@@ -195,18 +195,19 @@ def runJson (arr : ByteArray) : Option Nat :=
 -- Pattern from JCanada.lean: sink.modify forces `n`, if-check prevents elision.
 -- ---------------------------------------------------------------------------
 
-def gripBestMs (reps : Nat) (arr : ByteArray) : IO Float := do
+def gripSampleMs (reps : Nat) (arr : ByteArray) : IO (Float × Float) := do
   let sink ← IO.mkRef (0 : Nat)
-  let mut bestNs : Nat := 1 <<< 62
+  let mut samples : Array Nat := #[]
   for _ in [0:reps] do
     let t0 ← IO.monoNanosNow
     let n := (runJson arr).getD 0
     let t1 ← IO.monoNanosNow
     if n == 0 then sink.modify (· + 1) else sink.modify (· + n)
-    let dt := t1 - t0
-    if dt < bestNs then bestNs := dt
+    samples := samples.push (t1 - t0)
   let _ ← sink.get
-  return Float.ofNat bestNs / 1000000.0
+  let sorted := samples.qsort (· < ·)
+  return (Float.ofNat sorted[0]! / 1000000.0,
+    Float.ofNat sorted[sorted.size / 2]! / 1000000.0)
 
 def gripBasename (path : String) : String :=
   (path.splitOn "/").getLast?.getD path
@@ -221,5 +222,5 @@ def main (args : List String) : IO Unit := do
     IO.eprintln s!"ERROR: parse failed on {pathStr}"
     IO.println s!"prim-parser {gripBasename pathStr} count=0 best_ms=0.0"
   | some count =>
-    let ms ← gripBestMs 20 arr
-    IO.println s!"prim-parser {gripBasename pathStr} count={count} best_ms={ms}"
+    let (ms, med) ← gripSampleMs 20 arr
+    IO.println s!"prim-parser {gripBasename pathStr} count={count} best_ms={ms} med_ms={med}"
