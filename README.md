@@ -123,9 +123,12 @@ def sexp : GParser conditional Sexp :=
 The [JSON example](examples/Json.lean) is a grammar-strict RFC-8259 validator: it rejects
 malformed numbers (`00`, `1e`, `1.`), bad escapes, unescaped control bytes, and trailing
 garbage. The vendored [nst/JSONTestSuite](https://github.com/nst/JSONTestSuite) corpus runs
-as a CI gate (`lake exe conformance`): **95/95** `y_` accepted, **186/186** `n_` rejected.
-grip is also a JSONTestSuite `parsers/` entry (`parsers/test_grip.sh`). Documented ceiling:
-no UTF-8 byte validation, and deeply nested inputs are not stack-safe.
+as a CI gate (`lake exe conformance`) against *both* this validator and `Grip.Json.parse`
+-- the value-producing parser `GripProps.Container.parse_render` proves round-trips --
+so a grammar edit to one without the other fails CI: **95/95** `y_` accepted, **188/188**
+`n_` rejected on each. grip is also a JSONTestSuite `parsers/` entry (`parsers/test_grip.sh`),
+which now exercises `Grip.Json.parse`. Deeply nested inputs raise the process's stack limit
+to its hard cap rather than failing.
 
 ## Benchmarks
 

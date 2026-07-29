@@ -36,6 +36,11 @@ jobs:
           build-args: "Grip Test Examples conformance"
       - name: JSON conformance (JSONTestSuite)
         run: |
+          # Deep-nesting corpus files recurse on the Lean stack (`fix`, and `Grip.Json.parse`'s
+          # value recursion); raise the limit rather than excluding them from the gate. Numeric
+          # hard cap, not the bare `unlimited` keyword: some bash builds reject that with EPERM
+          # when the hard limit is itself finite (observed on Darwin; harmless where it isn't).
+          ulimit -s "$(ulimit -Hs)"
           # `if !` tests the exit status directly, so a regression fails the job
           # regardless of the shell's `set -e` command-substitution semantics.
           if ! out=$(lake exe conformance); then
