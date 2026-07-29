@@ -224,7 +224,7 @@ jobs:
             echo ""
             echo "PR \`${{ needs.meta.outputs.sha }}\` vs base \`${{ needs.meta.outputs.base }}\` -- best-of-20 ms, lower is better. Δ = PR vs base."
             echo ""
-            echo "JSON rows are per input file: \`grip\`/\`std.parsec\`/\`hand\` are leaf-count validators, \`grip.json\`/\`lean.json\` are the DOM-vs-DOM value builders, \`prim-parser\` is the sibling deep-embedded framework (validator, pinned \`97f120c\`, reference only)."
+            echo "JSON rows are per input file: \`grip\`/\`std.parsec\`/\`hand\` are leaf-count validators, \`grip.json\`/\`lean.json\` are the DOM-vs-DOM value builders, \`prim-parser\` is the sibling deep-embedded framework (validator, pinned \`97f120c\`, reference only). ⚠️ flags a row at least 10% slower than base -- a single best-of-20 sample each side, so treat it as a prompt to look closer, not a verdict."
             echo ""
             # Key each row by parser + input file so the per-file JSON DOM-vs-DOM rows
             # (grip.json/lean.json x canada/citm/twitter) are kept, not collapsed. Single-file
@@ -241,7 +241,12 @@ jobs:
                   n = ord[i]
                   has = (n in base)
                   bm = has ? sprintf("%.2f", base[n]) : "-"
-                  d  = (has && base[n] + 0 > 0) ? sprintf("%+.1f%%", (pr[n] - base[n]) / base[n] * 100) : "-"
+                  if (has && base[n] + 0 > 0) {
+                    pct = (pr[n] - base[n]) / base[n] * 100
+                    d = sprintf("%+.1f%%%s", pct, (pct >= 10) ? " ⚠️" : "")
+                  } else {
+                    d = "-"
+                  }
                   printf "| %s | %.2f | %s | %s |\n", n, pr[n], bm, d
                 }
               }' pr.txt base.txt
