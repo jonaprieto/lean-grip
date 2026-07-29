@@ -85,6 +85,15 @@ theorem fromUTF8!_toUTF8 (s : String) : String.fromUTF8! s.toUTF8 = s := by
   apply String.toByteArray_inj.mp
   exact ByteArray.ext rfl
 
+/-- `String.fromUTF8?` on a genuine (valid) UTF-8 byte array agrees with the panicking
+`String.fromUTF8!`: both take the same `dif_pos` branch. Bridges `scanStr`'s validated decode
+(`fromUTF8?`) back to the `fromUTF8!`-phrased round-trip equations below, given the extracted
+range is known valid (always true when it is `(escape s).toUTF8` for a real `s`). -/
+theorem fromUTF8?_of_isValidUTF8 {b : ByteArray} (hv : b.IsValidUTF8) :
+    String.fromUTF8? b = some (String.fromUTF8! b) := by
+  unfold String.fromUTF8? String.fromUTF8!
+  rw [dif_pos hv, dif_pos hv]
+
 private theorem scanNormal_of_ge_128 (b : UInt8) (h : 128 ≤ b.toNat) :
     b ≠ 34 ∧ b ≠ 92 ∧ ¬ b < 32 := by
   refine ⟨?_, ?_, ?_⟩
@@ -146,15 +155,16 @@ theorem passthrough_bytes_normal (c : Char) (h32 : 32 ≤ c.toNat) (hq : c.val �
     rcases hb with rfl | rfl | rfl | rfl <;> exact scanNormal_of_high_prefix _ _ (by decide)
 
 /-- At the closing quote, `scanStr` finishes: it builds the body `arr[q0+1 .. q)` and unescapes
-it exactly when an escape was seen. -/
+it exactly when an escape was seen -- given the body is valid UTF-8 (always true of a rendered
+body; `scanStr` rejects the string otherwise, see `Grip.Json.scanStr`). -/
 theorem scanStr_close (arr : ByteArray) (q0 q : Nat) (esc : Bool) (hq : q < arr.size)
-    (h34 : arr[q]! = 34) :
+    (h34 : arr[q]! = 34) (hv : (arr.extract (q0 + 1) q).IsValidUTF8) :
     scanStr arr q0 q esc =
       .ok (if esc then unescape (String.fromUTF8! (arr.extract (q0 + 1) q))
         else String.fromUTF8! (arr.extract (q0 + 1) q)) (q + 1) := by
   rw [getElem!_pos arr q hq] at h34
   rw [scanStr]
-  simp only [dif_pos hq, h34, beq_self_eq_true, if_true]
+  simp only [dif_pos hq, h34, beq_self_eq_true, if_true, fromUTF8?_of_isValidUTF8 hv]
 
 /-- On a normal body byte (not quote, not backslash, not a control byte), `scanStr` advances one
 byte with the escape flag unchanged. -/
@@ -401,20 +411,21 @@ theorem scanStr_walk (arr : ByteArray) (q0 : Nat) (body : String) :
       arr[q + (ebytes cs).length]! = 34 →
       q + (ebytes cs).length < arr.size →
       body = String.fromUTF8! (arr.extract (q0 + 1) (q + (ebytes cs).length)) →
+      (arr.extract (q0 + 1) (q + (ebytes cs).length)).IsValidUTF8 →
       scanStr arr q0 q esc =
         .ok (if (esc || cs.any (fun c => !(escapeChar c == [c]))) then unescape body else body)
           (q + (ebytes cs).length + 1) := by
   intro cs
   induction cs with
   | nil =>
-    intro q esc hcontent hquote hqb hbody
-    simp only [ebytes, List.flatMap_nil, List.length_nil, Nat.add_zero] at hquote hqb hbody ⊢
-    rw [scanStr_close arr q0 q esc hqb hquote]
+    intro q esc hcontent hquote hqb hbody hvalid
+    simp only [ebytes, List.flatMap_nil, List.length_nil, Nat.add_zero] at hquote hqb hbody hvalid ⊢
+    rw [scanStr_close arr q0 q esc hqb hquote hvalid]
     simp only [List.any_nil, Bool.or_false]
     rw [hbody]
   | cons c rest ih =>
-    intro q esc hcontent hquote hqb hbody
-    rw [ebytes_cons, List.length_append] at hcontent hquote hqb hbody ⊢
+    intro q esc hcontent hquote hqb hbody hvalid
+    rw [ebytes_cons, List.length_append] at hcontent hquote hqb hbody hvalid ⊢
     have hstep := scanStr_char_step arr q0 q esc c
       (fun j hj => by
         have hc := hcontent j (by omega)
@@ -432,7 +443,9 @@ theorem scanStr_walk (arr : ByteArray) (q0 : Nat) (body : String) :
       (by rw [show q + (cbytes c).length + (ebytes rest).length
           = q + ((cbytes c).length + (ebytes rest).length) from by omega]; exact hqb)
       (by rw [show q + (cbytes c).length + (ebytes rest).length
-          = q + ((cbytes c).length + (ebytes rest).length) from by omega]; exact hbody)]
+          = q + ((cbytes c).length + (ebytes rest).length) from by omega]; exact hbody)
+      (by rw [show q + (cbytes c).length + (ebytes rest).length
+          = q + ((cbytes c).length + (ebytes rest).length) from by omega]; exact hvalid)]
     congr 1
     · simp only [List.any_cons]; rw [Bool.or_assoc]
     · omega

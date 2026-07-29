@@ -33,11 +33,11 @@ scripts (`parsers/test_grip.sh`, CI) raise it to the process's hard cap rather t
 those files, so the corpus runs to completion here.
 
 Known divergence on `i_` files (implementation-defined, so not gated either way): on invalid
-UTF-8 *inside a string body* (e.g. `i_string_invalid_utf-8.json`), `Grip.Json.parse` hits
-`String.fromUTF8!`, which `panic!`s to stderr and returns `""` rather than erroring -- so that
-string decodes to empty rather than being rejected or preserved. The validator has no such
-path (it never materializes a `String`), so the two parsers can disagree on these files; that
-is why `i_` disagreements are excluded from the mismatch check below rather than asserted.
+UTF-8 *inside a string body* (e.g. `i_string_invalid_utf-8.json`), `Grip.Json.parse` rejects
+(`Grip.Json.scanStr` validates the extracted body with `String.fromUTF8?` and errors on
+invalid UTF-8). The validator has no UTF-8 check at all (it never materializes a `String`), so
+it still accepts these; that is why `i_` disagreements are excluded from the mismatch check
+below rather than asserted.
 -/
 
 open Grip Grip.Examples.Json

@@ -623,14 +623,18 @@ theorem jstr_run (arr : ByteArray) (q : Nat) (s : String)
     else .error ⟨q, []⟩) = _
   rw [dif_pos hqs, if_pos (by simp [hq34])]
   -- apply scanStr_walk: body = escape s
+  have hextract_eq : arr.extract (q + 1) (q + 1 + k) = (escape s).toUTF8 :=
+    extract_eq_escape_toUTF8 arr q s (by omega) hcontent
   have hbody_eq : escape s =
       String.fromUTF8! (arr.extract (q + 1) (q + 1 + k)) := by
-    rw [extract_eq_escape_toUTF8 arr q s (by omega) hcontent,
-        fromUTF8!_toUTF8]
+    rw [hextract_eq, fromUTF8!_toUTF8]
+  have hvalid_eq : (arr.extract (q + 1) (q + 1 + k)).IsValidUTF8 := by
+    rw [hextract_eq, String.toUTF8_eq_toByteArray]
+    exact (escape s).isValidUTF8
   rw [scanStr_walk arr q (escape s) s.toList (q + 1) false
     (fun j hj => hcontent j hj)
     hclose
-    (by omega) hbody_eq]
+    (by omega) hbody_eq hvalid_eq]
   -- goal: .ok (if false || s.toList.any ... then unescape (escape s) else escape s) _ = .ok s _
   congr 1
   simp only [Bool.false_or]

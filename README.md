@@ -127,8 +127,9 @@ as a CI gate (`lake exe conformance`) against *both* this validator and `Grip.Js
 -- the value-producing parser `GripProps.Container.parse_render` proves round-trips --
 so a grammar edit to one without the other fails CI: **95/95** `y_` accepted, **188/188**
 `n_` rejected on each. grip is also a JSONTestSuite `parsers/` entry (`parsers/test_grip.sh`),
-which now exercises `Grip.Json.parse`. Deeply nested inputs raise the process's stack limit
-to its hard cap rather than failing.
+which now exercises `Grip.Json.parse`. `Grip.Json.parse` validates UTF-8 in string bodies
+(rejects rather than accepts); the benchmark validator does not (see `test/Conformance.lean`).
+Deeply nested inputs raise the process's stack limit to its hard cap rather than failing.
 
 ## Benchmarks
 

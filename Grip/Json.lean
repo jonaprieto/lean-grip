@@ -218,15 +218,17 @@ theorem escEnd_gt (arr : ByteArray) (q q' : Nat) (h : escEnd arr q = some q') : 
 
 /-- Scan a strict RFC-8259 string body and produce the decoded `String` in one pass. `q0` is
 the opening-quote index and `q` the current scan position; `esc` accumulates whether any `\`
-was seen. On the closing quote the body `arr[q0+1 .. q)` is built once (a single `fromUTF8!`
-copy) and unescaped only when `esc`, so there is no second backslash pass and no intermediate
-`capture`/escape-flag allocation. Escapes are validated by `escEnd`, keeping this loop flat.
-Total (structural on `arr.size - q`). -/
+was seen. On the closing quote the body `arr[q0+1 .. q)` is validated and decoded as UTF-8 in
+one pass (`String.fromUTF8?`, no separate validation walk) and unescaped only when `esc`;
+invalid UTF-8 in the body is rejected rather than silently decoded to an empty string. No
+second backslash pass and no intermediate `capture`/escape-flag allocation. Escapes are
+validated by `escEnd`, keeping this loop flat. Total (structural on `arr.size - q`). -/
 @[specialize] def scanStr (arr : ByteArray) (q0 q : Nat) (esc : Bool) : ParseResult String :=
   if h : q < arr.size then
     if arr[q] == 34 then
-      let body := String.fromUTF8! (arr.extract (q0 + 1) q)
-      .ok (if esc then unescape body else body) (q + 1)
+      match String.fromUTF8? (arr.extract (q0 + 1) q) with
+      | some body => .ok (if esc then unescape body else body) (q + 1)
+      | none       => .error ⟨q0, []⟩
     else if arr[q] == 92 then
       match hE : escEnd arr q with
       | some q' => scanStr arr q0 q' true
@@ -246,7 +248,9 @@ theorem scanStr_gt (arr : ByteArray) (q0 q q' : Nat) (esc : Bool) (a : String)
   split at h
   · rename_i hq
     split at h
-    · simp only [ParseResult.ok.injEq] at h; omega
+    · split at h
+      · simp only [ParseResult.ok.injEq] at h; omega
+      · exact absurd h (by simp)
     · split at h
       · split at h
         · next q'' hE =>
@@ -272,7 +276,9 @@ theorem scanStr_le (arr : ByteArray) (q0 q q' : Nat) (esc : Bool) (a : String)
   split at h
   · rename_i hq
     split at h
-    · simp only [ParseResult.ok.injEq] at h; omega
+    · split at h
+      · simp only [ParseResult.ok.injEq] at h; omega
+      · exact absurd h (by simp)
     · split at h
       · split at h
         · next q'' hE => exact scanStr_le arr q0 q'' q' true a h
