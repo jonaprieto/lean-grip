@@ -224,7 +224,9 @@ jobs:
             echo ""
             echo "PR \`${{ needs.meta.outputs.sha }}\` vs base \`${{ needs.meta.outputs.base }}\` -- best-of-20 ms, lower is better. Δ = PR vs base."
             echo ""
-            echo "JSON rows are per input file: \`grip\`/\`std.parsec\`/\`hand\` are leaf-count validators, \`grip.json\`/\`lean.json\` are the DOM-vs-DOM value builders, \`prim-parser\` is the sibling deep-embedded framework (validator, pinned \`97f120c\`, reference only). ⚠️ flags a row at least 10% slower than base -- a single best-of-20 sample each side, so treat it as a prompt to look closer, not a verdict."
+            echo "JSON rows are per input file: \`grip\`/\`std.parsec\`/\`hand\` are leaf-count validators, \`grip.json\`/\`lean.json\` are the DOM-vs-DOM value builders, \`prim-parser\` is the sibling deep-embedded framework (validator, pinned \`97f120c\`, reference only)."
+            echo ""
+            echo "⚠️ flags a row 10-25% slower than base. 🎲 flags a swing of 25% or more in *either* direction: base and PR are built and benchmarked sequentially in this one job, so a swing that large more often reflects CI-runner noise between the two runs (GC pause, cache miss, a noisy neighbor) than a real effect of the PR -- treat either marker as a prompt to look closer, not a verdict, especially 🎲 on a PR that touches no parser code."
             echo ""
             # Key each row by parser + input file so the per-file JSON DOM-vs-DOM rows
             # (grip.json/lean.json x canada/citm/twitter) are kept, not collapsed. Single-file
@@ -243,7 +245,9 @@ jobs:
                   bm = has ? sprintf("%.2f", base[n]) : "-"
                   if (has && base[n] + 0 > 0) {
                     pct = (pr[n] - base[n]) / base[n] * 100
-                    d = sprintf("%+.1f%%%s", pct, (pct >= 10) ? " ⚠️" : "")
+                    mag = pct < 0 ? -pct : pct
+                    flag = (mag >= 25) ? " 🎲" : (pct >= 10) ? " ⚠️" : ""
+                    d = sprintf("%+.1f%%%s", pct, flag)
                   } else {
                     d = "-"
                   }
