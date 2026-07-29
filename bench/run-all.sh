@@ -32,13 +32,25 @@ gate() {
 }
 
 # run <cmd...>: run a harness, echo its stdout to the terminal and raw log, gated.
+# Captures output via command substitution rather than `done < <(cmd)`: process
+# substitution runs the harness in a subshell whose exit status the `while` loop never
+# sees, so a crashing harness would otherwise look like success under `set -e`.
 run() {
+  local out status
+  set +e
+  out="$("$@")"
+  status=$?
+  set -e
+  if [[ $status -ne 0 ]]; then
+    echo "HARNESS FAILED (exit $status): $*" >&2
+    exit 1
+  fi
   local line
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     gate "$line"
     echo "$line" | tee -a "$RAW"
-  done < <("$@")
+  done <<< "$out"
 }
 
 {
