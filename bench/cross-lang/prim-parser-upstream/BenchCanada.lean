@@ -76,7 +76,14 @@ Char decoding happens per token in the parser). -/
          | some c => c
          | none   => 0
 
-def main (args : List String) : IO Unit := do
+/-- The basename of a path (the part after the last `/`), matching the
+`prim-parser <basename> count=<n> ...` line shape the sibling harnesses print, so
+`bench/run-all.sh`'s shell-level `gate()` can independently verify this harness's count
+by matching on the dataset name in the line, the same way it gates every other harness. -/
+def basename (path : String) : String :=
+  (path.splitOn "/").getLast?.getD path
+
+def main (args : List String) : IO UInt32 := do
   let path := args.getD 0 "bench/data/canada.json"
   let content ← IO.FS.readFile path
 
@@ -89,12 +96,14 @@ def main (args : List String) : IO Unit := do
   let t1 ← IO.monoNanosNow
   let vecBuildNs : Int := (t1 : Int) - (t0 : Int)
 
-  -- Correctness check on first parse
+  -- Correctness check on first parse. Exits nonzero on mismatch (not just an eprintln)
+  -- so a regression fails the process whether it's invoked directly or through
+  -- run-all.sh's `run`, which otherwise only gates on the printed line's dataset name.
   let firstCount ← runParseIO textRef
-  IO.println s!"count={firstCount}"
+  IO.println s!"prim-parser-upstream {basename path} count={firstCount}"
   if firstCount != 111130 then
-    IO.println s!"ERROR: expected 111130, got {firstCount}"
-    return
+    IO.eprintln s!"ERROR: expected 111130, got {firstCount}"
+    return 1
 
   IO.println s!"text_build_ns={vecBuildNs}"
   IO.println s!"text_build_ms={vecBuildNs / 1_000_000}"
@@ -116,3 +125,4 @@ def main (args : List String) : IO Unit := do
   IO.println s!"parse_best_ns={best}"
   IO.println s!"parse_best_ms={best / 1_000_000}"
   IO.println s!"prim-parser commit=0728704 lean=v4.28.0 mathlib=v4.28.0"
+  return 0

@@ -16,7 +16,8 @@ cd bench/cross-lang/prim-parser-upstream && lake exe cache get && lake build
 ```
 
 Needs network (fetches upstream prim-parser + mathlib) and a mathlib cache. Prints
-`count=111130`, `parse_best_ms`, `text_build_ms`. The dataset defaults to
+`prim-parser-upstream canada.json count=111130`, `parse_best_ms`, `text_build_ms`, and
+exits nonzero if the count doesn't match. The dataset defaults to
 `bench/data/canada.json` relative to the working directory.
 
 ## Result (this machine, Lean v4.28.0)
