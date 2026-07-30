@@ -75,7 +75,7 @@ def hexBytes : GParser flexible (List Nat) := many hexByte
 
 ## The gate
 
-`many`, `foldMany`, and `some` demand an always-consuming parser at the type level.
+`many`, `foldMany`, and `many1` demand an always-consuming parser at the type level.
 `pure x` never consumes, so `many (pure ())` fails to elaborate. The check rides on the
 library's own combinator types, so ungraded `Parser` users get it too. A precise grade
 (`GParser conditional α`) is how you export the contract to downstream combinators.
@@ -92,6 +92,34 @@ every combinator.
 The trade: grip is concrete over an in-memory `ByteArray`, and that finiteness is the
 well-founded measure. It is not generic over streams. Reach for grip when you parse bytes
 in memory and want the proofs.
+
+## Compared to `Std.Internal.Parsec`
+
+Lean ships its own parser combinators in the toolchain, `Std.Internal.Parsec`
+([`ByteArray`](https://github.com/leanprover/lean4/blob/master/src/lean/Std/Internal/Parsec/ByteArray.lean)
+and [`String`](https://github.com/leanprover/lean4/blob/master/src/lean/Std/Internal/Parsec/String.lean)
+variants) — no extra dependency, always available. The two differ in what they guarantee:
+
+- **Totality.** `Std.Internal.Parsec`'s `manyCore`/`manyCharsCore` are `partial def`; grip's
+  `many` and scan loops are structural, no `partial` anywhere in the core.
+- **The non-progress footgun.** `Std.Internal.Parsec`'s `many` retries on the *success*
+  branch without checking the position advanced, so `many (Parsec.pure x)` loops forever at
+  runtime — the classic parsec/attoparsec trap. Grip's `many` demands an always-consuming
+  parser at the type level, so the equivalent `many (pure ())` fails to elaborate; see
+  [The gate](#the-gate) above.
+- **Proofs.** `grip-props` (opt-in, pulls mathlib) has machine-checked graded-monad laws,
+  `fix`'s fuel-completeness, and for JSON specifically `parse_render`: parsing the rendering
+  of any `Json` value returns that value. `Std.Internal.Parsec` has no such proof package.
+- **Performance.** On canada.json (2.1 MB), grip's JSON validator runs in ~20 ms vs.
+  `Std.Internal.Parsec`'s ~22 ms best-of-20 for the same validate-and-count task (see
+  [bench/RESULTS.md](bench/RESULTS.md)) — roughly on par, grip slightly ahead.
+- **Genericity.** `Std.Internal.Parsec` is polymorphic over an `Input` typeclass, with
+  `ByteArray.Iterator` and `Sigma String.Pos` instances provided; grip is byte-array-first
+  throughout, with a `Char`/UTF-8 layer on top rather than a swappable input type.
+
+Reach for `Std.Internal.Parsec` when you want zero dependencies and don't need the
+totality or round-trip guarantees. Reach for grip when the grammar matters enough to prove
+something about it.
 
 ## Examples
 
