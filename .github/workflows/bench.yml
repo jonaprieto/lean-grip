@@ -1,9 +1,9 @@
 name: Benchmark
 
-# Builds the PR, runs `lake exe bench`, re-runs it on the PR's base commit, and posts a
-# PR-vs-base report as a single sticky comment (updated in place on every push, so the
-# comment always references the current head SHA). Runs automatically on each PR push; a
-# `/bench` comment from a trusted commenter re-runs it on demand.
+# Builds and keeps the PR and base benchmark binaries, runs three alternating rounds, and
+# posts a PR-vs-base report as a single sticky comment (updated in place on every push, so
+# the comment always references the current head SHA). Runs automatically on each PR push;
+# a `/bench` comment from a trusted commenter re-runs it on demand.
 #
 # The comment leads with a verdict over this repo's own parsers (flag count, worst row,
 # biggest win) and shows only those rows by default. Upstream reference implementations
@@ -107,18 +107,49 @@ jobs:
           build: false
           test: false
 
-      - name: Run benchmarks (PR head, then base)
+      - name: Build both benchmarks, then run alternating rounds
         run: |
+          PR_BENCH="$RUNNER_TEMP/bench-pr"
+          BASE_BENCH="$RUNNER_TEMP/bench-base"
           lake build bench
-          lake exe bench > pr.txt 2>/dev/null || true
-          echo "== PR ==" && cat pr.txt
+          cp .lake/build/bin/bench "$PR_BENCH"
+          : > pr.txt
           : > base.txt
           if [ -n "${{ needs.meta.outputs.base }}" ]; then
             git checkout -q "${{ needs.meta.outputs.base }}" -- Grip Grip.lean examples bench lakefile.lean lean-toolchain \
               && lake build bench \
-              && lake exe bench > base.txt 2>/dev/null \
-              && { echo "== base ==" && cat base.txt; } \
+              && cp .lake/build/bin/bench "$BASE_BENCH" \
               || echo "baseline bench failed; reporting PR only"
+          fi
+
+          if [ -x "$BASE_BENCH" ]; then
+            sha256sum "$PR_BENCH" "$BASE_BENCH"
+
+            # Discard one run per binary after all build work. This both warms code/data and
+            # keeps post-build runner activity out of the reported samples.
+            "$PR_BENCH" > pr-warmup.txt 2>/dev/null || true
+            "$BASE_BENCH" > base-warmup.txt 2>/dev/null || true
+            echo "== discarded PR warmup =="
+            cat pr-warmup.txt
+            echo "== discarded base warmup =="
+            cat base-warmup.txt
+
+            # A multi-second stall can spoil a full run, so alternate the arms and let the
+            # formatter take each cell's minimum across three rounds per arm.
+            for round in 1 2 3; do
+              "$PR_BENCH" > "pr-$round.txt" 2>/dev/null || true
+              echo "== round $round PR =="
+              cat "pr-$round.txt"
+              "$BASE_BENCH" > "base-$round.txt" 2>/dev/null || true
+              echo "== round $round base =="
+              cat "base-$round.txt"
+            done
+            cat pr-1.txt pr-2.txt pr-3.txt > pr.txt
+            cat base-1.txt base-2.txt base-3.txt > base.txt
+          else
+            "$PR_BENCH" > pr.txt 2>/dev/null || true
+            echo "== PR only =="
+            cat pr.txt
           fi
 
       - uses: actions/upload-artifact@v4
@@ -266,8 +297,26 @@ jobs:
                 if (isref(n) == want && !(parserof(n) in seenp)) row(n) }
             }
 
-            FNR == NR { m = getms(); if (m != "") { n = key(); if (!(n in seen)) { ord[++k] = n; seen[n] = 1 }; pr[n] = m }; next }
-            { m = getms(); if (m != "") base[key()] = m }
+            FNR == NR {
+              m = getms()
+              if (m != "") {
+                m += 0; n = key()
+                if (!(n in seen)) { ord[++k] = n; seen[n] = 1 }
+                if (!(n in pr) || m < pr[n]) pr[n] = m
+                if (!(n in prmax) || m > prmax[n]) prmax[n] = m
+                prruns[n]++
+              }
+              next
+            }
+            {
+              m = getms()
+              if (m != "") {
+                m += 0; n = key()
+                if (!(n in base) || m < base[n]) base[n] = m
+                if (!(n in basemax) || m > basemax[n]) basemax[n] = m
+                baseruns[n]++
+              }
+            }
 
             END {
               # Headline statistics over grip-owned rows only. A 🎲 swing (>=25% either way) is treated
@@ -276,8 +325,20 @@ jobs:
               # caused it. Reference rows swinging the same way corroborate that the run, not the PR, moved.
               ngrip = 0; nwarn = 0; nshake = 0; refshake = 0
               worst = -1e9; best = 1e9; worstn = ""; bestn = ""; haveq = 0
+              prspread = 0; basespread = 0; prspreadn = ""; basespreadn = ""
               for (i = 1; i <= k; i++) {
                 n = ord[i]
+                # Seed on the first eligible cell, not on the first positive spread: a
+                # perfectly steady arm has spread 0 everywhere, and `> prspread` would then
+                # never fire, suppressing the whole control line -- including the other arm.
+                if (prruns[n] > 1 && pr[n] + 0 > 0) {
+                  spread = (prmax[n] - pr[n]) / pr[n] * 100
+                  if (prspreadn == "" || spread > prspread) { prspread = spread; prspreadn = n }
+                }
+                if (baseruns[n] > 1 && base[n] + 0 > 0) {
+                  spread = (basemax[n] - base[n]) / base[n] * 100
+                  if (basespreadn == "" || spread > basespread) { basespread = spread; basespreadn = n }
+                }
                 if (!(n in base) || base[n] + 0 <= 0) continue
                 pct = (pr[n] - base[n]) / base[n] * 100
                 mag = pct < 0 ? -pct : pct
@@ -314,6 +375,9 @@ jobs:
                 } else if (refshake > 0)
                   printf "\n%d reference row%s swung >=25%% -- upstream code this PR does not build.\n",
                     refshake, (refshake == 1 ? "" : "s")
+                if (prspreadn != "" && basespreadn != "")
+                  printf "\nRound control: worst within-arm spread was %.1f%% (`%s`) for PR and %.1f%% (`%s`) for base.\n",
+                    prspread, prspreadn, basespread, basespreadn
                 print ""
               }
 
@@ -334,17 +398,17 @@ jobs:
               print "<details>"
               print "<summary><b>How to read this</b></summary>"
               print ""
-              print "Best-of-20 wall time in ms, lower is better. Δ is PR vs base."
+              print "Each arm ran three times in alternating order after a discarded warmup. The table uses"
+              print "the per-cell minimum across rounds; every round value is itself best-of-20 wall time in ms."
+              print "Lower is better. Δ is PR vs base; the round control above reports worst within-arm spread."
               print ""
               print "JSON rows are per input file. `grip`/`std.parsec`/`hand` are leaf-count validators;"
               print "`grip.json`/`lean.json` are the DOM-vs-DOM value builders; `prim-parser` is the sibling"
               print "deep-embedded framework (validator, pinned `97f120c`, reference only, no base column)."
               print ""
               print "⚠️ flags a row 10-25% slower than base. 🎲 flags a swing of 25% or more in *either*"
-              print "direction: base and PR are built and benchmarked sequentially in one job, so a swing"
-              print "that large more often reflects CI-runner noise between the two runs (GC pause, cache"
-              print "miss, a noisy neighbour) than a real effect of the PR. Treat either marker as a prompt"
-              print "to look closer, not a verdict -- especially on a PR that touches no parser code."
+              print "direction. The alternating rounds resist transient stalls, but treat either marker as a"
+              print "prompt to inspect the raw rounds and control spread, especially when reference rows move."
               print ""
               print "Cross-language parsers (Rust nom, Haskell) run in the separate `bench-crosslang` workflow."
               print ""
