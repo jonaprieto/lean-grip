@@ -212,9 +212,10 @@ theorem wsDispatch_run_stop (select : UInt8 → GParser conditional Grip.Json.Js
   simp only [Grip.Json.wsDispatch, hs, dif_pos hq]
 
 /-- `wsByte b`, no leading whitespace, matching byte: consume it. -/
-theorem wsByte_run_stop (b : UInt8) (arr : ByteArray) (q : Nat) (hq : q < arr.size)
+theorem wsByte_run_stop (b : UInt8) (name : String) (arr : ByteArray) (q : Nat)
+    (hq : q < arr.size)
     (hw : Ascii.isWs arr[q] = false) (hb : arr[q] = b) :
-    (Grip.Json.wsByte b).run arr q = .ok () (q + 1) := by
+    (Grip.Json.wsByte b name).run arr q = .ok () (q + 1) := by
   have hs : scanFwd arr Ascii.isWs q = q := by rw [scanFwd, dif_pos hq, if_neg (by simp [hw])]
   simp only [Grip.Json.wsByte, hs, dif_pos hq, hb, beq_self_eq_true, if_true]
 
@@ -318,6 +319,12 @@ theorem frac_run (arr : ByteArray) (q n : Nat) (hq : q < arr.size) (hdot : arr[q
     rwa [show q + 1 + (n - 1) = q + n from by omega] at this
   exact seqR_run _ _ arr q () (q + 1) (n - 1) (q + n) hch htw1
 
+/-- Unfold a `<?>`-labelled parser on a successful sub-parse: the label rewrites failures only. -/
+theorem label_run_ok {g : Grade} {α : Type} (name : String) (p : GParser g α) (arr : ByteArray)
+    (q : Nat) (a : α) (q' : Nat) (h : p.run arr q = .ok a q') :
+    (GParser.label name p).run arr q = .ok a q' := by
+  simp only [GParser.label, h]
+
 /-- Lift an already-established `number` parse through `value`'s byte dispatch. This keeps
 specialized render-shape proofs focused on the number grammar rather than duplicating dispatch
 reasoning. -/
@@ -397,6 +404,7 @@ theorem value_run_num_int (arr : ByteArray) (q : Nat) (m : Int) (_hm : 0 ≤ m) 
     · exact satisfy_run_fail! _ arr (q + n) h1 hexp'
   have hnum : number.run arr q = .ok (Json.num m 0) (q + n) := by
     simp only [number]
+    refine label_run_ok "a number" _ arr q _ _ ?_
     exact captureWith?_run decodeNumberBytes? _ arr q () (q + n) (Json.num m 0)
       (seqR_run _ _ arr q none q () (q + n) hsign
         (seqL_run _ _ arr q () (q + n) none (q + n) hint
@@ -449,6 +457,7 @@ theorem value_run_num_frac (arr : ByteArray) (q : Nat) (m : Int) (e ip n : Nat) 
     · exact satisfy_run_fail! _ arr (q + n) h1 hexp'
   have hnum : number.run arr q = .ok (Json.num m e) (q + n) := by
     simp only [number]
+    refine label_run_ok "a number" _ arr q _ _ ?_
     exact captureWith?_run decodeNumberBytes? _ arr q () (q + n) (Json.num m e)
       (seqR_run _ _ arr q none q () (q + n) hsign
         (seqL_run _ _ arr q () (q + ip) none (q + n) hint
@@ -494,6 +503,7 @@ theorem value_run_num_int_neg (arr : ByteArray) (q : Nat) (m : Int) (_hm : m < 0
     · exact satisfy_run_fail! _ arr (q + 1 + ip) h1 hexp'
   have hnum : number.run arr q = .ok (Json.num m 0) (q + 1 + ip) := by
     simp only [number]
+    refine label_run_ok "a number" _ arr q _ _ ?_
     exact captureWith?_run decodeNumberBytes? _ arr q () (q + 1 + ip) (Json.num m 0)
       (seqR_run _ _ arr q (some ()) (q + 1) () (q + 1 + ip) hsign
         (seqL_run _ _ arr (q + 1) () (q + 1 + ip) none (q + 1 + ip) hint
@@ -542,6 +552,7 @@ theorem value_run_num_frac_neg (arr : ByteArray) (q : Nat) (m : Int) (e ip n : N
     · exact satisfy_run_fail! _ arr (q + n) h1 hexp'
   have hnum : number.run arr q = .ok (Json.num m e) (q + n) := by
     simp only [number]
+    refine label_run_ok "a number" _ arr q _ _ ?_
     exact captureWith?_run decodeNumberBytes? _ arr q () (q + n) (Json.num m e)
       (seqR_run _ _ arr q (some ()) (q + 1) () (q + n) hsign
         (seqL_run _ _ arr (q + 1) () (q + 1 + ip) none (q + n) hint
@@ -568,7 +579,7 @@ theorem value_run_null (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_neg (by decide),
     if_neg (by decide), if_pos (by decide)]
-  simp only [jnull, GParser.map, hstr]
+  simp only [jnull, GParser.label, GParser.map, hstr]
   exact clampAdvance_ok arr q (by omega) (by omega)
 
 /-- `value` parses the `true` keyword. -/
@@ -586,7 +597,7 @@ theorem value_run_true (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
   rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_pos (by decide)]
-  simp only [jtrue, GParser.map, hstr]
+  simp only [jtrue, GParser.label, GParser.map, hstr]
   exact clampAdvance_ok arr q (by omega) (by omega)
 
 /-- `value` parses the `false` keyword. -/
@@ -605,7 +616,7 @@ theorem value_run_false (arr : ByteArray) (q : Nat) (hq : q + 5 ≤ arr.size)
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
   rw [if_neg (by decide), if_neg (by decide), if_neg (by decide), if_neg (by decide),
     if_pos (by decide)]
-  simp only [jfalse, GParser.map, hstr]
+  simp only [jfalse, GParser.label, GParser.map, hstr]
   exact clampAdvance_ok arr q (by omega) (by omega)
 
 open GripProps.ScanStr
@@ -624,8 +635,8 @@ theorem jstr_run (arr : ByteArray) (q : Nat) (s : String)
   have hq34 : arr[q] = 34 := by rwa [getElem!_pos arr q hqs] at h34
   -- unfold jstr
   show (if _ : q < arr.size then
-      (if arr[q] == 34 then scanStr arr q (q + 1) false else .error ⟨q, []⟩)
-    else .error ⟨q, []⟩) = _
+      (if arr[q] == 34 then scanStr arr q (q + 1) false else .error ⟨q, ["a string"]⟩)
+    else .error ⟨q, ["a string"]⟩) = _
   rw [dif_pos hqs, if_pos (by simp [hq34])]
   -- apply scanStr_walk: body = escape s
   have hextract_eq : arr.extract (q + 1) (q + 1 + k) = (escape s).toUTF8 :=
@@ -963,6 +974,7 @@ theorem value_run_num_scientific (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
       exact Bool.noConfusion hbad
     have hnum : number.run buf q = .ok (Json.num m e) (q + ip + 2 + ep) := by
       simp only [number]
+      refine label_run_ok "a number" _ buf q _ _ ?_
       exact captureWith?_run decodeNumberBytes? _ buf q () (q + ip + 2 + ep) (Json.num m e)
         (seqR_run _ _ buf q none q () (q + ip + 2 + ep)
           hsign
@@ -1112,6 +1124,7 @@ theorem value_run_num_scientific (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
       simpa [Nat.add_assoc] using h
     have hnum : number.run buf q = .ok (Json.num m e) (q + 1 + ip + 2 + ep) := by
       simp only [number]
+      refine label_run_ok "a number" _ buf q _ _ ?_
       exact captureWith?_run decodeNumberBytes? _ buf q () (q + 1 + ip + 2 + ep) (Json.num m e)
         (seqR_run _ _ buf q (some ()) (q + 1) () (q + 1 + ip + 2 + ep)
           (optional_run_some _ buf q () (q + 1)
