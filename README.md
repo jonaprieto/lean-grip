@@ -23,6 +23,18 @@ Two helper modules sit on top: `Grip.Ascii` (named byte predicates and delimiter
 and `Grip.Combinators` (the megaparsec vocabulary: `ws`, `digit`, `sepBy`, `between`,
 `manyTill`, `<?>`). `import Grip` pulls in all of it.
 
+### What the proofs guarantee (and don't)
+
+`parse_render` is a round-trip proof on valid values: `parse (render v) = ok v` for every
+`v : Json`, and it does constrain the production `Grip.Json.parse`/`render` it names. But
+it is entirely about the `.ok` path on well-formed input -- it says nothing about the
+`.error` path (reported position accuracy and message wording are unproven, and known to
+have gaps: [#44](https://github.com/jonaprieto/grip/issues/44)), nothing about
+performance, and nothing about code the statement doesn't mention at all, like the
+separate `Grip.Examples.Json` validator. "Machine-checked" means the stated theorems
+hold, not that the library is bug-free; a proof only rules out what it
+actually states.
+
 ## Quick start
 
 Add grip to your `lakefile.toml`:
