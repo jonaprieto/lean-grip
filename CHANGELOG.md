@@ -79,4 +79,18 @@ first release, `v0.1.0`.
   mismatch and carries the dataset name like every sibling harness.
 - 78 pre-existing lines over the 100-column style-check limit in `grip-props/GripProps/Json/`.
 
+### Known limitations
+
+`parse_render` (`GripProps.Container`) is a round-trip proof on valid values only, and it
+does constrain the production `Grip.Json.parse`/`render` it names -- but it says nothing
+about the `.error` path, performance, or code the statement doesn't mention at all (like
+the separate `Grip.Examples.Json` validator). Machine-checked means the stated theorems
+hold, not that the library is bug-free. Specifically open right now:
+
+- Reported error position and message can be wrong for a failure nested inside `{..}`/
+  `[..]`: `alt`'s furthest-failure merge only fires when both branches fail, and
+  `foldMany`'s return grade (`flexible`, never-errors) makes it structurally unable to
+  propagate a failed repetition -- so a fallback/continuation that succeeds anyway
+  discards the real failure. [#44](https://github.com/jonaprieto/grip/issues/44).
+
 [Unreleased]: https://github.com/jonaprieto/grip/commits/main
