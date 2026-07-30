@@ -35,21 +35,21 @@ private theorem pair_agree (s1 s2 : GParser conditional Json)
     (hpre : ∀ q', q < q' → AgreeOk (s1.run arr q') (s2.run arr q')) :
     AgreeOk
       ((GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-          (GParser.seqR (Grip.Json.wsByte Ascii.colon) s1)).run arr pos)
+          (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") s1)).run arr pos)
       ((GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-          (GParser.seqR (Grip.Json.wsByte Ascii.colon) s2)).run arr pos) := by
+          (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") s2)).run arr pos) := by
   simp only [GParser.map2, GParser.seqR]
   cases hjstr : Grip.Json.jstr.run arr pos with
   | error _ => exact AgreeOk.refl _
   | ok k qk =>
     dsimp only
     have hqk : pos < qk := Grip.Json.jstr.cwit hjstr
-    cases hcolon : (Grip.Json.wsByte Ascii.colon).run arr qk with
+    cases hcolon : (Grip.Json.wsByte Ascii.colon "':'").run arr qk with
     | error _ => exact AgreeOk.refl _
     | ok _ qc =>
       dsimp only
       have hqc_q : q < qc :=
-          lt_trans hpos (lt_trans hqk ((Grip.Json.wsByte Ascii.colon).cwit hcolon))
+          lt_trans hpos (lt_trans hqk ((Grip.Json.wsByte Ascii.colon "':'").cwit hcolon))
       have ha := hpre qc hqc_q
       cases hv1 : s1.run arr qc with
       | error e1 =>
@@ -72,10 +72,10 @@ private theorem seqR_ws_pair_agree (s1 s2 : GParser conditional Json)
     AgreeOk
       ((GParser.seqR GParser.ws
           (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-            (GParser.seqR (Grip.Json.wsByte Ascii.colon) s1))).run arr r)
+            (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") s1))).run arr r)
       ((GParser.seqR GParser.ws
           (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-            (GParser.seqR (Grip.Json.wsByte Ascii.colon) s2))).run arr r) := by
+            (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") s2))).run arr r) := by
   simp only [GParser.seqR]
   cases hws : GParser.ws.run arr r with
   | error _ => exact AgreeOk.refl _
@@ -87,11 +87,11 @@ private theorem seqR_ws_pair_agree (s1 s2 : GParser conditional Json)
 committed container loop gives the same result for both. The loop only ever runs its element
 at positions `≥ pos`, so this is the agreement hypothesis `Guarded` supplies. -/
 private theorem bodyFwd_agree {α β : Type} (push : β → α → β)
-    (elem1 elem2 : GParser conditional α) (close : UInt8) (arr : ByteArray)
-    (acc : β) (first : Bool) (pos : Nat)
+    (elem1 elem2 : GParser conditional α) (close : UInt8) (closeName : String)
+    (arr : ByteArray) (acc : β) (first : Bool) (pos : Nat)
     (hagree : ∀ r, pos ≤ r → AgreeOk (elem1.run arr r) (elem2.run arr r)) :
-    AgreeOk (Grip.Json.bodyFwd push elem1 close arr acc first pos)
-            (Grip.Json.bodyFwd push elem2 close arr acc first pos) := by
+    AgreeOk (Grip.Json.bodyFwd push elem1 close closeName arr acc first pos)
+            (Grip.Json.bodyFwd push elem2 close closeName arr acc first pos) := by
   rw [Grip.Json.bodyFwd, Grip.Json.bodyFwd]
   have hge := scanFwd_ge arr Ascii.isWs pos
   split
@@ -106,7 +106,7 @@ private theorem bodyFwd_agree {α β : Type} (push : β → α → β)
         dsimp only
         split
         · next hguard =>
-          exact bodyFwd_agree push elem1 elem2 close arr (push acc x1) false q1
+          exact bodyFwd_agree push elem1 elem2 close closeName arr (push acc x1) false q1
             (fun r hr => hagree r (le_trans (le_of_lt hguard.1) hr))
         · exact AgreeOk.refl _
       | error e2 => rw [h1, h2] at ha; simp [AgreeOk] at ha
@@ -137,7 +137,7 @@ private theorem bodyFwd_agree {α β : Type} (push : β → α → β)
               dsimp only
               split
               · next hguard =>
-                exact bodyFwd_agree push elem1 elem2 close arr (push acc x1) false q1
+                exact bodyFwd_agree push elem1 elem2 close closeName arr (push acc x1) false q1
                   (fun r hr => hagree r (le_trans (le_of_lt hguard.1) hr))
               · exact AgreeOk.refl _
             | error e2 => rw [h1, h2] at ha; simp [AgreeOk] at ha
@@ -156,13 +156,13 @@ decreasing_by
 /-- Agreement lifted to the `containerBody` parser: the array and object arms of `valueBody`
 differ only in their element parser, so one lemma covers both. -/
 private theorem containerBody_agree {α β : Type} (push : β → α → β)
-    (elem1 elem2 : GParser conditional α) (close : UInt8) (acc : β)
+    (elem1 elem2 : GParser conditional α) (close : UInt8) (closeName : String) (acc : β)
     (arr : ByteArray) (pos : Nat)
     (hagree : ∀ r, pos ≤ r → AgreeOk (elem1.run arr r) (elem2.run arr r)) :
-    AgreeOk ((Grip.Json.containerBody push elem1 close acc).run arr pos)
-            ((Grip.Json.containerBody push elem2 close acc).run arr pos) := by
+    AgreeOk ((Grip.Json.containerBody push elem1 close closeName acc).run arr pos)
+            ((Grip.Json.containerBody push elem2 close closeName acc).run arr pos) := by
   simp only [Grip.Json.containerBody]
-  exact bodyFwd_agree push elem1 elem2 close arr acc true pos hagree
+  exact bodyFwd_agree push elem1 elem2 close closeName arr acc true pos hagree
 
 /-- `valueBody` is Guarded. -/
 theorem valueBody_guarded : Guarded Grip.Json.valueBody := by
@@ -178,11 +178,11 @@ theorem valueBody_guarded : Guarded Grip.Json.valueBody := by
       set ob1 := Grip.Json.containerBody (fun (a : Array (String × Json)) x => a.push x)
           (GParser.seqR GParser.ws
             (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-              (GParser.seqR (Grip.Json.wsByte Ascii.colon) s1))) Ascii.rbrace #[]
+              (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") s1))) Ascii.rbrace "'}'" #[]
       set ob2 := Grip.Json.containerBody (fun (a : Array (String × Json)) x => a.push x)
           (GParser.seqR GParser.ws
             (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-              (GParser.seqR (Grip.Json.wsByte Ascii.colon) s2))) Ascii.rbrace #[]
+              (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") s2))) Ascii.rbrace "'}'" #[]
       simp only [GParser.seqR, GParser.map]
       cases hch : (GParser.ch '{').run arr p with
       | error _ => exact AgreeOk.refl _
@@ -190,7 +190,7 @@ theorem valueBody_guarded : Guarded Grip.Json.valueBody := by
         dsimp only
         have hp1q : q < p1 := Nat.lt_of_le_of_lt hpq ((GParser.ch '{').cwit hch)
         have hob : AgreeOk (ob1.run arr p1) (ob2.run arr p1) :=
-          containerBody_agree _ _ _ Ascii.rbrace #[] arr p1
+          containerBody_agree _ _ _ Ascii.rbrace "'}'" #[] arr p1
             (fun r hr => seqR_ws_pair_agree s1 s2 arr q r (lt_of_lt_of_le hp1q hr) hpre)
         cases h1 : ob1.run arr p1 with
         | error e1 =>
@@ -210,9 +210,9 @@ theorem valueBody_guarded : Guarded Grip.Json.valueBody := by
     · by_cases hbracket : arr[p] == Ascii.lbracket
       · simp only [hbrace, Bool.false_eq_true, ↓reduceIte, hbracket, ↓reduceIte]
         set ab1 := Grip.Json.containerBody (fun (a : Array Json) e => a.push e)
-            s1 Ascii.rbracket #[]
+            s1 Ascii.rbracket "']'" #[]
         set ab2 := Grip.Json.containerBody (fun (a : Array Json) e => a.push e)
-            s2 Ascii.rbracket #[]
+            s2 Ascii.rbracket "']'" #[]
         simp only [GParser.seqR, GParser.map]
         cases hch : (GParser.ch '[').run arr p with
         | error _ => exact AgreeOk.refl _
@@ -220,7 +220,7 @@ theorem valueBody_guarded : Guarded Grip.Json.valueBody := by
           dsimp only
           have hp1q : q < p1 := Nat.lt_of_le_of_lt hpq ((GParser.ch '[').cwit hch)
           have hab : AgreeOk (ab1.run arr p1) (ab2.run arr p1) :=
-            containerBody_agree _ _ _ Ascii.rbracket #[] arr p1
+            containerBody_agree _ _ _ Ascii.rbracket "']'" #[] arr p1
               (fun r hr => hpre r (lt_of_lt_of_le hp1q hr))
           cases h1 : ab1.run arr p1 with
           | error e1 =>
@@ -503,7 +503,7 @@ private theorem bodyFwd_comma_kv_run
           Ascii.isExp buf[p + (renderKV kv).toUTF8.size]! = false)) →
         kv_parser.run buf p = .ok kv (p + (renderKV kv).toUTF8.size)) :
     Grip.Json.bodyFwd (fun (a : Array (String × Json)) x => a.push x)
-        (GParser.seqR GParser.ws kv_parser) Ascii.rbrace buf acc false base =
+        (GParser.seqR GParser.ws kv_parser) Ascii.rbrace "'}'" buf acc false base =
       .ok (acc ++ lst.toArray) (base + (commaPrefixKV lst).toUTF8.size + 1) := by
   induction lst generalizing base acc with
   | nil =>
@@ -639,7 +639,7 @@ private theorem bodyFwd_comma_value_run (lst : List Json) (buf : ByteArray) (acc
            buf[p + (render x).toUTF8.size]! ≠ 46 ∧
            Ascii.isExp buf[p + (render x).toUTF8.size]! = false) →
         Grip.Json.value.run buf p = .ok x (p + (render x).toUTF8.size)) :
-    Grip.Json.bodyFwd (fun (a : Array Json) e => a.push e) Grip.Json.value Ascii.rbracket
+    Grip.Json.bodyFwd (fun (a : Array Json) e => a.push e) Grip.Json.value Ascii.rbracket "']'"
         buf acc false base =
       .ok (acc ++ lst.toArray) (base + (commaPrefix lst).toUTF8.size + 1) := by
   induction lst generalizing base acc with
@@ -831,19 +831,19 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
       byte_run! 91 buf q hqlt hbufq!
     -- the container body parses xs, closing bracket included
     have harr_body : (Grip.Json.containerBody (fun (a : Array Json) e => a.push e)
-        (GParser.fixSelf Grip.Json.valueBody (buf.size - q)) Ascii.rbracket #[]).run buf (q + 1) =
-        .ok xs (q + (render (Json.arr xs)).toUTF8.size) := by
+        (GParser.fixSelf Grip.Json.valueBody (buf.size - q)) Ascii.rbracket "']'" #[]).run
+        buf (q + 1) = .ok xs (q + (render (Json.arr xs)).toUTF8.size) := by
       -- Transfer fixSelf → value via containerBody_agree + fixSelf_eq_value_of_gt
       have h_agree := containerBody_agree (fun (a : Array Json) e => a.push e)
           (GParser.fixSelf Grip.Json.valueBody (buf.size - q)) Grip.Json.value
-          Ascii.rbracket #[] buf (q + 1)
+          Ascii.rbracket "']'" #[] buf (q + 1)
           (fun r hr => fixSelf_eq_value_of_gt buf q r (by omega))
       suffices h_val : (Grip.Json.containerBody (fun (a : Array Json) e => a.push e)
-          Grip.Json.value Ascii.rbracket #[]).run buf (q + 1) =
+          Grip.Json.value Ascii.rbracket "']'" #[]).run buf (q + 1) =
           .ok xs (q + (render (Json.arr xs)).toUTF8.size) by
         rcases h_fix : (Grip.Json.containerBody (fun (a : Array Json) e => a.push e)
             (GParser.fixSelf Grip.Json.valueBody (buf.size - q))
-            Ascii.rbracket #[]).run buf (q + 1) with ⟨xs', q'⟩ | e
+            Ascii.rbracket "']'" #[]).run buf (q + 1) with ⟨xs', q'⟩ | e
         · rw [h_fix, h_val] at h_agree
           simp only [AgreeOk] at h_agree; obtain ⟨rfl, rfl⟩ := h_agree; rfl
         · rw [h_fix, h_val] at h_agree; exact absurd h_agree (by simp [AgreeOk])
@@ -896,7 +896,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           rw [if_neg (by decide), if_neg (by decide), if_neg (by decide),
             if_neg (by decide), if_neg (by decide), if_neg (by decide),
             if_neg (by decide)]
-          simp [clampAdvance, GParser.map, GParser.satisfy]
+          simp [clampAdvance, GParser.label, GParser.map, GParser.satisfy]
         have hs1 : scanFwd buf Ascii.isWs (q + 1) = q + 1 := by
           rw [scanFwd, dif_pos hq1lt, if_neg (by rw [hws1]; decide)]
         simp only [Grip.Json.containerBody]
@@ -1088,34 +1088,34 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
     have hobj_body : (Grip.Json.containerBody (fun (a : Array (String × Json)) x => a.push x)
         (GParser.seqR GParser.ws
           (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-            (GParser.seqR (Grip.Json.wsByte Ascii.colon)
+            (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'")
               (GParser.fixSelf Grip.Json.valueBody (buf.size - q)))))
-        Ascii.rbrace #[]).run buf (q + 1) =
+        Ascii.rbrace "'}'" #[]).run buf (q + 1) =
         .ok kvs (q + (render (Json.obj kvs)).toUTF8.size) := by
       -- Transfer fixSelf → value via containerBody_agree + fixSelf_eq_value_of_gt
       have h_agree := containerBody_agree (fun (a : Array (String × Json)) x => a.push x)
           (GParser.seqR GParser.ws
             (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-              (GParser.seqR (Grip.Json.wsByte Ascii.colon)
+              (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'")
                 (GParser.fixSelf Grip.Json.valueBody (buf.size - q)))))
           (GParser.seqR GParser.ws
             (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-              (GParser.seqR (Grip.Json.wsByte Ascii.colon) Grip.Json.value)))
-          Ascii.rbrace #[] buf (q + 1)
+              (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") Grip.Json.value)))
+          Ascii.rbrace "'}'" #[] buf (q + 1)
           (fun r hr => seqR_ws_pair_agree _ _ buf q r (by omega)
             (fun q' hq' => fixSelf_eq_value_of_gt buf q q' hq'))
       suffices h_val : (Grip.Json.containerBody (fun (a : Array (String × Json)) x => a.push x)
           (GParser.seqR GParser.ws
             (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-              (GParser.seqR (Grip.Json.wsByte Ascii.colon) Grip.Json.value)))
-          Ascii.rbrace #[]).run buf (q + 1) =
+              (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") Grip.Json.value)))
+          Ascii.rbrace "'}'" #[]).run buf (q + 1) =
           .ok kvs (q + (render (Json.obj kvs)).toUTF8.size) by
         rcases h_fix : (Grip.Json.containerBody (fun (a : Array (String × Json)) x => a.push x)
             (GParser.seqR GParser.ws
               (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-                (GParser.seqR (Grip.Json.wsByte Ascii.colon)
+                (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'")
                   (GParser.fixSelf Grip.Json.valueBody (buf.size - q)))))
-            Ascii.rbrace #[]).run buf (q + 1) with ⟨kvs', q'⟩ | e
+            Ascii.rbrace "'}'" #[]).run buf (q + 1) with ⟨kvs', q'⟩ | e
         · rw [h_fix, h_val] at h_agree
           simp only [AgreeOk] at h_agree; obtain ⟨rfl, rfl⟩ := h_agree; rfl
         · rw [h_fix, h_val] at h_agree; exact absurd h_agree (by simp [AgreeOk])
@@ -1169,7 +1169,8 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           rw [if_neg hne34]; exact ⟨_, rfl⟩
         have helem_err : (GParser.seqR GParser.ws
             (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-              (GParser.seqR (Grip.Json.wsByte Ascii.colon) Grip.Json.value))).run buf (q + 1) =
+              (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") Grip.Json.value))).run
+            buf (q + 1) =
             .error e := by
           simp only [GParser.seqR, GParser.map2, hws_step, hjstr_err]
         have hs1 : scanFwd buf Ascii.isWs (q + 1) = q + 1 := by
@@ -1243,10 +1244,10 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
         have hcolon_ws : Ascii.isWs buf[q + 1 + 2 + (ebytes k0.toList).length] = false := by
           rw [hcolon_byte]; decide
         -- wsByte colon succeeds
-        have hwscolon : (Grip.Json.wsByte Ascii.colon).run buf (q + 1 + 2 +
+        have hwscolon : (Grip.Json.wsByte Ascii.colon "':'").run buf (q + 1 + 2 +
             (ebytes k0.toList).length) =
             .ok () (q + 1 + 2 + (ebytes k0.toList).length + 1) :=
-          wsByte_run_stop Ascii.colon buf _ hcolon_pos_lt hcolon_ws (by rw [hcolon_byte]; rfl)
+          wsByte_run_stop Ascii.colon "':'" buf _ hcolon_pos_lt hcolon_ws (by rw [hcolon_byte]; rfl)
         -- Value bytes at q + 1 + 3 + (ebytes k0.toList).length
         have hv0_start : q + 1 + 2 + (ebytes k0.toList).length + 1 =
             q + 1 + (2 + (ebytes k0.toList).length + 1) := by ring
@@ -1308,18 +1309,18 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
             hv0_bound hmatch_v0 hstop_v0
         -- map2 jstr (seqR colon value) parses (k0, v0)
         have hkv0_val : (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-            (GParser.seqR (Grip.Json.wsByte Ascii.colon) Grip.Json.value)).run buf (q + 1) =
+            (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") Grip.Json.value)).run buf (q + 1) =
             .ok (k0, v0) (q + 1 + (renderKV (k0, v0)).toUTF8.size) := by
           have hq1_lt_buf : q + 1 + 1 + (ebytes k0.toList).length + 1 ≤ buf.size := by omega
           rw [show q + 1 + (renderKV (k0, v0)).toUTF8.size =
               q + 1 + 2 + (ebytes k0.toList).length + 1 + (render v0).toUTF8.size from by
             rw [hrkv_size]; ring]
-          have h_seqR := seqR_run (Grip.Json.wsByte Ascii.colon) Grip.Json.value
+          have h_seqR := seqR_run (Grip.Json.wsByte Ascii.colon "':'") Grip.Json.value
               buf (q + 1 + 2 + (ebytes k0.toList).length)
               () (q + 1 + 2 + (ebytes k0.toList).length + 1)
               v0 _ hwscolon hv0_val
           exact map2_run (fun k v => (k, v)) Grip.Json.jstr
-              (GParser.seqR (Grip.Json.wsByte Ascii.colon) Grip.Json.value)
+              (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") Grip.Json.value)
               buf (q + 1) k0 (q + 1 + 2 + (ebytes k0.toList).length) v0 _
               (by convert hjstr_ok using 2; ring) h_seqR
         -- commaPrefixKV rest_kvs bytes
@@ -1352,7 +1353,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
               buf[p + (renderKV kv2).toUTF8.size]! ≠ 46 ∧
               Ascii.isExp buf[p + (renderKV kv2).toUTF8.size]! = false)) →
             (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-              (GParser.seqR (Grip.Json.wsByte Ascii.colon) Grip.Json.value)).run buf p =
+              (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") Grip.Json.value)).run buf p =
               .ok kv2 (p + (renderKV kv2).toUTF8.size) := by
           intro ⟨k2, v2⟩ hkv2 p hp hmatch2 hstop_kv2
           have hrk2 : renderKV (k2, v2) = render (.str k2) ++ ":" ++ render v2 := rfl
@@ -1401,10 +1402,10 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
             decide
           have hcolon2 : buf[p + 2 + (ebytes k2.toList).length] = (58 : UInt8) := by
             rwa [← getElem!_pos buf _ hcolon2_lt]
-          have hwscolon2 : (Grip.Json.wsByte Ascii.colon).run buf (p + 2 +
+          have hwscolon2 : (Grip.Json.wsByte Ascii.colon "':'").run buf (p + 2 +
               (ebytes k2.toList).length) =
               .ok () (p + 2 + (ebytes k2.toList).length + 1) :=
-            wsByte_run_stop Ascii.colon buf _ hcolon2_lt (by rw [hcolon2]; decide)
+            wsByte_run_stop Ascii.colon "':'" buf _ hcolon2_lt (by rw [hcolon2]; decide)
               (by rw [hcolon2]; rfl)
           have hv2_bound : p + 2 + (ebytes k2.toList).length + 1 + (render v2).toUTF8.size ≤
               buf.size := by
@@ -1439,18 +1440,19 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
           rw [show p + (renderKV (k2, v2)).toUTF8.size =
               p + 2 + (ebytes k2.toList).length + 1 + (render v2).toUTF8.size from by
             rw [hrk2_size]; ring]
-          have h_seqR2 := seqR_run (Grip.Json.wsByte Ascii.colon) Grip.Json.value
+          have h_seqR2 := seqR_run (Grip.Json.wsByte Ascii.colon "':'") Grip.Json.value
               buf (p + 2 + (ebytes k2.toList).length)
               () (p + 2 + (ebytes k2.toList).length + 1)
               v2 _ hwscolon2 hv2_val
           exact map2_run (fun k v => (k, v)) Grip.Json.jstr
-              (GParser.seqR (Grip.Json.wsByte Ascii.colon) Grip.Json.value)
+              (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") Grip.Json.value)
               buf p k2 (p + 2 + (ebytes k2.toList).length) v2 _
               (by convert hjstr2 using 2; ring) h_seqR2
         -- Head pair, then the committed tail loop through the closing brace
         have helem0 : (GParser.seqR GParser.ws
             (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-              (GParser.seqR (Grip.Json.wsByte Ascii.colon) Grip.Json.value))).run buf (q + 1) =
+              (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") Grip.Json.value))).run
+            buf (q + 1) =
             .ok (k0, v0) (q + 1 + (renderKV (k0, v0)).toUTF8.size) :=
           seqR_run _ _ _ _ 0 (q + 1) (k0, v0) _ hws_step hkv0_val
         simp only [Grip.Json.containerBody]
@@ -1461,7 +1463,7 @@ theorem value_run_at : ∀ (v : Json) (buf : ByteArray) (q : Nat),
               ⟨by rw [hrkv_size]; omega, by omega⟩)]
         rw [bodyFwd_comma_kv_run
             (GParser.map2 (fun k v => (k, v)) Grip.Json.jstr
-              (GParser.seqR (Grip.Json.wsByte Ascii.colon) Grip.Json.value))
+              (GParser.seqR (Grip.Json.wsByte Ascii.colon "':'") Grip.Json.value))
             rest_kvs buf (#[].push (k0, v0)) (q + 1 + (renderKV (k0, v0)).toUTF8.size)
             (by omega) hmatch_cp hcp_close h_kvp]
         simp only [ParseResult.ok.injEq]
