@@ -141,7 +141,7 @@ structure NState where
 /-- One step of the number decode, over a raw input byte. A `-` (45) is the mantissa sign
 in phase 0 and the exponent sign in phase 2; `+` (43) only occurs in the exponent. Digit
 bytes are `48..57`. -/
-def numByte (st : NState) (b : UInt8) : NState :=
+@[inline] def numByte (st : NState) (b : UInt8) : NState :=
   if b == 46 then { st with phase := 1 }                    -- '.'
   else if b == 101 || b == 69 then { st with phase := 2 }   -- 'e' / 'E'
   else if b == 43 then st                                   -- '+'
@@ -169,7 +169,7 @@ otherwise fold into an unbounded `10 ^ n` and panic). A nonnegative base-10 expo
 into the mantissa (so `2e3` is `num 2000 0`), keeping `exponent : Nat`; a negative one becomes
 the exponent (`2.5` is `num 25 1`). Folds `numByte` over the input bytes directly — no `capture`
 `String`, no per-char UTF-8 decode. -/
-def decodeNumberBytes? (arr : ByteArray) (start stop : Nat) : Option Json :=
+@[inline] def decodeNumberBytes? (arr : ByteArray) (start stop : Nat) : Option Json :=
   let st := arr.foldl numByte {} start stop
   let mant : Int := if st.mantNeg then -(st.mant : Int) else st.mant
   let decExp : Int := (if st.expNeg then -(st.expVal : Int) else (st.expVal : Int)) - st.fracLen
