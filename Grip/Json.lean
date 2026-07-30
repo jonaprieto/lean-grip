@@ -421,6 +421,144 @@ no discarded `ws` count allocation. -/
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
 
+/-- Scan a container body: `elem`s separated by `,`, terminated by the single byte `close`.
+`first` is `true` before any element has been parsed, where no separator is expected.
+
+Unlike `GParser.foldMany` this loop is *committed*, which is what makes the reported error
+position the position of the real problem:
+
+- in the tail (`first = false`), a `,` obliges an element, and a failure inside it propagates
+  unchanged instead of being swallowed by a zero-or-more fold whose type says it never errors;
+- at the head (`first = true`), the empty container is a fallback taken only when `elem` fails
+  *and* the next non-whitespace byte is `close`. A failed first element followed by anything
+  else reports `elem`'s own error rather than "expected `close`" back at the opening bracket.
+  No element can start at a `close` byte, so this fallback never masks a real failure.
+
+Total: structural on `arr.size - q`, using `elem`'s `cwit` (it always consumes) to strictly
+advance. The `q < q' ∧ q' ≤ arr.size` guard is never false for a graded `elem`, but stating it
+here is what makes the measure decrease without a bounds hypothesis on the caller. -/
+@[specialize] def bodyFwd {α β : Type} (push : β → α → β) (elem : GParser conditional α)
+    (close : UInt8) (arr : ByteArray) (acc : β) (first : Bool) (q : Nat) : ParseResult β :=
+  if first then
+    match elem.run arr q with
+    | .ok x q' =>
+      if h : q < q' ∧ q' ≤ arr.size then
+        bodyFwd push elem close arr (push acc x) false q'
+      else .error ⟨q', []⟩
+    | .error e =>
+      let p := scanFwd arr Ascii.isWs q
+      if _ : p < arr.size then (if arr[p] == close then .ok acc (p + 1) else .error e)
+      else .error e
+  else
+    let p := scanFwd arr Ascii.isWs q
+    if _ : p < arr.size then
+      if arr[p] == close then .ok acc (p + 1)
+      else if arr[p] == Ascii.comma then
+        match elem.run arr (p + 1) with
+        | .ok x q' =>
+          if h2 : q < q' ∧ q' ≤ arr.size then
+            bodyFwd push elem close arr (push acc x) false q'
+          else .error ⟨q', []⟩
+        | .error e => .error e
+      else .error ⟨p, []⟩
+    else .error ⟨p, []⟩
+termination_by arr.size - q
+decreasing_by
+  · omega
+  · have := scanFwd_ge arr Ascii.isWs q
+    omega
+
+/-- `bodyFwd` strictly advances past its starting offset on success: it always consumes at
+least the closing byte. -/
+theorem bodyFwd_gt {α β : Type} (push : β → α → β) (elem : GParser conditional α)
+    (close : UInt8) (arr : ByteArray) (acc : β) (first : Bool) (q : Nat) (b : β) (q' : Nat)
+    (h : bodyFwd push elem close arr acc first q = .ok b q') : q < q' := by
+  rw [bodyFwd] at h
+  simp only [] at h
+  have hge := scanFwd_ge arr Ascii.isWs q
+  split at h
+  · split at h
+    · next x q'' _ =>
+        split at h
+        · next hg =>
+            have := bodyFwd_gt push elem close arr (push acc x) false q'' b q' h
+            omega
+        · exact absurd h (by simp)
+    · split at h
+      · split at h
+        · simp only [ParseResult.ok.injEq] at h; omega
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+  · split at h
+    · split at h
+      · simp only [ParseResult.ok.injEq] at h; omega
+      · split at h
+        · split at h
+          · next x q'' _ =>
+              split at h
+              · next hg =>
+                  have := bodyFwd_gt push elem close arr (push acc x) false q'' b q' h
+                  omega
+              · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+    · exact absurd h (by simp)
+termination_by arr.size - q
+decreasing_by
+  · omega
+  · have := scanFwd_ge arr Ascii.isWs q
+    omega
+
+/-- `bodyFwd` stays within bounds on success. -/
+theorem bodyFwd_le {α β : Type} (push : β → α → β) (elem : GParser conditional α)
+    (close : UInt8) (arr : ByteArray) (acc : β) (first : Bool) (q : Nat) (b : β) (q' : Nat)
+    (h : bodyFwd push elem close arr acc first q = .ok b q') : q' ≤ arr.size := by
+  rw [bodyFwd] at h
+  simp only [] at h
+  have hge := scanFwd_ge arr Ascii.isWs q
+  split at h
+  · split at h
+    · next x q'' _ =>
+        split at h
+        · next hg => exact bodyFwd_le push elem close arr (push acc x) false q'' b q' h
+        · exact absurd h (by simp)
+    · split at h
+      · rename_i hp
+        split at h
+        · simp only [ParseResult.ok.injEq] at h; omega
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+  · split at h
+    · rename_i hp
+      split at h
+      · simp only [ParseResult.ok.injEq] at h; omega
+      · split at h
+        · split at h
+          · next x q'' _ =>
+              split at h
+              · next hg => exact bodyFwd_le push elem close arr (push acc x) false q'' b q' h
+              · exact absurd h (by simp)
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+    · exact absurd h (by simp)
+termination_by arr.size - q
+decreasing_by
+  · omega
+  · have := scanFwd_ge arr Ascii.isWs q
+    omega
+
+/-- A whole container body: `elem`s separated by `,`, terminated by `close`, folded into `acc`
+with `push`. Consumes the closing byte, so it is `conditional` (always consumes on success).
+Fusing the separator loop and the terminator into one parser is what lets a failure inside an
+element reach the caller instead of being turned into "expected `]`" at the separator. -/
+@[inline] def containerBody {α β : Type} (push : β → α → β) (elem : GParser conditional α)
+    (close : UInt8) (acc : β) : GParser conditional β where
+  run := fun arr q => bodyFwd push elem close arr acc true q
+  cwit := by intro arr q b q' h; exact bodyFwd_gt push elem close arr acc true q b q' h
+  ewit := by intro he; exact absurd he (by decide)
+  swit := by intro he; exact absurd he (by decide)
+  bwit := by intro arr q b q' _ h; exact bodyFwd_le push elem close arr acc true q b q' h
+
 /-- Named body of the recursive JSON value parser. Proofs reference
     `GParser.fixFuel valueBody` directly. -/
 def valueBody (rec : GParser conditional Json) : GParser conditional Json :=
@@ -430,27 +568,18 @@ def valueBody (rec : GParser conditional Json) : GParser conditional Json :=
   wsDispatch
     (fun b =>
       if b == Ascii.lbrace then
-        -- `rec` skips its own leading whitespace, so no `ws` before it after `:` / `,`.
+        -- `rec` skips its own leading whitespace, so no `ws` before it after `:`; the key
+        -- needs one because `jstr` does not, and `containerBody` only skips up to the `,`.
         let pair : GParser conditional (String × Json) :=
           GParser.map2 (fun k v => (k, v)) jstr (GParser.seqR (wsByte Ascii.colon) rec)
-        let objectBody : GParser flexible (Array (String × Json)) :=
-          GParser.alt
-            (GParser.bind pair (fun p =>
-              GParser.foldMany (fun (a : Array (String × Json)) x => a.push x) #[p]
-                (GParser.seqR (wsByte Ascii.comma) (GParser.seqR GParser.ws pair))))
-            (GParser.pure #[])
         GParser.seqR (GParser.ch '{')
-          (GParser.seqR GParser.ws
-            (GParser.seqL (GParser.map Json.obj objectBody) (wsByte Ascii.rbrace)))
+          (GParser.map Json.obj
+            (containerBody (fun (a : Array (String × Json)) x => a.push x)
+              (GParser.seqR GParser.ws pair) Ascii.rbrace #[]))
       else if b == Ascii.lbracket then
-        let arrayBody : GParser flexible (Array Json) :=
-          GParser.alt
-            (GParser.bind rec (fun x =>
-              GParser.foldMany (fun (a : Array Json) e => a.push e) #[x]
-                (GParser.seqR (wsByte Ascii.comma) rec)))
-            (GParser.pure #[])
         GParser.seqR (GParser.ch '[')
-          (GParser.seqL (GParser.map Json.arr arrayBody) (wsByte Ascii.rbracket))
+          (GParser.map Json.arr
+            (containerBody (fun (a : Array Json) e => a.push e) rec Ascii.rbracket #[]))
       else if b == Ascii.quote then jstring
       else if b == Ascii.code 't' then jtrue
       else if b == Ascii.code 'f' then jfalse
