@@ -128,9 +128,11 @@ results are collected. Total via `fix`; both parsers must always consume. -/
       (map2 (fun x xs => x :: xs) p rec)
 
 /-- End of input: succeed (consuming nothing) exactly when no byte remains. Defined as
-`notFollowedBy` of the any-byte parser; used to reject trailing input after a top-level parse. -/
+`notFollowedBy` of the any-byte parser; used to reject trailing input after a top-level parse.
+Labelled, since a failure here always means the same thing: something followed what should
+have been the last byte. -/
 @[inline] def eof : GParser lookahead Unit :=
-  notFollowedBy (satisfy (fun _ => true))
+  notFollowedBy (satisfy (fun _ => true)) <?> "end of input"
 
 /-- Ordered choice is idempotent on the grade: choosing between two parsers of the same
 grade stays at that grade. -/

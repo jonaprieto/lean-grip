@@ -119,6 +119,15 @@ private def errMsg (s : String) : Option String :=
 #guard errMsg "nul"      == some "expected null"
 #guard errMsg "[1,2"     == some "expected ',' or ']'"
 
+-- Trailing garbage is reported at the first byte past the value, naming what was wanted.
+#guard errMsg "1 2"        == some "expected end of input"
+#guard errPos "1 2"        == some (1, 3)
+#guard errPos "null null"  == some (1, 6)
+#guard errPos "[1] x"      == some (1, 5)
+#guard errPos "12abc"      == some (1, 3)
+-- A bare exponent parses as `1` followed by garbage, so it lands here rather than in `number`.
+#guard errMsg "1e"         == some "expected end of input"
+
 -- Empty containers, whitespace and all, are still accepted.
 #guard parseString "[]"    == .ok (Json.arr #[])
 #guard parseString "[  ]"  == .ok (Json.arr #[])

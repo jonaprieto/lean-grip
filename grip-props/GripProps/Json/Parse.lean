@@ -27,7 +27,7 @@ namespace GripProps.Parse
 /-- At the end of the whole input, `eof` succeeds consuming nothing. -/
 theorem eof_run_end (arr : ByteArray) (q : Nat) (hq : arr.size ≤ q) :
     (GParser.eof).run arr q = .ok () q := by
-  simp only [GParser.eof, GParser.notFollowedBy, GParser.satisfy]
+  simp only [GParser.eof, GParser.label, GParser.notFollowedBy, GParser.satisfy]
   rw [dif_neg (by omega : ¬ q < arr.size)]
 
 /-- `scanFwd` consumes exactly a maximal run of `n` matching bytes ending at a non-match or EOF. -/
