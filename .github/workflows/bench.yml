@@ -367,13 +367,13 @@ jobs:
                 if (nshake > 0) {
                   printf "\n%d grip row%s swung >=25%% (🎲)", nshake, (nshake == 1 ? "" : "s")
                   if (refshake > 0)
-                    printf ", as did %d reference row%s this PR cannot affect -- so the runner, not the PR, most likely moved",
+                    printf ", as did %d baseline row%s -- movement there points at the runner, not at grip",
                       refshake, (refshake == 1 ? "" : "s")
                   else
                     printf " -- treat as runner noise unless the PR touches that parser"
                   print "."
                 } else if (refshake > 0)
-                  printf "\n%d reference row%s swung >=25%% -- upstream code this PR does not build.\n",
+                  printf "\n%d baseline row%s swung >=25%% -- parsers grip is measured against, not grip code.\n",
                     refshake, (refshake == 1 ? "" : "s")
                 if (prspreadn != "" && basespreadn != "")
                   printf "\nRound control: worst within-arm spread was %.1f%% (`%s`) for PR and %.1f%% (`%s`) for base.\n",
@@ -387,9 +387,9 @@ jobs:
               print ""
 
               print "<details>"
-              print "<summary><b>Reference implementations</b> -- upstream code, not built from this PR</summary>"
+              print "<summary><b>Baselines</b> -- what grip is measured against, not grip library code</summary>"
               print ""
-              print "| reference | PR ms | base ms | Δ |"
+              print "| baseline | PR ms | base ms | Δ |"
               print "|---|--:|--:|--:|"
               emit("std.parsec,hand,lean.json,prim-parser", 1)
               print ""
