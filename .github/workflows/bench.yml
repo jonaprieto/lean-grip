@@ -1,9 +1,15 @@
 name: Benchmark
 
-# Builds the PR, runs `lake exe bench`, re-runs it on the PR's base commit, and posts a
-# PR-vs-base table as a single sticky comment (updated in place on every push, so the
-# comment always references the current head SHA). Runs automatically on each PR push; a
-# `/bench` comment from a trusted commenter re-runs it on demand.
+# Builds and keeps the PR and base benchmark binaries, runs three alternating rounds, and
+# posts a PR-vs-base report as a single sticky comment (updated in place on every push, so
+# the comment always references the current head SHA). Runs automatically on each PR push;
+# a `/bench` comment from a trusted commenter re-runs it on demand.
+#
+# The comment leads with a verdict over this repo's own parsers (flag count, worst row,
+# biggest win) and shows only those rows by default. Upstream reference implementations
+# (`std.parsec`, `hand`, `lean.json`, `prim-parser`) and the methodology notes are collapsed:
+# a grip change cannot move a reference row, so a flag there should not compete with a real
+# regression for the reader's attention.
 #
 # Parallel jobs: `meta` resolves the PR, then `grip` (the in-repo `lake exe bench` suite)
 # and `primparser` (the sibling deep-embedded framework this repo forks from, heavy because
@@ -101,18 +107,49 @@ jobs:
           build: false
           test: false
 
-      - name: Run benchmarks (PR head, then base)
+      - name: Build both benchmarks, then run alternating rounds
         run: |
+          PR_BENCH="$RUNNER_TEMP/bench-pr"
+          BASE_BENCH="$RUNNER_TEMP/bench-base"
           lake build bench
-          lake exe bench > pr.txt 2>/dev/null || true
-          echo "== PR ==" && cat pr.txt
+          cp .lake/build/bin/bench "$PR_BENCH"
+          : > pr.txt
           : > base.txt
           if [ -n "${{ needs.meta.outputs.base }}" ]; then
             git checkout -q "${{ needs.meta.outputs.base }}" -- Grip Grip.lean examples bench lakefile.lean lean-toolchain \
               && lake build bench \
-              && lake exe bench > base.txt 2>/dev/null \
-              && { echo "== base ==" && cat base.txt; } \
+              && cp .lake/build/bin/bench "$BASE_BENCH" \
               || echo "baseline bench failed; reporting PR only"
+          fi
+
+          if [ -x "$BASE_BENCH" ]; then
+            sha256sum "$PR_BENCH" "$BASE_BENCH"
+
+            # Discard one run per binary after all build work. This both warms code/data and
+            # keeps post-build runner activity out of the reported samples.
+            "$PR_BENCH" > pr-warmup.txt 2>/dev/null || true
+            "$BASE_BENCH" > base-warmup.txt 2>/dev/null || true
+            echo "== discarded PR warmup =="
+            cat pr-warmup.txt
+            echo "== discarded base warmup =="
+            cat base-warmup.txt
+
+            # A multi-second stall can spoil a full run, so alternate the arms and let the
+            # formatter take each cell's minimum across three rounds per arm.
+            for round in 1 2 3; do
+              "$PR_BENCH" > "pr-$round.txt" 2>/dev/null || true
+              echo "== round $round PR =="
+              cat "pr-$round.txt"
+              "$BASE_BENCH" > "base-$round.txt" 2>/dev/null || true
+              echo "== round $round base =="
+              cat "base-$round.txt"
+            done
+            cat pr-1.txt pr-2.txt pr-3.txt > pr.txt
+            cat base-1.txt base-2.txt base-3.txt > base.txt
+          else
+            "$PR_BENCH" > pr.txt 2>/dev/null || true
+            echo "== PR only =="
+            cat pr.txt
           fi
 
       - uses: actions/upload-artifact@v4
@@ -214,49 +251,173 @@ jobs:
           name: primparser-results
 
       - name: Format results
+        env:
+          SHA: ${{ needs.meta.outputs.sha }}
+          BASE_SHA: ${{ needs.meta.outputs.base }}
         run: |
           # prim-parser is a fixed external reference (independent of this PR's grip code),
           # so its rows go only into the PR column; the base column shows "-" for them.
           [ -f primparser.txt ] && cat primparser.txt >> pr.txt || true
-          {
-            echo '<!-- bench -->'
-            echo "### Benchmark results (full \`lake exe bench\` suite + prim-parser)"
-            echo ""
-            echo "PR \`${{ needs.meta.outputs.sha }}\` vs base \`${{ needs.meta.outputs.base }}\` -- best-of-20 ms, lower is better. Δ = PR vs base."
-            echo ""
-            echo "JSON rows are per input file: \`grip\`/\`std.parsec\`/\`hand\` are leaf-count validators, \`grip.json\`/\`lean.json\` are the DOM-vs-DOM value builders, \`prim-parser\` is the sibling deep-embedded framework (validator, pinned \`97f120c\`, reference only)."
-            echo ""
-            echo "⚠️ flags a row 10-25% slower than base. 🎲 flags a swing of 25% or more in *either* direction: base and PR are built and benchmarked sequentially in this one job, so a swing that large more often reflects CI-runner noise between the two runs (GC pause, cache miss, a noisy neighbor) than a real effect of the PR -- treat either marker as a prompt to look closer, not a verdict, especially 🎲 on a PR that touches no parser code."
-            echo ""
-            # Key each row by parser + input file so the per-file JSON DOM-vs-DOM rows
-            # (grip.json/lean.json x canada/citm/twitter) are kept, not collapsed. Single-file
-            # benches (sexp, lambda, ...) have a `size=`/`count=` second field and key on $1.
-            awk '
-              function key() { return ($2 ~ /^(size|count)=/) ? $1 : ($1 " " $2) }
-              function getms(  i, a) { for (i = 1; i <= NF; i++) if ($i ~ /^(ms|parse_ms|best_ms)=/) { split($i, a, "="); return a[2] } return "" }
-              FNR == NR { m = getms(); if (m != "") { n = key(); if (!(n in seen)) { ord[++k] = n; seen[n] = 1 }; pr[n] = m }; next }
-              { m = getms(); if (m != "") base[key()] = m }
-              END {
-                print "| benchmark | PR ms | base ms | Δ |"
-                print "|---|--:|--:|--:|"
-                for (i = 1; i <= k; i++) {
-                  n = ord[i]
-                  has = (n in base)
-                  bm = has ? sprintf("%.2f", base[n]) : "-"
-                  if (has && base[n] + 0 > 0) {
-                    pct = (pr[n] - base[n]) / base[n] * 100
-                    mag = pct < 0 ? -pct : pct
-                    flag = (mag >= 25) ? " 🎲" : (pct >= 10) ? " ⚠️" : ""
-                    d = sprintf("%+.1f%%%s", pct, flag)
-                  } else {
-                    d = "-"
-                  }
-                  printf "| %s | %.2f | %s | %s |\n", n, pr[n], bm, d
+          # Key each row by parser + input file so the per-file JSON DOM-vs-DOM rows
+          # (grip.json/lean.json x canada/citm/twitter) are kept, not collapsed. Single-file
+          # benches (sexp, lambda, ...) have a `size=`/`count=` second field and key on $1.
+          # Rows split into grip's own parsers (always visible) and upstream reference
+          # implementations (collapsed), so a flag on code this PR cannot build does not
+          # compete for attention with a real regression.
+          awk -v sha="$SHA" -v basesha="$BASE_SHA" -v ts="$(date -u '+%Y-%m-%d %H:%M UTC')" '
+            function key() { return ($2 ~ /^(size|count)=/) ? $1 : ($1 " " $2) }
+            function getms(  i, a) { for (i = 1; i <= NF; i++) if ($i ~ /^(ms|parse_ms|best_ms)=/) { split($i, a, "="); return a[2] } return "" }
+            function parserof(n,   p) { p = n; sub(/ .*/, "", p); return p }
+            # A row is a reference implementation when its parser is not one of the parsers in this repo. `hand` is a
+            # hand-rolled baseline and `std.parsec`/`lean.json`/`prim-parser` are upstream: a grip change
+            # cannot move them, so a flag there is runner noise, not a result of the PR.
+            function isref(n,   p) { p = parserof(n)
+              return (p == "std.parsec" || p == "hand" || p == "lean.json" || p == "prim-parser") }
+            function flagof(pct,   mag) { mag = pct < 0 ? -pct : pct
+              return (mag >= 25) ? " 🎲" : (pct >= 10) ? " ⚠️" : "" }
+            function row(n,   bm, pct, d) {
+              bm = (n in base) ? sprintf("%.2f", base[n]) : "-"
+              if ((n in base) && base[n] + 0 > 0) {
+                pct = (pr[n] - base[n]) / base[n] * 100
+                d = sprintf("%+.1f%%%s", pct, flagof(pct))
+              } else d = "-"
+              printf "| %s | %.2f | %s | %s |\n", n, pr[n], bm, d
+            }
+            # Emit rows grouped by parser (order given by `pref`), each group in benchmark input order,
+            # then any parser not named in `pref`. Keeps `grip` rows together instead of interleaving them
+            # with `grip.json` by input file.
+            function emit(pref, want,   np, i, j, n, seenp) {
+              np = split(pref, prio, ",")
+              for (j = 1; j <= np; j++) {
+                seenp[prio[j]] = 1
+                for (i = 1; i <= k; i++) { n = ord[i]
+                  if (isref(n) == want && parserof(n) == prio[j]) row(n) }
+              }
+              for (i = 1; i <= k; i++) { n = ord[i]
+                if (isref(n) == want && !(parserof(n) in seenp)) row(n) }
+            }
+
+            FNR == NR {
+              m = getms()
+              if (m != "") {
+                m += 0; n = key()
+                if (!(n in seen)) { ord[++k] = n; seen[n] = 1 }
+                if (!(n in pr) || m < pr[n]) pr[n] = m
+                if (!(n in prmax) || m > prmax[n]) prmax[n] = m
+                prruns[n]++
+              }
+              next
+            }
+            {
+              m = getms()
+              if (m != "") {
+                m += 0; n = key()
+                if (!(n in base) || m < base[n]) base[n] = m
+                if (!(n in basemax) || m > basemax[n]) basemax[n] = m
+                baseruns[n]++
+              }
+            }
+
+            END {
+              # Headline statistics over grip-owned rows only. A 🎲 swing (>=25% either way) is treated
+              # as runner noise rather than a result, so it is excluded from worst/best and reported on its
+              # own line: promoting it into the verdict would put a scare number on a PR that cannot have
+              # caused it. Reference rows swinging the same way corroborate that the run, not the PR, moved.
+              ngrip = 0; nwarn = 0; nshake = 0; refshake = 0
+              worst = -1e9; best = 1e9; worstn = ""; bestn = ""; haveq = 0
+              prspread = 0; basespread = 0; prspreadn = ""; basespreadn = ""
+              for (i = 1; i <= k; i++) {
+                n = ord[i]
+                # Seed on the first eligible cell, not on the first positive spread: a
+                # perfectly steady arm has spread 0 everywhere, and `> prspread` would then
+                # never fire, suppressing the whole control line -- including the other arm.
+                if (prruns[n] > 1 && pr[n] + 0 > 0) {
+                  spread = (prmax[n] - pr[n]) / pr[n] * 100
+                  if (prspreadn == "" || spread > prspread) { prspread = spread; prspreadn = n }
                 }
-              }' pr.txt base.txt
-            echo ""
-            echo "_Cross-language parsers (Rust nom, Haskell) run in the separate \`bench-crosslang\` workflow._"
-          } > body.md
+                if (baseruns[n] > 1 && base[n] + 0 > 0) {
+                  spread = (basemax[n] - base[n]) / base[n] * 100
+                  if (basespreadn == "" || spread > basespread) { basespread = spread; basespreadn = n }
+                }
+                if (!(n in base) || base[n] + 0 <= 0) continue
+                pct = (pr[n] - base[n]) / base[n] * 100
+                mag = pct < 0 ? -pct : pct
+                if (isref(n)) { if (mag >= 25) refshake++; continue }
+                ngrip++
+                if (mag >= 25) { nshake++; continue }
+                haveq = 1
+                if (pct >= 10) nwarn++
+                if (pct > worst) { worst = pct; worstn = n }
+                if (pct < best)  { best  = pct; bestn  = n }
+              }
+
+              print "<!-- bench -->"
+              printf "### Benchmark  `%s` vs `%s`\n\n", substr(sha, 1, 7), substr(basesha, 1, 7)
+              if (ngrip == 0) {
+                print "**No baseline** -- no comparable rows were built for the base commit."
+                print ""
+              } else {
+                if (!haveq)
+                  printf "**Every grip row swung >=25%%** -- no usable signal in this run.\n"
+                else if (nwarn == 0)
+                  printf "**No regressions in grip parsers** -- %d rows, worst %+.1f%% (`%s`)\n", ngrip, worst, worstn
+                else
+                  printf "**%d of %d grip rows 10-25%% slower** -- worst %+.1f%% (`%s`)\n", nwarn, ngrip, worst, worstn
+                if (haveq && best < 0) printf "Biggest win: `%s` %+.1f%%\n", bestn, best
+                if (nshake > 0) {
+                  printf "\n%d grip row%s swung >=25%% (🎲)", nshake, (nshake == 1 ? "" : "s")
+                  if (refshake > 0)
+                    printf ", as did %d baseline row%s -- movement there points at the runner, not at grip",
+                      refshake, (refshake == 1 ? "" : "s")
+                  else
+                    printf " -- treat as runner noise unless the PR touches that parser"
+                  print "."
+                } else if (refshake > 0)
+                  printf "\n%d baseline row%s swung >=25%% -- parsers grip is measured against, not grip code.\n",
+                    refshake, (refshake == 1 ? "" : "s")
+                if (prspreadn != "" && basespreadn != "")
+                  printf "\nRound control: worst within-arm spread was %.1f%% (`%s`) for PR and %.1f%% (`%s`) for base.\n",
+                    prspread, prspreadn, basespread, basespreadn
+                print ""
+              }
+
+              print "| grip parser | PR ms | base ms | Δ |"
+              print "|---|--:|--:|--:|"
+              emit("grip,grip.json", 0)
+              print ""
+
+              print "<details>"
+              print "<summary><b>Baselines</b> -- what grip is measured against, not grip library code</summary>"
+              print ""
+              print "| baseline | PR ms | base ms | Δ |"
+              print "|---|--:|--:|--:|"
+              emit("std.parsec,hand,lean.json,prim-parser", 1)
+              print ""
+              print "</details>"
+              print ""
+              print "<details>"
+              print "<summary><b>How to read this</b></summary>"
+              print ""
+              print "Each arm ran three times in alternating order after a discarded warmup. The table uses"
+              print "the per-cell minimum across rounds; every round value is itself best-of-20 wall time in ms."
+              print "Lower is better. Δ is PR vs base; the round control above reports worst within-arm spread."
+              print ""
+              print "JSON rows are per input file. `grip`/`std.parsec`/`hand` are leaf-count validators;"
+              print "`grip.json`/`lean.json` are the DOM-vs-DOM value builders; `prim-parser` is the sibling"
+              print "deep-embedded framework (validator, pinned `97f120c`, reference only, no base column)."
+              print ""
+              print "⚠️ flags a row 10-25% slower than base. 🎲 flags a swing of 25% or more in *either*"
+              print "direction. The alternating rounds resist transient stalls, but treat either marker as a"
+              print "prompt to inspect the raw rounds and control spread, especially when reference rows move."
+              print ""
+              print "Cross-language parsers (Rust nom, Haskell) run in the separate `bench-crosslang` workflow."
+              print ""
+              print "</details>"
+              print ""
+              printf "<sub>full <code>lake exe bench</code> suite &middot; commit <code>%s</code> &middot; %s</sub>\n",
+                substr(sha, 1, 7), ts
+            }
+          ' pr.txt base.txt > body.md
           cat body.md >> "$GITHUB_STEP_SUMMARY"
 
       # Sticky comment: --edit-last updates the bot's existing comment in place (so it
