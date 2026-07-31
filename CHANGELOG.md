@@ -29,6 +29,12 @@ first release, `v0.1.0`.
 - `gdo`, graded do-notation, and the `Monad`/`Alternative`/`MonadExcept` instances for the
   ungraded `Parser`.
 - Positioned errors with a caret, and `<?>` for attaching an expected-label.
+- Expected-labels throughout `Grip.Json`, so a rejection names what the grammar wanted
+  rather than reading `unexpected input`: leaf parsers carry `<?>` labels, `jstr`/`scanStr`
+  name the specific string failure (bad escape, raw control byte, missing closing quote,
+  invalid UTF-8), and `wsByte`/`containerBody` report the token they were looking for
+  (`expected ':'`, `expected ',' or ']'`). `GParser.eof` is labelled too, so trailing
+  garbage reads `expected end of input`.
 - `Grip.Ascii` (named byte predicates/delimiter constants) and `Grip.Combinators` (the
   megaparsec-style vocabulary: `ws`, `digit`, `sepBy`, `between`, `manyTill`, `<?>`,
   `many1`, `endBy1`).
@@ -58,6 +64,18 @@ first release, `v0.1.0`.
 
 ### Fixed
 
+- Error positions inside `{..}`/`[..]` pointed at the opening bracket, or at a separator,
+  instead of at the failure: `{"a": "b\qc"}` reported column 2 rather than column 9. The
+  container body was `alt (bind elem ...) (pure #[])` followed by a closing-byte parser, so
+  a failed first element was discarded by a fallback that succeeded, and `foldMany` (return
+  grade `flexible`, never-errors) could not propagate a later element's failure at all.
+  Both, plus the trailing closing-byte parser, are now one committed loop
+  (`Grip.Json.containerBody`): in the tail a `,` obliges an element and its failure
+  propagates; at the head the empty container is a fallback taken only when the element
+  fails *and* the next non-whitespace byte is the closer, which no element can start with.
+  Acceptance is unchanged across the whole JSONTestSuite corpus, and the DOM parser got
+  faster (one fewer backtrack and closure per container).
+  [#44](https://github.com/jonaprieto/grip/issues/44).
 - The JSONTestSuite conformance gate used to test only the grammar-strict validator, never
   the value-producing `Grip.Json.parse` the round-trip theorem is actually proved about --
   the two grammars share no code and had no equivalence check between them. The gate now
@@ -85,12 +103,13 @@ first release, `v0.1.0`.
 does constrain the production `Grip.Json.parse`/`render` it names -- but it says nothing
 about the `.error` path, performance, or code the statement doesn't mention at all (like
 the separate `Grip.Examples.Json` validator). Machine-checked means the stated theorems
-hold, not that the library is bug-free. Specifically open right now:
+hold, not that the library is bug-free.
 
-- Reported error position and message can be wrong for a failure nested inside `{..}`/
-  `[..]`: `alt`'s furthest-failure merge only fires when both branches fail, and
-  `foldMany`'s return grade (`flexible`, never-errors) makes it structurally unable to
-  propagate a failed repetition -- so a fallback/continuation that succeeds anyway
-  discards the real failure. [#44](https://github.com/jonaprieto/grip/issues/44).
+The `.error` path is exercised by `#guard`s in `test/Test.lean` rather than by proof: the
+positions, lines and labels reported for malformed input are pinned by tests, not by a
+theorem. `alt`'s furthest-failure merge still only fires when both branches fail, and
+`GParser.foldMany` still cannot propagate a failed repetition -- `Grip.Json` no longer
+relies on either for its container bodies, but a client grammar built the same way would
+hit the same loss.
 
 [Unreleased]: https://github.com/jonaprieto/grip/commits/main
