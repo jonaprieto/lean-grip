@@ -62,8 +62,15 @@ structure ParseError where
 /-- Compose a human-readable message from an expected-label list.
 Returns "expected a or b" when labels are present, or "unexpected input" when
 the list is empty. -/
+private def uniqueStrings (items : List String) : List String :=
+  let rec go (seen : List String) : List String → List String
+    | [] => seen
+    | item :: rest =>
+        if seen.contains item then go seen rest else go (seen ++ [item]) rest
+  go [] items
+
 def ParseError.message (e : ParseError) : String :=
-  match e.expected with
+  match uniqueStrings e.expected with
   | []  => "unexpected input"
   | xs  => "expected " ++ String.intercalate " or " xs
 
@@ -129,5 +136,9 @@ def ParseError.pretty (e : ParseError) (src : ByteArray) : String :=
   let srcLine := sourceLine src e.pos
   let caret   := String.ofList (List.replicate (e.col - 1) ' ') ++ "^"
   s!"{e.line}:{e.col}: {msg}\n{srcLine}\n{caret}"
+
+#guard ParseError.message
+    { pos := 0, line := 1, col := 1, expected := ["number", "number", "string"] }
+    == "expected number or string"
 
 end Grip
