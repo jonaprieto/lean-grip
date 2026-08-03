@@ -14,7 +14,7 @@ jobs:
       - name: Lean style (100-col / trailing-ws / tabs)
         run: python3 scripts/style-check.py
       - name: Validate README artwork
-        run: xmllint --noout assets/*.svg
+        run: python3 -c 'import pathlib, xml.etree.ElementTree as ET; [ET.parse(path) for path in pathlib.Path("assets").glob("*.svg")]'
 
   core:
     runs-on: ubuntu-latest
