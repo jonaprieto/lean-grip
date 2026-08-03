@@ -1,7 +1,7 @@
 /-
 Copyright (c) 2026 Jonathan Cubides. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: Jonathan Cubides
+Authors: Jonathan Prieto-Cubides
 
 The grammar and `atom`/`list` structure follow Examples/SExp.lean in
 prim-parser by Jan Mas Rovira (https://github.com/janmasrovira/prim-parser,
