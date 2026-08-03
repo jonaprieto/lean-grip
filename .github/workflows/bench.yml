@@ -91,12 +91,12 @@ jobs:
       # Cache the elan toolchain so a run does not re-download it (avoids the
       # releases.lean-lang.org 429 rate-limit) and the batteries/Grip build.
       - name: Cache elan toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.elan
           key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}
       - name: Cache build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .lake
           key: lake-${{ runner.os }}-${{ hashFiles('lake-manifest.json', 'lean-toolchain') }}
@@ -170,7 +170,7 @@ jobs:
           ref: ${{ needs.meta.outputs.sha || github.sha }}
 
       - name: Cache elan toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.elan
           key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}
@@ -207,7 +207,7 @@ jobs:
 
       - name: Cache prim-parser mathlib build
         if: steps.pp.outputs.ok == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/mathlib

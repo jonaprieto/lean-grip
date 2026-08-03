@@ -21,12 +21,12 @@ jobs:
       # Cache the elan toolchain so runs do not re-download it from
       # releases.lean-lang.org (which occasionally 429s), and the batteries/Grip build.
       - name: Cache elan toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.elan
           key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}
       - name: Cache build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .lake
           key: lake-core-${{ runner.os }}-${{ hashFiles('lake-manifest.json', 'lean-toolchain') }}
@@ -61,12 +61,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Cache elan toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.elan
           key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}
       - name: Cache build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .lake
           key: lake-bench-${{ runner.os }}-${{ hashFiles('lake-manifest.json', 'lean-toolchain') }}
@@ -78,10 +78,12 @@ jobs:
         run: |
           out=$(lake exe bench)
           echo "$out"
-          echo "### grip benchmark" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "$out" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### grip benchmark"
+            echo '```'
+            echo "$out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
           # Assert the leaf counts of every Lean row on all three nativejson datasets: a
           # regression that changed what a parser accepts or counts would flip one of these.
           for row in grip std.parsec hand grip.json lean.json; do
@@ -95,12 +97,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Cache elan toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.elan
           key: elan-${{ runner.os }}-${{ hashFiles('grip-props/lean-toolchain', 'lean-toolchain') }}
       - name: Cache grip-props build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: grip-props/.lake
           key: lake-props-${{ runner.os }}-${{ hashFiles('grip-props/lake-manifest.json', 'lean-toolchain') }}
