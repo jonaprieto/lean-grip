@@ -28,6 +28,14 @@ open Grip
 /-- Is `b` a UTF-8 continuation byte (`10xxxxxx`)? -/
 @[inline] private def isCont (b : UInt8) : Bool := 0x80 ≤ b && b ≤ 0xBF
 
+private def validSecond (b0 b1 : UInt8) : Bool :=
+  if !isCont b1 then false
+  else if b0 == 0xE0 then 0xA0 ≤ b1
+  else if b0 == 0xED then b1 ≤ 0x9F
+  else if b0 == 0xF0 then 0x90 ≤ b1
+  else if b0 == 0xF4 then b1 ≤ 0x8F
+  else true
+
 /-- Decode one UTF-8 scalar starting at byte offset `q`, returning the `Char` and the
 new offset `q + width` (width 1 to 4), or `none` on truncated or invalid input. -/
 @[inline] def decodeUtf8 (arr : ByteArray) (q : Nat) : Option (Char × Nat) :=
@@ -35,32 +43,33 @@ new offset `q + width` (width 1 to 4), or `none` on truncated or invalid input. 
     let b0 := arr[q]
     if b0 < 0x80 then
       some (Char.ofNat b0.toNat, q + 1)
-    else if b0 < 0xE0 then
+    else if 0xC2 ≤ b0 && b0 ≤ 0xDF then
       if h1 : q + 1 < arr.size then
         let b1 := arr[q + 1]
-        if isCont b1 then
+        if validSecond b0 b1 then
           some (Char.ofNat (((b0.toNat &&& 0x1F) <<< 6) ||| (b1.toNat &&& 0x3F)), q + 2)
         else none
       else none
-    else if b0 < 0xF0 then
+    else if 0xE0 ≤ b0 && b0 ≤ 0xEF then
       if h2 : q + 2 < arr.size then
         let b1 := arr[q + 1]
         let b2 := arr[q + 2]
-        if isCont b1 && isCont b2 then
+        if validSecond b0 b1 && isCont b2 then
           some (Char.ofNat (((b0.toNat &&& 0x0F) <<< 12) |||
                             ((b1.toNat &&& 0x3F) <<< 6) ||| (b2.toNat &&& 0x3F)), q + 3)
         else none
       else none
-    else
+    else if 0xF0 ≤ b0 && b0 ≤ 0xF4 then
       if h3 : q + 3 < arr.size then
         let b1 := arr[q + 1]
         let b2 := arr[q + 2]
         let b3 := arr[q + 3]
-        if isCont b1 && isCont b2 && isCont b3 then
+        if validSecond b0 b1 && isCont b2 && isCont b3 then
           some (Char.ofNat (((b0.toNat &&& 0x07) <<< 18) ||| ((b1.toNat &&& 0x3F) <<< 12) |||
                             ((b2.toNat &&& 0x3F) <<< 6) ||| (b3.toNat &&& 0x3F)), q + 4)
         else none
       else none
+    else none
   else none
 
 /-- A successful `decodeUtf8` ends within bounds: each branch that returns `some (c, q + k)`
@@ -89,7 +98,9 @@ theorem decodeUtf8_le {arr : ByteArray} {q : Nat} {c : Char} {q' : Nat}
         · split at h
           · rename_i h3
             split at h
-            · simp only [Option.some.injEq, Prod.mk.injEq] at h; omega
+            · split at h
+              · simp only [Option.some.injEq, Prod.mk.injEq] at h; omega
+              · exact absurd h (by simp)
             · exact absurd h (by simp)
           · exact absurd h (by simp)
   · exact absurd h (by simp)
@@ -209,6 +220,14 @@ open Grip
 #guard (GParser.run? (GParser.char 'x') "abc".toUTF8) == none
 -- multibyte: 'π' is 2 UTF-8 bytes (0xCF 0x80); anyChar decodes it as one Char.
 #guard (GParser.run? GParser.anyChar "π".toUTF8) == some 'π'
+#guard decodeUtf8 (ByteArray.mk #[0xC2, 0x80]) 0 |>.isSome
+#guard decodeUtf8 (ByteArray.mk #[0xE0, 0xA0, 0x80]) 0 |>.isSome
+#guard decodeUtf8 (ByteArray.mk #[0xF0, 0x90, 0x80, 0x80]) 0 |>.isSome
+#guard decodeUtf8 (ByteArray.mk #[0xC0, 0x80]) 0 == none
+#guard decodeUtf8 (ByteArray.mk #[0xE0, 0x80, 0x80]) 0 == none
+#guard decodeUtf8 (ByteArray.mk #[0xED, 0xA0, 0x80]) 0 == none
+#guard decodeUtf8 (ByteArray.mk #[0xF4, 0x90, 0x80, 0x80]) 0 == none
+#guard decodeUtf8 (ByteArray.mk #[0xF5, 0x80, 0x80, 0x80]) 0 == none
 #guard (GParser.run? (GParser.string "true") "true!".toUTF8) == some ()
 #guard (GParser.run? (GParser.string "true") "trur".toUTF8) == none
 
