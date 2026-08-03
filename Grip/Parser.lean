@@ -273,9 +273,8 @@ private def digitOrErr : Parser Nat :=
             Except ParseError Nat))
 #guard (digitOrErr.parse "42".toUTF8 == (.ok 42 : Except ParseError Nat))
 
--- `pretty` renders `line:col: message`, the source line, and a caret.
--- Construct a ParseError at (line=3, col=2) manually to test the renderer.
--- Source "a\nb\n1": pos=5 (one past end) is line 3, col 2.
+-- `pretty` is the dependency-free plain fallback; rich terminal output lives in
+-- `grip-diagnostics` and delegates to `TermColor.Diagnostics`.
 private def prettyTest : String :=
   let e : ParseError := { pos := 5, line := 3, col := 2, expected := ["!"] }
   e.pretty "a\nb\n1".toUTF8

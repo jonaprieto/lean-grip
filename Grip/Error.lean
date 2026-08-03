@@ -129,8 +129,8 @@ def mkParseError (arr : ByteArray) (e : Err) : ParseError :=
   let (line, col) := lineColOf arr e.pos
   { pos := e.pos, line := line, col := col, expected := e.expected }
 
-/-- Render the error as `line:col: message`, followed by the offending source
-line and a caret (`^`) under the failing column. -/
+/-- Render a dependency-free plain fallback as `line:col: message`, followed by the offending
+source line and a caret (`^`). Rich terminal presentation belongs to `grip-diagnostics`. -/
 def ParseError.pretty (e : ParseError) (src : ByteArray) : String :=
   let msg     := e.message
   let srcLine := sourceLine src e.pos

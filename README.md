@@ -30,6 +30,10 @@ Two helper modules sit on top: `Grip.Ascii` (named byte predicates and delimiter
 and `Grip.Combinators` (the megaparsec vocabulary: `ws`, `digit`, `sepBy`, `between`,
 `manyTill`, `<?>`). `import Grip` pulls in all of it.
 
+`ParseError.pretty` is the dependency-free plain fallback. Use the optional
+[`grip-diagnostics`](https://github.com/jonaprieto/grip-diagnostics) frontend for richer source
+context, display columns, styling, notes, help, and terminal links.
+
 ### What the proofs guarantee (and don't)
 
 `parse_render` is a round-trip proof on valid values: `parse (render v) = ok v` for every
