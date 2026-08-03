@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">grip graded byte parser</title>
+  <desc id="desc">A dark terminal showing a positioned parser error, graded progress gate, and JSON round trip.</desc>
+  <rect width="1200" height="560" rx="20" fill="#1e1e2e"/>
+  <rect width="1200" height="58" rx="20" fill="#292b3b"/><rect y="38" width="1200" height="20" fill="#292b3b"/>
+  <circle cx="32" cy="29" r="8" fill="#f38ba8"/><circle cx="58" cy="29" r="8" fill="#f9e2af"/><circle cx="84" cy="29" r="8" fill="#a6e3a1"/>
+  <text x="116" y="36" fill="#cba6f7" font-family="SFMono-Regular,Menlo,monospace" font-size="20" font-weight="700">grip · graded byte parsers</text>
+  <text x="48" y="100" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="28" font-weight="700">Parse bytes · keep the proof visible</text>
+  <text x="48" y="132" fill="#a6adc8" font-family="SFMono-Regular,Menlo,monospace" font-size="17">total combinators, positioned errors, and a type-level progress gate</text>
+  <rect x="40" y="158" width="530" height="350" rx="16" fill="#181825" stroke="#f38ba8" stroke-width="2"/>
+  <text x="70" y="202" fill="#f38ba8" font-family="SFMono-Regular,Menlo,monospace" font-size="19" font-weight="700">POSITIONED PARSE ERROR</text>
+  <text x="70" y="246" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="20">3:2: expected a closing ')'</text>
+  <text x="70" y="286" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="20">point(3,14</text><text x="70" y="320" fill="#f38ba8" font-family="SFMono-Regular,Menlo,monospace" font-size="20">        ^</text>
+  <text x="70" y="374" fill="#6c7086" font-family="SFMono-Regular,Menlo,monospace" font-size="17">line, column, source line, and caret</text>
+  <text x="70" y="412" fill="#a6e3a1" font-family="SFMono-Regular,Menlo,monospace" font-size="17">ParseError.pretty</text>
+  <text x="70" y="458" fill="#6c7086" font-family="SFMono-Regular,Menlo,monospace" font-size="15">raw ByteArray input · no hidden stream state</text>
+  <rect x="590" y="158" width="570" height="350" rx="16" fill="#181825" stroke="#94e2d5" stroke-width="2"/>
+  <text x="620" y="202" fill="#94e2d5" font-family="SFMono-Regular,Menlo,monospace" font-size="19" font-weight="700">THE GRADE GATE</text>
+  <text x="620" y="246" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="19">many (pure x)</text>
+  <text x="830" y="246" fill="#f38ba8" font-family="SFMono-Regular,Menlo,monospace" font-size="19">type error</text>
+  <text x="620" y="282" fill="#6c7086" font-family="SFMono-Regular,Menlo,monospace" font-size="16">pure never consumes; repetition must progress</text>
+  <text x="620" y="338" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="19">many hexByte</text>
+  <text x="830" y="338" fill="#a6e3a1" font-family="SFMono-Regular,Menlo,monospace" font-size="19">GParser flexible</text>
+  <text x="620" y="394" fill="#cba6f7" font-family="SFMono-Regular,Menlo,monospace" font-size="19" font-weight="700">JSON ROUND TRIP</text>
+  <text x="620" y="432" fill="#cdd6f4" font-family="SFMono-Regular,Menlo,monospace" font-size="19">render value → parse bytes → ok value</text>
+  <text x="620" y="474" fill="#6c7086" font-family="SFMono-Regular,Menlo,monospace" font-size="15">machine-checked in grip-props</text>
+</svg>
