@@ -11,8 +11,8 @@ Add this entry to the `programs` dict in a *copy* of upstream `run_tests.py`
 (do not edit the upstream checkout in place):
 
     "grip (Lean)": {
-        "url": "https://github.com/jonaprieto/grip",
-        "commands": ["/absolute/path/to/grip/parsers/test_grip.sh"]
+        "url": "https://github.com/jonaprieto/lean-grip",
+        "commands": ["/absolute/path/to/lean-grip/parsers/test_grip.sh"]
     }
 
 Then run the driver as usual; grip appears as a column in `results/parsing.html`.

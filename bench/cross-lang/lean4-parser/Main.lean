@@ -139,7 +139,7 @@ def sampleMs (reps : Nat) (act : Nat → Nat) : IO (Float × Float) := do
 
 def main (args : List String) : IO Unit := do
   -- Read as String (Char-level parser operates on String). Dataset path is argv[1].
-  let file := args.getD 0 "/Users/jonaprieto/research/grip/bench/data/canada.json"
+  let file := args.getD 0 "/Users/jonaprieto/research/lean-grip/bench/data/canada.json"
   let base := (System.FilePath.mk file).fileName.getD file
   let src ← IO.FS.readFile file
   let count := parseL4p src

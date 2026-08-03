@@ -75,7 +75,7 @@ first release, `v0.1.0`.
   fails *and* the next non-whitespace byte is the closer, which no element can start with.
   Acceptance is unchanged across the whole JSONTestSuite corpus, and the DOM parser got
   faster (one fewer backtrack and closure per container).
-  [#44](https://github.com/jonaprieto/grip/issues/44).
+  [#44](https://github.com/jonaprieto/lean-grip/issues/44).
 - The JSONTestSuite conformance gate used to test only the grammar-strict validator, never
   the value-producing `Grip.Json.parse` the round-trip theorem is actually proved about --
   the two grammars share no code and had no equivalence check between them. The gate now
@@ -112,4 +112,4 @@ theorem. `alt`'s furthest-failure merge still only fires when both branches fail
 relies on either for its container bodies, but a client grammar built the same way would
 hit the same loss.
 
-[Unreleased]: https://github.com/jonaprieto/grip/commits/main
+[Unreleased]: https://github.com/jonaprieto/lean-grip/commits/main

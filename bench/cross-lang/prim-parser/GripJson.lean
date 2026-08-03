@@ -215,7 +215,7 @@ def gripBasename (path : String) : String :=
 def main (args : List String) : IO Unit := do
   let pathStr : String := match args with
     | p :: _ => p
-    | [] => "/Users/jonaprieto/research/grip/bench/data/canada.json"
+    | [] => "/Users/jonaprieto/research/lean-grip/bench/data/canada.json"
   let arr ← IO.FS.readBinFile (pathStr : System.FilePath)
   match runJson arr with
   | none =>
