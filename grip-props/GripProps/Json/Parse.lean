@@ -571,9 +571,11 @@ theorem value_run_null (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
     rw [Nat.add_zero, getElem!_pos arr q hs] at h0
     rw [h0]; decide
   have hstr : (GParser.string "null").run arr q = .ok () (q + 4) := by
-    have := string_run "null" arr q (by decide) (by simpa using hq)
-      (fun j hj => by have := hm j (by simpa using hj); simpa using this)
-    simpa using this
+    -- `simp` no longer computes `"null".utf8ByteSize` down to a numeral, so state it.
+    have hlit : "null".utf8ByteSize = 4 := by decide
+    have := string_run "null" arr q (by decide) (by simpa [hlit] using hq)
+      (fun j hj => by have := hm j (by simpa [hlit] using hj); simpa using this)
+    simpa [hlit] using this
   rw [value, fix_run_unroll]; simp only [valueBody]
   rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
@@ -590,9 +592,11 @@ theorem value_run_true (arr : ByteArray) (q : Nat) (hq : q + 4 ≤ arr.size)
   have hb : arr[q] = 116 := by
     have h0 := hm 0 (by norm_num); rw [Nat.add_zero, getElem!_pos arr q hs] at h0; rw [h0]; decide
   have hstr : (GParser.string "true").run arr q = .ok () (q + 4) := by
-    have := string_run "true" arr q (by decide) (by simpa using hq)
-      (fun j hj => by have := hm j (by simpa using hj); simpa using this)
-    simpa using this
+    -- `simp` no longer computes `"true".utf8ByteSize` down to a numeral, so state it.
+    have hlit : "true".utf8ByteSize = 4 := by decide
+    have := string_run "true" arr q (by decide) (by simpa [hlit] using hq)
+      (fun j hj => by have := hm j (by simpa [hlit] using hj); simpa using this)
+    simpa [hlit] using this
   rw [value, fix_run_unroll]; simp only [valueBody]
   rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
@@ -608,9 +612,11 @@ theorem value_run_false (arr : ByteArray) (q : Nat) (hq : q + 5 ≤ arr.size)
   have hb : arr[q] = 102 := by
     have h0 := hm 0 (by norm_num); rw [Nat.add_zero, getElem!_pos arr q hs] at h0; rw [h0]; decide
   have hstr : (GParser.string "false").run arr q = .ok () (q + 5) := by
-    have := string_run "false" arr q (by decide) (by simpa using hq)
-      (fun j hj => by have := hm j (by simpa using hj); simpa using this)
-    simpa using this
+    -- `simp` no longer computes `"false".utf8ByteSize` down to a numeral, so state it.
+    have hlit : "false".utf8ByteSize = 5 := by decide
+    have := string_run "false" arr q (by decide) (by simpa [hlit] using hq)
+      (fun j hj => by have := hm j (by simpa [hlit] using hj); simpa using this)
+    simpa [hlit] using this
   rw [value, fix_run_unroll]; simp only [valueBody]
   rw [wsDispatch_run_stop _ arr q hs (by rw [hb]; decide), hb]
   simp only [Ascii.lbrace, Ascii.lbracket, Ascii.quote]
@@ -922,7 +928,9 @@ theorem value_run_num_scientific (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
           simp [ip, hm0, hzero]
         · have hzero : Nat.toDigits 10 0 = ['0'] := by decide
           have h0 := hmatch_digits 0 (by simp [ip, hm0, hzero])
-          simpa [hmz] using h0
+          -- `simp` no longer evaluates the digit literal, so state its byte.
+          have hd0 : (Nat.repr 0).toByteArray[0]! = 48 := by decide
+          simpa [hmz, hd0] using h0
       · right
         have h0 := hmatch_digits 0 (by omega)
         have h0' : buf[q]! = (toString m.natAbs).toUTF8[0]! := by simpa using h0
@@ -1071,7 +1079,9 @@ theorem value_run_num_scientific (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
           simp [ip, hm0, hzero]
         · have hzero : Nat.toDigits 10 0 = ['0'] := by decide
           have h0 := hmatch_digits 0 (by simp [ip, hm0, hzero])
-          simpa [hmz] using h0
+          -- `simp` no longer evaluates the digit literal, so state its byte.
+          have hd0 : (Nat.repr 0).toByteArray[0]! = 48 := by decide
+          simpa [hmz, hd0] using h0
       · right
         have hh := hmatch_digits 0 (by omega)
         have hh' : buf[q + 1]! = (toString m.natAbs).toUTF8[0]! := by simpa using hh
@@ -1131,7 +1141,7 @@ theorem value_run_num_scientific (m : Int) (e : Nat) (buf : ByteArray) (q : Nat)
             (byte_run! (Ascii.code '-') buf q (by omega) (by
               have hstart! : buf[q]! = Ascii.code '-' := by
                 rw [getElem!_pos buf q (by omega)]
-                simpa using hstart
+                simpa [show Ascii.dash = Ascii.code '-' from by decide] using hstart
               exact hstart!)))
           (seqL_run _ _ buf (q + 1) () (q + 1 + ip) (some ep) (q + 1 + ip + 2 + ep) hint
             (seqR_run _ _ buf (q + 1 + ip) none (q + 1 + ip) (some ep) (q + 1 + ip + 2 + ep)

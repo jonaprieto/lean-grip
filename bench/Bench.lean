@@ -153,16 +153,24 @@ abbrev P := Std.Internal.Parsec.ByteArray.Parser
 -- Use the non-allocating `skipWhile`/`skipByte`, Std.Parsec's best byte-level idiom, rather
 -- than `many (satisfy ..)`, which builds and discards an Array per token (a handicap that would
 -- flatter grip). This is the fair comparison: each library at its best on the same task.
-def ws : P Unit := skipWhile isWs
+-- Since Lean v4.31, `skipWhile` reports `.eof` when the scan reaches the end of the input; up
+-- to v4.30 it stopped there and succeeded. Recover at the position the scan already reached, so
+-- a run that ends the document (the trailing whitespace before `eof`, digits in a bare `123`
+-- document) behaves as it did before. Still O(1) per call, so the primitive stays the fast path.
+@[inline] def skipRun (pred : UInt8 → Bool) : P Unit := fun it =>
+  match skipWhile pred it with
+  | .success it' u => .success it' u
+  | .error it' _ => .success it' ()
+def ws : P Unit := skipRun isWs
 -- RFC number: `-? (0 | [1-9][0-9]*) frac? exp?`
 def digits1 : P Unit := do
   let b ← any
-  if isDigit b then skipWhile isDigit else fail "digit"
+  if isDigit b then skipRun isDigit else fail "digit"
 def number : P Nat := do
   (do skipByte 45) <|> pure ()
   let b ← any
   if b == 48 then pure ()
-  else if isDigit19 b then skipWhile isDigit
+  else if isDigit19 b then skipRun isDigit
   else fail "int"
   (do skipByte 46; digits1) <|> pure ()
   (attempt (do let e ← any

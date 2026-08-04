@@ -74,8 +74,11 @@ abbrev impossible : Grade where
 -- Multiplication (sequential composition) --------------------------------
 
 /-- Sequential composition: the grade of `p >>= q` is `mul g1 g2`,
-    with errors and consumption each being the join of the two grades. -/
-def mul (a b : Grade) : Grade :=
+    with errors and consumption each being the join of the two grades.
+
+    Reducible for the same reason as `Modality.sup`: goals mentioning a grade product
+    have to stay type-correct at `instances` transparency. -/
+@[reducible] def mul (a b : Grade) : Grade :=
   ⟨max a.errors b.errors, max a.consumes b.consumes⟩
 
 /-- The identity grade for sequential composition: `⟨never, never⟩ = pure`. -/

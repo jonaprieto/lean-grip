@@ -6,14 +6,14 @@ package «grip» where
   leanOptions := #[⟨`autoImplicit, false⟩, ⟨`relaxedAutoImplicit, false⟩]
 
 require batteries from git
-  "https://github.com/leanprover-community/batteries" @ "v4.28.0"
+  "https://github.com/leanprover-community/batteries" @ "v4.32.2"
 
 -- API documentation (doc-gen4) is dev-only: build with `lake -Kenv=dev build Grip:docs`.
 -- Gated behind `-Kenv=dev` so a plain `require grip` never pulls it into the dependency
--- closure; the core stays batteries-only. Pinned to the doc-gen4 commit on Lean v4.28.0.
+-- closure; the core stays batteries-only. Pinned to the doc-gen4 commit on Lean v4.32.
 meta if get_config? env = some "dev" then
 require «doc-gen4» from git
-  "https://github.com/leanprover/doc-gen4" @ "a41d5ebebfa77afe737fec8de8ad03fc8b08fdff"
+  "https://github.com/leanprover/doc-gen4" @ "092d6318789e7bb9160ade1e85bdbcc0abfd7f6e"
 
 @[default_target]
 lean_lib «Grip» where

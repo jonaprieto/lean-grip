@@ -31,8 +31,12 @@ export Modality (never possibly always)
 namespace Modality
 
 /-- Supremum on `Modality`: the join in `never < possibly < always`.
-    `max a b = a` when `a` is the greater element. -/
-def sup : Modality → Modality → Modality
+    `max a b = a` when `a` is the greater element.
+
+    Reducible so that a grade product of named grades (`conditional * conditional`, ...)
+    still reduces under `instances` transparency, which is what `dsimp`/`rw` type-check
+    goals at since Lean v4.31. -/
+@[reducible] def sup : Modality → Modality → Modality
   | always, _      => always
   | _, always      => always
   | possibly, _    => possibly

@@ -42,6 +42,7 @@ theorem foldlM_loop_eq {β : Type} (f : β → UInt8 → β) (arr : ByteArray)
     have hlt : j < arr.size := by omega
     have hget : arr[j] = arr.data.toList[j]'hjt := by
       rw [ByteArray.getElem_eq_getElem_data, Array.getElem_toList]
+      rfl
     rw [dif_pos hlt]
     show ByteArray.foldlM.loop (m := Id) (fun x y => pure (f x y)) arr arr.size h n (j + 1)
         (f b arr[j]) = _
@@ -76,6 +77,8 @@ theorem foldlM_loop_range {β : Type} (f : β → UInt8 → β) (arr : ByteArray
       rw [ByteArray.getElem_eq_getElem_data, Array.getElem_toList]
     unfold ByteArray.foldlM.loop
     rw [dif_pos (show j < stop by omega)]
+    show ByteArray.foldlM.loop (m := Id) (fun x y => pure (f x y)) arr stop h n (j + 1)
+        (f b arr[j]) = _
     rw [hget, List.drop_eq_getElem_cons hjt, List.take_succ_cons, List.foldl_cons]
     exact ih (j + 1) _ (by omega)
 
@@ -95,6 +98,7 @@ theorem getElem!_eq_toList (arr : ByteArray) (j : Nat) : arr[j]! = arr.data.toLi
   · have hj : j < arr.data.toList.length := by rw [Array.length_toList, ByteArray.size_data]; omega
     rw [getElem!_pos arr j h, ByteArray.getElem_eq_getElem_data, ← Array.getElem_toList,
       getElem!_pos _ j hj]
+    rfl
   · have hj : ¬ j < arr.data.toList.length := by
       rw [Array.length_toList, ByteArray.size_data]; omega
     rw [getElem!_neg arr j (by omega), getElem!_neg _ j hj]
@@ -113,10 +117,16 @@ theorem foldl_congr_match {β : Type} (f : β → UInt8 → β) (b : β) (arr1 a
     omega
   · intro i hi1 hi2
     rw [List.length_take, List.length_drop, Array.length_toList, ByteArray.size_data] at hi1
+    -- Go through `getElem!` rather than `ByteArray.getElem_eq_getElem_data` backwards: rewriting
+    -- a list index into `arr[..]` would hand the `ByteArray` `getElem` a `.data.toList.length`
+    -- bound where it wants a `.size` one, which no longer typechecks at `instances` transparency.
+    have hb1 : q1 + i < arr1.data.toList.length := by
+      rw [Array.length_toList, ByteArray.size_data]; omega
+    have hb2 : q2 + i < arr2.data.toList.length := by
+      rw [Array.length_toList, ByteArray.size_data]; omega
     rw [List.getElem_take, List.getElem_take, List.getElem_drop, List.getElem_drop,
-      Array.getElem_toList, Array.getElem_toList, ← ByteArray.getElem_eq_getElem_data,
-      ← ByteArray.getElem_eq_getElem_data, ← getElem!_pos arr1 (q1 + i) (by omega),
-      ← getElem!_pos arr2 (q2 + i) (by omega)]
+      ← getElem!_pos _ (q1 + i) hb1, ← getElem!_pos _ (q2 + i) hb2,
+      ← getElem!_eq_toList, ← getElem!_eq_toList]
     exact hm i (by omega)
 
 /-- The byte list of a `List Char`'s UTF-8 encoding is the per-character encodings concatenated. -/

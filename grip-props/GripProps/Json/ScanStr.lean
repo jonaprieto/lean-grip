@@ -131,7 +131,7 @@ theorem passthrough_bytes_normal (c : Char) (h32 : 32 ≤ c.toNat) (hq : c.val �
   · rw [String.utf8EncodeChar_eq_singleton h, List.mem_singleton] at hb
     subst hb
     have hle : c.val ≤ 0x7F := Char.utf8Size_eq_one_iff.mp h
-    have hvn : c.val.toNat = c.toNat := Char.toNat_val c
+    have hvn : c.val.toNat = c.toNat := Char.toNat_val
     have hbb : c.val.toUInt8.toNat = c.toNat := by
       rw [UInt32.toNat_toUInt8, hvn]
       have : c.toNat ≤ 127 := by rw [← hvn]; exact UInt32.le_iff_toNat_le.mp hle
@@ -447,7 +447,7 @@ theorem scanStr_walk (arr : ByteArray) (q0 : Nat) (body : String) :
       (by rw [show q + (cbytes c).length + (ebytes rest).length
           = q + ((cbytes c).length + (ebytes rest).length) from by omega]; exact hvalid)]
     congr 1
-    · simp only [List.any_cons]; rw [Bool.or_assoc]
+    · simp only [List.any_cons]; rw [Bool.or_assoc]; rfl
     · omega
 
 /-- The data-list of `(escape s).toUTF8` equals `ebytes s.toList`. -/
@@ -471,13 +471,10 @@ theorem escape_toUTF8_getElem! (s : String) (i : Nat)
 /-- Two ByteArrays are equal when their sizes and `getElem!` values agree element-wise. -/
 private theorem bytearray_eq_of_getElem! {a b : ByteArray} (hsize : a.size = b.size)
     (h : ∀ i, i < a.size → a[i]! = b[i]!) : a = b := by
-  apply ByteArray.ext
-  apply Array.ext (by simp [ByteArray.size_data, hsize])
-  intro i hi _
-  have hia : i < a.size := ByteArray.size_data ▸ hi
-  simp only [← ByteArray.getElem_eq_getElem_data]
-  rw [← getElem!_pos a i hia, ← getElem!_pos b i (hsize ▸ hia)]
-  exact h i hia
+  apply ByteArray.ext_getElem hsize
+  intro i hi hi'
+  rw [← getElem!_pos a i hi, ← getElem!_pos b i hi']
+  exact h i hi
 
 /-- `getElem!` on `arr.extract s e` at `i` (in range) equals `arr[s + i]!`. -/
 theorem getElem!_extract (arr : ByteArray) (s e i : Nat)
