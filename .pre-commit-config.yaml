@@ -19,7 +19,9 @@ repos:
   - id: detect-private-key
 
 - repo: https://github.com/jonaprieto/precommit-lean
-  rev: v0.1.1
+  rev: v0.1.3
   hooks:
   - id: lean-style
+  - id: lean-modules
+    exclude: ^(grip-props/|bench/cross-lang/)
 exclude: ^(bench/data/|test/jsontestsuite/)
