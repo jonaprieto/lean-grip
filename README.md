@@ -33,17 +33,18 @@ adds source context and styled output.
 
 ## Verification
 
-`grip-props` contains the optional machine-checked laws. The JSON example is checked against the
-JSONTestSuite corpus, and benchmarks are recorded in [`bench/RESULTS.md`](bench/RESULTS.md).
+`grip-props` contains the optional machine-checked laws. Core parser benchmarks are recorded in
+[`bench/RESULTS.md`](bench/RESULTS.md); JSON conformance and DOM benchmarks live in
+[`grip-json`](https://github.com/jonaprieto/lean-grip-json).
 
 ```sh
 lake build
-bash tools/run-conformance.sh
+lake exe bench
 ```
 
 ## Related projects
 
-[`tptp`](https://github.com/jonaprieto/lean-tptp) uses Grip for TPTP/TSTP parsing.
+[`tptp`](https://github.com/jonaprieto/lean-grip-tptp) uses Grip for TPTP/TSTP parsing.
 
 ## License
 

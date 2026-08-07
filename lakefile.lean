@@ -24,7 +24,7 @@ lean_lib «Grip» where
 
 lean_lib «Examples» where
   srcDir := "examples"
-  globs := #[.one `Json, .one `Sexp, .one `Lambda, .one `Http, .one `Toml, .one `Yaml]
+  globs := #[.one `Sexp, .one `Lambda, .one `Http, .one `Toml, .one `Yaml]
 
 lean_lib «Test» where
   srcDir := "test"
@@ -32,7 +32,3 @@ lean_lib «Test» where
 lean_exe «bench» where
   root := `Bench
   srcDir := "bench"
-
-lean_exe «conformance» where
-  root := `Conformance
-  srcDir := "test"
