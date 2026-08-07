@@ -6,14 +6,10 @@ name: Benchmark
 # a `/bench` comment from a trusted commenter re-runs it on demand.
 #
 # The comment leads with a verdict over this repo's own parsers (flag count, worst row,
-# biggest win) and shows only those rows by default. Upstream reference implementations
-# (`std.parsec`, `hand`, `lean.json`, `prim-parser`) and the methodology notes are collapsed:
-# a grip change cannot move a reference row, so a flag there should not compete with a real
-# regression for the reader's attention.
+# biggest win) and shows only those rows by default. Methodology notes are collapsed.
 #
-# Parallel jobs: `meta` resolves the PR, then `grip` (the in-repo `lake exe bench` suite)
-# and `primparser` (the sibling deep-embedded framework this repo forks from, heavy because
-# it pulls mathlib) run concurrently. `comment` waits for both and posts the merged table.
+# Parallel jobs: `meta` resolves the PR, then `grip` runs the in-repo `lake exe bench` suite.
+# `comment` posts the benchmark comparison.
 
 on:
   pull_request:
@@ -159,84 +155,9 @@ jobs:
             pr.txt
             base.txt
 
-  primparser:
-    needs: meta
-    runs-on: ubuntu-latest
-    # Best-effort reference: never fail the workflow if the sibling build breaks.
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ needs.meta.outputs.sha || github.sha }}
-
-      - name: Cache elan toolchain
-        uses: actions/cache@v6
-        with:
-          path: ~/.elan
-          key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}
-
-      # Put elan/lake on PATH (installs elan on a cache miss). Without this the harness
-      # build fails with `lake: command not found`.
-      - uses: leanprover/lean-action@v1
-        with:
-          build: false
-          test: false
-
-      # prim-parser (the deep-embedded G framework this repo forks from) lives in a sibling
-      # repo pinned here; its harness path-requires ../../../../prim-parser. The pinned rev
-      # must be reachable in the source repo: set repo variables PRIMPARSER_REPO /
-      # PRIMPARSER_REV to point at a pushed commit (the harness needs prim-parser code that
-      # is not on the public janmasrovira/prim-parser default branch). If the rev is not
-      # found, the job skips and the comment simply omits the prim-parser rows.
-      - name: Checkout prim-parser (pinned)
-        id: pp
-        env:
-          PP_REPO: ${{ vars.PRIMPARSER_REPO || 'https://github.com/janmasrovira/prim-parser.git' }}
-          PP_REV: ${{ vars.PRIMPARSER_REV || '97f120cdc9219c29d8de9e438a55c7a85e7e8a6b' }}
-        run: |
-          PP="$GITHUB_WORKSPACE/../prim-parser"
-          rm -rf "$PP"
-          git clone --no-checkout "$PP_REPO" "$PP" || { echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; }
-          git -C "$PP" fetch -q origin "$PP_REV" 2>/dev/null || true
-          if git -C "$PP" checkout -q "$PP_REV" 2>/dev/null; then
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::prim-parser rev $PP_REV not found in $PP_REPO; skipping prim-parser rows. Set repo vars PRIMPARSER_REPO / PRIMPARSER_REV to a pushed commit."
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Cache prim-parser mathlib build
-        if: steps.pp.outputs.ok == 'true'
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cache/mathlib
-            ${{ github.workspace }}/../prim-parser/.lake
-            bench/cross-lang/prim-parser/.lake
-          key: primparser-${{ runner.os }}-${{ vars.PRIMPARSER_REV || '97f120cdc9219c29d8de9e438a55c7a85e7e8a6b' }}
-
-      - name: Build and run prim-parser harness
-        if: steps.pp.outputs.ok == 'true'
-        run: |
-          cd bench/cross-lang/prim-parser
-          lake exe cache get
-          lake build
-          : > "$GITHUB_WORKSPACE/primparser.txt"
-          for f in canada.json citm_catalog.json twitter.json; do
-            .lake/build/bin/gripjson "$GITHUB_WORKSPACE/bench/data/$f" \
-              >> "$GITHUB_WORKSPACE/primparser.txt"
-          done
-          cat "$GITHUB_WORKSPACE/primparser.txt"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: primparser-results
-          path: primparser.txt
-          if-no-files-found: ignore
-
   comment:
-    needs: [meta, grip, primparser]
-    # Run even if primparser failed; post only for same-repo PRs (fork PRs get a read-only token).
+    needs: [meta, grip]
+    # Post only for same-repo PRs (fork PRs get a read-only token).
     if: always() && needs.meta.outputs.num && needs.meta.outputs.same_repo == 'true'
     runs-on: ubuntu-latest
     env:
@@ -245,22 +166,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: grip-results
-      - uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: primparser-results
 
       - name: Format results
         env:
           SHA: ${{ needs.meta.outputs.sha }}
           BASE_SHA: ${{ needs.meta.outputs.base }}
         run: |
-          # prim-parser is a fixed external reference (independent of this PR's grip code),
-          # so its rows go only into the PR column; the base column shows "-" for them.
-          [ -f primparser.txt ] && cat primparser.txt >> pr.txt || true
-          # Key each row by parser + input file so the per-file JSON DOM-vs-DOM rows
-          # (grip.json/lean.json x canada/citm/twitter) are kept, not collapsed. Single-file
-          # benches (sexp, lambda, ...) have a `size=`/`count=` second field and key on $1.
+          # Key each row by parser + input file when present. Single-file benches have a
+          # `size=`/`count=` second field and key on $1.
           # Rows split into grip's own parsers (always visible) and upstream reference
           # implementations (collapsed), so a flag on code this PR cannot build does not
           # compete for attention with a real regression.
@@ -268,11 +181,10 @@ jobs:
             function key() { return ($2 ~ /^(size|count)=/) ? $1 : ($1 " " $2) }
             function getms(  i, a) { for (i = 1; i <= NF; i++) if ($i ~ /^(ms|parse_ms|best_ms)=/) { split($i, a, "="); return a[2] } return "" }
             function parserof(n,   p) { p = n; sub(/ .*/, "", p); return p }
-            # A row is a reference implementation when its parser is not one of the parsers in this repo. `hand` is a
-            # hand-rolled baseline and `std.parsec`/`lean.json`/`prim-parser` are upstream: a grip change
-            # cannot move them, so a flag there is runner noise, not a result of the PR.
+            # A row is a reference implementation when its parser is not one of the parsers
+            # in this repo.
             function isref(n,   p) { p = parserof(n)
-              return (p == "std.parsec" || p == "hand" || p == "lean.json" || p == "prim-parser") }
+              return (p == "std.parsec" || p == "hand" || p == "lean.json") }
             function flagof(pct,   mag) { mag = pct < 0 ? -pct : pct
               return (mag >= 25) ? " 🎲" : (pct >= 10) ? " ⚠️" : "" }
             function row(n,   bm, pct, d) {
@@ -391,7 +303,7 @@ jobs:
               print ""
               print "| baseline | PR ms | base ms | Δ |"
               print "|---|--:|--:|--:|"
-              emit("std.parsec,hand,lean.json,prim-parser", 1)
+              emit("std.parsec,hand,lean.json", 1)
               print ""
               print "</details>"
               print ""
@@ -402,15 +314,11 @@ jobs:
               print "the per-cell minimum across rounds; every round value is itself best-of-20 wall time in ms."
               print "Lower is better. Δ is PR vs base; the round control above reports worst within-arm spread."
               print ""
-              print "JSON rows are per input file. `grip`/`std.parsec`/`hand` are leaf-count validators;"
-              print "`grip.json`/`lean.json` are the DOM-vs-DOM value builders; `prim-parser` is the sibling"
-              print "deep-embedded framework (validator, pinned `97f120c`, reference only, no base column)."
+              print "Rows are keyed by parser and input when a benchmark has multiple inputs."
               print ""
               print "⚠️ flags a row 10-25% slower than base. 🎲 flags a swing of 25% or more in *either*"
               print "direction. The alternating rounds resist transient stalls, but treat either marker as a"
               print "prompt to inspect the raw rounds and control spread, especially when reference rows move."
-              print ""
-              print "Cross-language parsers (Rust nom, Haskell) run in the separate `bench-crosslang` workflow."
               print ""
               print "</details>"
               print ""
