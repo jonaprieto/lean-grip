@@ -9,19 +9,12 @@ import GripProps.GradeSound
 import GripProps.Productivity
 import GripProps.ChoiceGrade
 import GripProps.Scanner
-import GripProps.Json.Bytes
-import GripProps.Json.NatDigits
-import GripProps.Json.Number
-import GripProps.Json.Parse
-import GripProps.Json.Leaf
-import GripProps.Json.ScanStr
-import GripProps.Json.Container
 
 /-!
 # grip-props
 
 Machine-checked metatheory for grip: the lawful graded-monad instances for `GParser`,
 grade soundness, the totality-not-productivity gap, the impossible-grade result,
-output-level correctness of the scanner, and the JSON `parse ∘ render = id` theorem
-(`GripProps.Container.parse_render`). Depends on grip + mathlib.
+output-level correctness of the scanner, and completeness of the graded fixpoint.
+Depends on grip + mathlib.
 -/

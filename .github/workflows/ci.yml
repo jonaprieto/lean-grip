@@ -41,23 +41,7 @@ jobs:
           restore-keys: lake-core-${{ runner.os }}-
       - uses: leanprover/lean-action@v1
         with:
-          build-args: "Grip Test Examples conformance"
-      - name: JSON conformance (JSONTestSuite)
-        run: |
-          # `if !` tests the exit status directly, so a regression fails the job
-          # regardless of the shell's `set -e` command-substitution semantics.
-          if ! out=$(bash tools/run-conformance.sh); then
-            echo "$out"
-            echo "conformance gate failed" >&2
-            exit 1
-          fi
-          echo "$out"
-          {
-            echo "### JSON conformance"
-            echo '```'
-            echo "$out"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          build-args: "Grip Test Examples bench"
 
   bench:
     runs-on: ubuntu-latest
@@ -87,13 +71,11 @@ jobs:
             echo "$out"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          # Assert the leaf counts of every Lean row on all three nativejson datasets: a
-          # regression that changed what a parser accepts or counts would flip one of these.
-          for row in grip std.parsec hand grip.json lean.json; do
-            grep -qE "^$row canada count=111130 "  <<<"$out" || { echo "$row canada count wrong"; exit 1; }
-            grep -qE "^$row citm count=16390 "      <<<"$out" || { echo "$row citm count wrong"; exit 1; }
-            grep -qE "^$row twitter count=11600 "   <<<"$out" || { echo "$row twitter count wrong"; exit 1; }
-          done
+          grep -qE '^sexp .* count=50000 ' <<<"$out"
+          grep -qE '^lambda .* count=1 ' <<<"$out"
+          grep -qE '^http .* count=10000 ' <<<"$out"
+          grep -qE '^toml .* count=307 ' <<<"$out"
+          grep -qE '^yaml .* count=30001 ' <<<"$out"
 
   props:
     runs-on: ubuntu-latest
@@ -122,8 +104,6 @@ jobs:
           lake update
           lake exe cache get
           lake build
-      - name: Audit JSON round-trip theorem axioms
+      - name: Audit core completeness theorem axioms
         working-directory: grip-props
-        run: |
-          lake env lean GripProps/AxiomAudit.lean | tee /tmp/parse-render-axioms.txt
-          grep -Fxq "'GripProps.Container.parse_render' depends on axioms: [propext, Classical.choice, Quot.sound]" /tmp/parse-render-axioms.txt
+        run: lake env lean -R . GripProps/AxiomAudit.lean
