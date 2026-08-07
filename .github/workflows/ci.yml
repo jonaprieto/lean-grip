@@ -11,8 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Lean style (100-col / trailing-ws / tabs)
-        run: python3 scripts/style-check.py
+        with:
+          persist-credentials: false
+      - uses: jonaprieto/precommit-lean/.github/actions/precommit@v0.1.1
+        with:
+          token: ${{ secrets.ECOSYSTEM_READ_TOKEN || github.token }}
       - name: Validate README artwork
         run: python3 -c 'import pathlib, xml.etree.ElementTree as ET; [ET.parse(path) for path in pathlib.Path("assets").glob("*.svg")]'
 
@@ -40,7 +43,7 @@ jobs:
         run: |
           # `if !` tests the exit status directly, so a regression fails the job
           # regardless of the shell's `set -e` command-substitution semantics.
-          if ! out=$(bash scripts/run-conformance.sh); then
+          if ! out=$(bash tools/run-conformance.sh); then
             echo "$out"
             echo "conformance gate failed" >&2
             exit 1
