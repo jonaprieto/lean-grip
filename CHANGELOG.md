@@ -5,6 +5,11 @@ Notable changes to grip. Format loosely follows
 changes to the core grade machinery can still happen between minor versions without
 much ceremony beyond what's noted here.
 
+## 0.2.0 — 2026-08-07
+
+- Move the JSON parser, corpus, properties, and benchmark to `lean-grip-json`; the core
+  package keeps its non-JSON parser examples and benchmark.
+
 ## [Unreleased]
 
 Everything below predates the first tag; recorded here as the proposed contents of the
