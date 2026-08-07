@@ -8,8 +8,6 @@ Graded byte parsers for Lean 4. Parsers consume `ByteArray`; grades record failu
 consumption. Repetition requires an always-consuming parser, so `many (pure x)` is rejected by
 the type checker.
 
-Version: `v0.1.0`
-
 API documentation: <https://jonaprieto.github.io/lean-grip/>.
 
 ## Quick start
