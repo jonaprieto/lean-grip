@@ -32,8 +32,17 @@ median.
 
 open Grip
 
+/-!
+The benchmark contains intentionally direct recursive reference implementations. They are
+measurement fixtures, not library APIs: retaining the same parser shape avoids benchmarking a
+termination proof or a different traversal. The production `Grip` modules remain subject to the
+partiality audit.
+-/
+
 /-- Repeat `s` `n` times by doubling, so building a large input is `O(n)` rather than the
 `O(n^2)` of a left fold of `++`. -/
+-- partiality: benchmark input generation uses a deliberately direct doubling loop; its fuel is
+-- an implementation detail of the fixture and is not part of the parser API.
 partial def repeatStr (s : String) (n : Nat) : String :=
   if n == 0 then ""
   else if n == 1 then s
@@ -79,6 +88,7 @@ partial def repeatStr (s : String) (n : Nat) : String :=
 
 /-- Count leaf scalars of a `Lean.Json` tree (number/string/keyword = 1, object keys not
 counted, containers sum their children), forcing the whole DOM. Mirrors `jsonLeaves`. -/
+-- partiality: this is a cross-library benchmark mirror of the DOM traversal, not production code.
 partial def leanJsonLeaves : Lean.Json → Nat
   | .null | .bool _ | .num _ | .str _ => 1
   | .arr xs  => xs.foldl (fun a j => a + leanJsonLeaves j) 0
@@ -94,6 +104,7 @@ traversal `parseGripJson` performs, so the DOM-vs-DOM rows do identical work. -/
 /-- Count leaf nodes of a `Grip.Json.Json` tree (number/string/keyword = 1, containers sum
 their children), forcing the whole DOM. Matches the validators' leaf count for a sanity
 cross-check. -/
+-- partiality: this mirrors Grip's DOM traversal for the benchmark's like-for-like comparison.
 partial def jsonLeaves : Grip.Json.Json → Nat
   | .null | .bool _ | .num _ _ | .str _ => 1
   | .arr xs  => xs.foldl (fun a j => a + jsonLeaves j) 0
@@ -178,6 +189,7 @@ def number : P Nat := do
                (do skipByte 43) <|> (do skipByte 45) <|> pure ()
                digits1) <|> pure ())
   pure 1
+-- partiality: this benchmark parser preserves the direct recursive RFC string fixture.
 -- RFC string: validate escapes including \uXXXX, reject control chars.
 partial def strBody : P Unit := do
   let b ← any
@@ -199,6 +211,7 @@ def keywordLit (kw : List UInt8) : P Nat := do
   for c in kw do let b ← any; if b != c then fail "keyword"
   pure 1
 mutual
+-- partiality: these mutually recursive benchmark parsers preserve the measured parser shape.
 partial def value : P Nat := do
   ws
   match ← peek? with
@@ -210,23 +223,28 @@ partial def value : P Nat := do
   | some 110 => keywordLit [110, 117, 108, 108]
   | some b   => if isDigit b || b == 45 then number else fail "value"
   | none     => fail "eof"
+-- partiality: recursive array parsing is part of the benchmark fixture.
 partial def array : P Nat := do
   let _ ← pbyte 91; ws
   match ← peek? with
   | some 93 => do let _ ← any; pure 0
   | _ => do let n ← value; arrayTail n
+-- partiality: recursive array-tail parsing is part of the benchmark fixture.
 partial def arrayTail (acc : Nat) : P Nat := do
   ws; let b ← any
   if b == 93 then pure acc
   else if b == 44 then do let n ← value; arrayTail (acc + n)
   else fail "array"
+-- partiality: recursive object parsing is part of the benchmark fixture.
 partial def object : P Nat := do
   let _ ← pbyte 123; ws
   match ← peek? with
   | some 125 => do let _ ← any; pure 0
   | _ => do let n ← pair; objectTail n
+-- partiality: recursive pair parsing is part of the benchmark fixture.
 partial def pair : P Nat := do
   ws; skipStr; ws; let _ ← pbyte 58; value
+-- partiality: recursive object-tail parsing is part of the benchmark fixture.
 partial def objectTail (acc : Nat) : P Nat := do
   ws; let b ← any
   if b == 125 then pure acc
@@ -256,12 +274,15 @@ namespace HandScanner
 @[inline] def isHex (b : UInt8) : Bool :=
   isDigit b || (97 ≤ b && b ≤ 102) || (65 ≤ b && b ≤ 70)
 
+-- partiality: the hand-written scanner is a direct benchmark baseline over an input position.
 partial def skipWs (a : ByteArray) (i : Nat) : Nat :=
   if i < a.size then (if isWs a[i]! then skipWs a (i + 1) else i) else i
+-- partiality: the hand-written scanner is a direct benchmark baseline over an input position.
 partial def skipDigits (a : ByteArray) (i : Nat) : Nat :=
   if i < a.size && isDigit a[i]! then skipDigits a (i + 1) else i
 
 /-- RFC number starting at `i`; `some end` or `none`. -/
+-- partiality: the hand-written scanner is a direct benchmark baseline over an input position.
 partial def scanNumber (a : ByteArray) (i0 : Nat) : Option Nat :=
   let i := if i0 < a.size && a[i0]! == 45 then i0 + 1 else i0
   if i < a.size && a[i]! == 48 then
@@ -297,6 +318,7 @@ partial def scanNumber (a : ByteArray) (i0 : Nat) : Option Nat :=
 /-- RFC string body starting just after the opening quote at `i`; `some end`
 (index just past the closing quote) or `none`. Grammar-strict: validates
 escapes and rejects control chars; does not validate UTF-8. -/
+-- partiality: the hand-written scanner is a direct benchmark baseline over an input position.
 partial def scanString (a : ByteArray) (i : Nat) : Option Nat :=
   if i < a.size then
     let b := a[i]!
@@ -324,6 +346,7 @@ def scanKeyword (a : ByteArray) (i : Nat) (kw : List UInt8) : Option Nat :=
   go i kw
 
 mutual
+-- partiality: these scanner functions form the benchmark's mutually recursive baseline.
 /-- Parse one value after whitespace; return `(leafCount, nextPos)` or `none` on malformed. -/
 partial def value (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
@@ -338,12 +361,14 @@ partial def value (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
     else if isDigit b || b == 45 then (scanNumber a i).map (fun j => (1, j))
     else none
   else none
+-- partiality: recursive array scanning is part of the benchmark baseline.
 partial def array (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
   if i < a.size && a[i]! == 93 then some (0, i + 1)
   else match value a i with
     | some (n, j) => arrayTail a j n
     | none => none
+-- partiality: recursive array-tail scanning is part of the benchmark baseline.
 partial def arrayTail (a : ByteArray) (i0 acc : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
   if i < a.size then
@@ -354,12 +379,14 @@ partial def arrayTail (a : ByteArray) (i0 acc : Nat) : Option (Nat × Nat) :=
       | none => none
     else none
   else none
+-- partiality: recursive object scanning is part of the benchmark baseline.
 partial def object (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
   if i < a.size && a[i]! == 125 then some (0, i + 1)
   else match pair a i with
     | some (n, j) => objectTail a j n
     | none => none
+-- partiality: recursive pair scanning is part of the benchmark baseline.
 partial def pair (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
   if i < a.size && a[i]! == 34 then
@@ -370,6 +397,7 @@ partial def pair (a : ByteArray) (i0 : Nat) : Option (Nat × Nat) :=
       else none
     | none => none
   else none
+-- partiality: recursive object-tail scanning is part of the benchmark baseline.
 partial def objectTail (a : ByteArray) (i0 acc : Nat) : Option (Nat × Nat) :=
   let i := skipWs a i0
   if i < a.size then

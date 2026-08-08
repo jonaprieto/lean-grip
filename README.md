@@ -8,6 +8,10 @@ Graded byte parsers for Lean 4. Parsers consume `ByteArray`; grades record failu
 consumption. Repetition requires an always-consuming parser, so `many (pure x)` is rejected by
 the type checker.
 
+The core package is Mathlib-free: its only runtime dependency is Batteries. The optional
+`grip-props/` proof project imports Mathlib for the machine-checked law suite and is not part of a
+normal `require grip` dependency closure.
+
 API documentation: <https://jonaprieto.github.io/lean-grip/>.
 
 ## Quick start
