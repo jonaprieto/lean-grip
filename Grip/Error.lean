@@ -37,14 +37,14 @@ structure Err where
   expected : List String
   deriving Repr, DecidableEq, BEq, Inhabited
 
-/-- The result of running a parser at an offset: `ok value newOffset` or `error` with the
-furthest failure. One constructor holds the value and the new offset inline, so a
+/-- The result of running a parser at an offset: `ok value newOffset` or `error` with a
+diagnostic. One constructor holds the value and the new offset inline, so a
 successful step allocates a single object rather than an `Except.ok` wrapping a `Prod`
 (the representation `Except Err (α × Nat)` used before). -/
 inductive ParseResult (α : Type) where
   /-- Success: the parsed `value` and the `newOffset` reached. -/
   | ok : (value : α) → (newOffset : Nat) → ParseResult α
-  /-- Failure carrying the furthest-failure `Err`. -/
+  /-- Failure carrying an `Err`; built-in combinators retain the furthest one they observe. -/
   | error : Err → ParseResult α
 
 instance {α : Type} : Inhabited (ParseResult α) := ⟨.error default⟩

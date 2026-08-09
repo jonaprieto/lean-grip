@@ -25,9 +25,9 @@ witnesses tying the static `Grade` (error x consumption `Modality`) to that runt
 - `bwit`: a success that starts in bounds ends in bounds,
 - `fwit`: a failure that starts in bounds reports a position between the start and EOF.
 
-The witnesses erase, so `run` stays the bare `ParseResult` fast path. The failure bound makes
-the built-in ordered-choice combinator's furthest-offset comparison a checked contract rather
-than a convention that client-built parsers can violate.
+The witnesses erase, so `run` stays the bare `ParseResult` fast path. The failure bound keeps
+ordered-choice diagnostics inside the interval being parsed; it does not prove that a
+client-provided position is the furthest point actually reached.
 
 This module has the type, the grade-weakening coercion, and the total, fuel-bounded
 `fix` combinator. The point combinators live in `Grip.Byte`, the total scanners in
@@ -40,8 +40,8 @@ open Grade
 namespace Grip
 
 /-- A byte-level parser with static grade `g`, producing `α`. Successful and failed endpoints
-from an in-bounds start are bounded by erased contracts; `Err.pos` is therefore safe to use as
-the furthest-failure diagnostic in built-in choice.
+from an in-bounds start are bounded by erased contracts. Built-in choice compares `Err.pos`, but
+the type proves only its interval, not that every client parser reports an honest furthest point.
 
 The five `Prop` fields are the *parser soundness* witnesses; they are erased at
 runtime (proof-irrelevant, carrying no data), so `run` is the whole runtime cost. -/
@@ -54,7 +54,7 @@ structure GParser (g : Grade) (α : Type) where
   `never ⇒ q=q'`). -/
   cwit : ∀ {arr q a q'}, run arr q = .ok a q' → consumptionWitness q q' g.consumes
   /-- Error soundness, must-fail direction: a grade claiming `always`-error never
-  succeeds: for every input there exists a furthest failure `e`. -/
+  succeeds: for every input there exists a failure `e`. -/
   ewit : g.errors = always → ∀ arr q, ∃ e : Err, run arr q = .error e
   /-- Error soundness, must-succeed direction: a grade claiming `never`-error always
   succeeds: for every input there exist a value `a` and next offset `q'`. -/
@@ -65,7 +65,7 @@ structure GParser (g : Grade) (α : Type) where
   `⟨never, always⟩` uninhabited outright, with no external hypothesis (see `grip-props`). -/
   bwit : ∀ {arr q a q'}, q ≤ arr.size → run arr q = .ok a q' → q' ≤ arr.size
   /-- Failure-position soundness: a failure from an in-bounds start reports a position no
-  earlier than that start and no later than EOF. This makes furthest-error choice and the
+  earlier than that start and no later than EOF. This bounds choice diagnostics and makes the
   absolute-position/remaining-size correspondence lawful without changing runtime data. -/
   fwit : ∀ {arr q e}, q ≤ arr.size → run arr q = .error e → q ≤ e.pos ∧ e.pos ≤ arr.size
 
