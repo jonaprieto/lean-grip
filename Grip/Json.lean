@@ -216,6 +216,26 @@ theorem escEnd_gt (arr : ByteArray) (q q' : Nat) (h : escEnd arr q = some q') : 
       · exact absurd h (by simp)
   · exact absurd h (by simp)
 
+/-- A valid escape ends within the input. -/
+theorem escEnd_le (arr : ByteArray) (q q' : Nat) (h : escEnd arr q = some q') :
+    q' ≤ arr.size := by
+  rw [escEnd] at h
+  split at h
+  · rename_i h1
+    split at h
+    · simp only [Option.some.injEq] at h
+      omega
+    · split at h
+      · split at h
+        · rename_i h2
+          split at h
+          · simp only [Option.some.injEq] at h
+            omega
+          · exact absurd h (by simp)
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
+  · exact absurd h (by simp)
+
 /-- Scan a strict RFC-8259 string body and produce the decoded `String` in one pass. `q0` is
 the opening-quote index and `q` the current scan position; `esc` accumulates whether any `\`
 was seen. On the closing quote the body `arr[q0+1 .. q)` is validated and decoded as UTF-8 in
@@ -294,6 +314,43 @@ decreasing_by
       | omega
       | exact Nat.sub_lt_sub_left ‹q < arr.size› (escEnd_gt arr q _ ‹escEnd arr q = some _›)
 
+/-- A failed `scanStr` reports a position between the opening quote and EOF. -/
+theorem scanStr_fwit (arr : ByteArray) (q0 q : Nat) (esc : Bool) (e : Err)
+    (h0 : q0 ≤ q) (hq : q ≤ arr.size) (h : scanStr arr q0 q esc = .error e) :
+    q0 ≤ e.pos ∧ e.pos ≤ arr.size := by
+  rw [scanStr] at h
+  split at h
+  · rename_i hlt
+    split at h
+    · split at h
+      · contradiction
+      · simp only [ParseResult.error.injEq] at h
+        subst e
+        exact ⟨Nat.le_refl q0, Nat.le_trans h0 hq⟩
+    · split at h
+      · split at h
+        · next q' hE =>
+            exact scanStr_fwit arr q0 q' true e
+              (Nat.le_trans h0 (Nat.le_of_lt (escEnd_gt arr q q' hE)))
+              (escEnd_le arr q q' hE) h
+        · simp only [ParseResult.error.injEq] at h
+          subst e
+          exact ⟨h0, Nat.le_of_lt hlt⟩
+      · split at h
+        · simp only [ParseResult.error.injEq] at h
+          subst e
+          exact ⟨h0, Nat.le_of_lt hlt⟩
+        · exact scanStr_fwit arr q0 (q + 1) esc e (by omega) (by omega) h
+  · simp only [ParseResult.error.injEq] at h
+    subst e
+    exact ⟨h0, hq⟩
+termination_by arr.size - q
+decreasing_by
+  all_goals
+    first
+      | omega
+      | exact Nat.sub_lt_sub_left ‹q < arr.size› (escEnd_gt arr q _ ‹escEnd arr q = some _›)
+
 -- Leaf value parsers -----------------------------------------------------
 
 /-- Fractional part: a `.` then one or more digits. -/
@@ -345,6 +402,18 @@ must and there is no separate backslash pass over the body. -/
       · exact scanStr_le arr q (q + 1) q' false a heq
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
+  fwit := by
+    intro arr q e hq heq
+    split at heq
+    · rename_i hlt
+      split at heq
+      · exact scanStr_fwit arr q (q + 1) false e (by omega) (by omega) heq
+      · simp only [ParseResult.error.injEq] at heq
+        subst e
+        exact ⟨Nat.le_refl q, hq⟩
+    · simp only [ParseResult.error.injEq] at heq
+      subst e
+      exact ⟨Nat.le_refl q, hq⟩
 
 /-- A JSON string literal as a `Json.str` value. -/
 @[inline] def jstring : GParser conditional Json := GParser.map Json.str jstr
@@ -386,6 +455,17 @@ parser consumes, and whitespace only advances the offset further. -/
     · have hle := scanFwd_le arr Ascii.isWs q hq
       exact (select _).bwit hle heq
     · exact absurd heq (by simp)
+  fwit := by
+    intro arr q e hq heq
+    simp only [] at heq
+    have hge := scanFwd_ge arr Ascii.isWs q
+    have hle := scanFwd_le arr Ascii.isWs q hq
+    split at heq
+    · have hb := (select _).fwit hle heq
+      exact ⟨Nat.le_trans hge hb.1, hb.2⟩
+    · simp only [ParseResult.error.injEq] at heq
+      subst e
+      exact ⟨hge, hle⟩
 
 /-- Skip leading whitespace, then match the single byte `b`, consuming it. Fused so a
 structural token after whitespace costs one scan and one compare with no discarded `ws` count
@@ -420,6 +500,20 @@ allocation. `name` is the expected-label reported when the byte is not there. -/
         omega
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
+  fwit := by
+    intro arr q e hq heq
+    simp only [] at heq
+    have hge := scanFwd_ge arr Ascii.isWs q
+    have hle := scanFwd_le arr Ascii.isWs q hq
+    split at heq
+    · split at heq
+      · contradiction
+      · simp only [ParseResult.error.injEq] at heq
+        subst e
+        exact ⟨hge, hle⟩
+    · simp only [ParseResult.error.injEq] at heq
+      subst e
+      exact ⟨hge, hle⟩
 
 /-- Scan a container body: `elem`s separated by `,`, terminated by the single byte `close`.
 `first` is `true` before any element has been parsed, where no separator is expected.
@@ -551,6 +645,68 @@ decreasing_by
   · have := scanFwd_ge arr Ascii.isWs q
     omega
 
+/-- A failed `bodyFwd` reports a position between its starting offset and EOF. -/
+theorem bodyFwd_fwit {α β : Type} (push : β → α → β) (elem : GParser conditional α)
+    (close : UInt8) (closeName : String) (arr : ByteArray) (acc : β) (first : Bool)
+    (q : Nat) (e : Err) (hq : q ≤ arr.size)
+    (h : bodyFwd push elem close closeName arr acc first q = .error e) :
+    q ≤ e.pos ∧ e.pos ≤ arr.size := by
+  rw [bodyFwd] at h
+  simp only [] at h
+  have hge := scanFwd_ge arr Ascii.isWs q
+  have hle := scanFwd_le arr Ascii.isWs q hq
+  split at h
+  · split at h
+    · next x q' helem =>
+        have hlt : q < q' := elem.cwit helem
+        have hb : q' ≤ arr.size := elem.bwit hq helem
+        split at h
+        · have ih := bodyFwd_fwit push elem close closeName arr (push acc x) false q' e hb h
+          exact ⟨Nat.le_trans (Nat.le_of_lt hlt) ih.1, ih.2⟩
+        · simp only [ParseResult.error.injEq] at h
+          subst e
+          exact ⟨Nat.le_of_lt hlt, hb⟩
+    · rename_i e' helem
+      have he := elem.fwit hq helem
+      split at h
+      · split at h
+        · contradiction
+        · simp only [ParseResult.error.injEq] at h
+          subst e
+          exact he
+      · simp only [ParseResult.error.injEq] at h
+        subst e
+        exact he
+  · split at h
+    · rename_i hp
+      split at h
+      · contradiction
+      · split at h
+        · split at h
+          · next x q' helem =>
+              have hstart : q ≤ scanFwd arr Ascii.isWs q + 1 := by omega
+              have hlt : scanFwd arr Ascii.isWs q + 1 < q' := elem.cwit helem
+              have hb : q' ≤ arr.size := elem.bwit (by omega) helem
+              split at h
+              · have ih := bodyFwd_fwit push elem close closeName arr (push acc x) false q' e hb h
+                exact ⟨Nat.le_trans hstart (Nat.le_trans (Nat.le_of_lt hlt) ih.1), ih.2⟩
+              · simp only [ParseResult.error.injEq] at h
+                subst e
+                exact ⟨Nat.le_trans hstart (Nat.le_of_lt hlt), hb⟩
+          · rename_i e' helem
+            simp only [ParseResult.error.injEq] at h
+            subst e
+            have he := elem.fwit (by omega) helem
+            exact ⟨Nat.le_trans (by omega : q ≤ scanFwd arr Ascii.isWs q + 1) he.1, he.2⟩
+        · simp only [ParseResult.error.injEq] at h
+          subst e
+          exact ⟨hge, hle⟩
+    · simp only [ParseResult.error.injEq] at h
+      subst e
+      exact ⟨hge, hle⟩
+termination_by arr.size - q
+decreasing_by all_goals omega
+
 /-- A whole container body: `elem`s separated by `,`, terminated by `close`, folded into `acc`
 with `push`. Consumes the closing byte, so it is `conditional` (always consumes on success).
 Fusing the separator loop and the terminator into one parser is what lets a failure inside an
@@ -564,6 +720,8 @@ element reach the caller instead of being turned into "expected `]`" at the sepa
   swit := by intro he; exact absurd he (by decide)
   bwit := by
     intro arr q b q' _ h; exact bodyFwd_le push elem close closeName arr acc true q b q' h
+  fwit := by
+    intro arr q e hq h; exact bodyFwd_fwit push elem close closeName arr acc true q e hq h
 
 /-- Named body of the recursive JSON value parser. Proofs reference
     `GParser.fixFuel valueBody` directly. -/

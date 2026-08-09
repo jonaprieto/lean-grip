@@ -11,9 +11,10 @@ Authors: Jonathan Prieto-Cubides
 `error e`. One constructor holds the value and offset inline, so a successful step
 allocates a single object.
 
-`Err` is the error value carried by `ParseResult.error`. Built-in choice uses it to report
-the furthest byte offset reached and the labels expected there; the `GParser` type does not make
-that diagnostic convention a proof obligation for client-defined parsers.
+`Err` is the error value carried by `ParseResult.error`. `GParser` proves that its byte offset
+lies between the parser's starting offset and the end of the input. Built-in choice additionally
+uses it to report the furthest failure and the labels expected there; that stronger diagnostic
+convention is not part of the parser contract.
 
 `ParseError` is the user-facing error produced by `GParser.parse`; it adds
 1-based `line` and `col` computed from the source bytes.
@@ -25,9 +26,10 @@ namespace Grip
 
 /-- The error value carried by `ParseResult.error`.
 
-For built-in combinators, `pos` is the furthest byte offset reached during parsing and `expected`
-contains labels attached by `label`/`<?>`. These fields are diagnostic data, not a parser
-contract. -/
+For every `GParser` run started in bounds, `pos` lies between that starting offset and the end of
+the input. Built-in combinators use `pos` for the furthest byte offset reached during parsing and
+`expected` for labels attached by `label`/`<?>`; the type does not prove that either diagnostic is
+maximal or complete. -/
 structure Err where
   /-- Diagnostic offset used by built-in failure merging. -/
   pos      : Nat

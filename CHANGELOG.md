@@ -15,9 +15,9 @@ first release, `v0.1.0`.
 - The graded parser core: `GParser g α` indexed by a `Grade` (an `errors` x `consumes`
   pair of `Modality` values -- `never`/`possibly`/`always`), with an ungraded `Parser`
   alias (`GParser fallible α`) for callers who don't need the type-level guarantee.
-  Backed by a flat `ByteArray → Nat → ParseResult α` `run` function plus three erased
-  witness fields (`cwit`/`ewit`/`swit`) and a fourth
-  (`bwit`) proving in-bounds success stays in bounds.
+  Backed by a flat `ByteArray → Nat → ParseResult α` `run` function plus five erased
+  witness fields: `cwit`/`ewit`/`swit` prove the grade, `bwit` keeps successful offsets
+  in bounds, and `fwit` keeps failure offsets between the parser's start and end of input.
 - The consumption gate: `many`, `foldMany`, and `many1` demand an always-consuming
   (`conditional`) parser at the type level, so `many (pure x)` fails to elaborate instead
   of looping at runtime.

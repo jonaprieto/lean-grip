@@ -16,17 +16,18 @@ import Grip.Error
 # Grip.Graded: the graded byte-parser type
 
 `GParser g α` is a `run : ByteArray -> Nat -> ParseResult α` (`ok value pos | error e`,
-one heap object per successful step, no reified tree) plus four *erased* `Prop`
+one heap object per successful step, no reified tree) plus five *erased* `Prop`
 witnesses tying the static `Grade` (error x consumption `Modality`) to that runtime:
 
 - `cwit`: a success advances the offset exactly as `consumes` claims,
 - `ewit`: an `always`-error grade never succeeds (every input yields `.error k`),
 - `swit`: a `never`-error grade always succeeds (every input yields `.ok a q'`),
-- `bwit`: a success that starts in bounds ends in bounds.
+- `bwit`: a success that starts in bounds ends in bounds,
+- `fwit`: a failure that starts in bounds reports a position between the start and EOF.
 
-The witnesses erase, so `run` stays the bare `ParseResult` fast path. The built-in ordered-choice
-combinator merges `.error` payloads by furthest offset for useful diagnostics, but `GParser` has
-no error-offset witness: a client-built parser may construct an arbitrary `Err`.
+The witnesses erase, so `run` stays the bare `ParseResult` fast path. The failure bound makes
+the built-in ordered-choice combinator's furthest-offset comparison a checked contract rather
+than a convention that client-built parsers can violate.
 
 This module has the type, the grade-weakening coercion, and the total, fuel-bounded
 `fix` combinator. The point combinators live in `Grip.Byte`, the total scanners in
@@ -38,11 +39,11 @@ open Grade
 
 namespace Grip
 
-/-- A byte-level parser with static grade `g`, producing `α`. Built-in combinators use
-`Err.pos` as a furthest-failure diagnostic, but this is not an erased contract of `GParser`;
-a client can construct an arbitrary `Err`.
+/-- A byte-level parser with static grade `g`, producing `α`. Successful and failed endpoints
+from an in-bounds start are bounded by erased contracts; `Err.pos` is therefore safe to use as
+the furthest-failure diagnostic in built-in choice.
 
-The four `Prop` fields are the *grade soundness* witnesses; they are erased at
+The five `Prop` fields are the *parser soundness* witnesses; they are erased at
 runtime (proof-irrelevant, carrying no data), so `run` is the whole runtime cost. -/
 structure GParser (g : Grade) (α : Type) where
   /-- Run the parser at an offset, returning `.ok value newOffset` on success or `.error e` on
@@ -63,6 +64,10 @@ structure GParser (g : Grade) (α : Type) where
   real combinator satisfies; carrying it in the type makes the `impossible` grade
   `⟨never, always⟩` uninhabited outright, with no external hypothesis (see `grip-props`). -/
   bwit : ∀ {arr q a q'}, q ≤ arr.size → run arr q = .ok a q' → q' ≤ arr.size
+  /-- Failure-position soundness: a failure from an in-bounds start reports a position no
+  earlier than that start and no later than EOF. This makes furthest-error choice and the
+  absolute-position/remaining-size correspondence lawful without changing runtime data. -/
+  fwit : ∀ {arr q e}, q ≤ arr.size → run arr q = .error e → q ≤ e.pos ∧ e.pos ≤ arr.size
 
 variable {g g' : Grade} {α β : Type}
 
@@ -115,6 +120,7 @@ Proofs required:
   ewit := fun he => p.ewit (hew he)
   swit := fun he => p.swit (hsw he)
   bwit := fun hq h => p.bwit hq h
+  fwit := fun hq h => p.fwit hq h
 
 /-- Weaken any parser to `fallible` (errors = possibly, consumes = possibly),
 losing all grade precision. Used by the ungraded `Parser` layer. -/
@@ -158,18 +164,47 @@ without unfolding the fuel recursion. -/
   | .ok x q' => if q < q' ∧ q' ≤ arr.size then .ok x q' else .error ⟨q, []⟩
   | .error e => .error e
 
+/-- A raw result paired with the erased failure-position contract needed to expose it as a
+`GParser` run. The subtype erases to its `ParseResult`; it exists only to let the structurally
+recursive fuel approximation carry its induction hypothesis. -/
+private abbrev BoundedResult (arr : ByteArray) (q : Nat) (α : Type) :=
+  { r : ParseResult α // ∀ {e}, q ≤ arr.size → r = .error e →
+      q ≤ e.pos ∧ e.pos ≤ arr.size }
+
+private theorem clampAdvance_fwit {arr : ByteArray} {q : Nat} {r : ParseResult α}
+    (hr : ∀ {e}, q ≤ arr.size → r = .error e → q ≤ e.pos ∧ e.pos ≤ arr.size)
+    {e : Err} (hq : q ≤ arr.size) (h : clampAdvance arr q r = .error e) :
+    q ≤ e.pos ∧ e.pos ≤ arr.size := by
+  simp only [clampAdvance] at h
+  split at h
+  next a q' =>
+    split at h
+    · contradiction
+    · simp only [ParseResult.error.injEq] at h
+      subst e
+      exact ⟨Nat.le_refl q, hq⟩
+  next e' =>
+    simp only [ParseResult.error.injEq] at h
+    subst e
+    exact hr hq rfl
+
 /-- The recursive run, made total by a depth `fuel`. Each self-call spends one unit of fuel;
 because the clamp forces every self-*success* to advance the offset, the productive nesting
 depth is bounded by the bytes remaining. The `Guarded` hypothesis in
 `grip-props/GripProps/FixComplete.lean` proves that the `arr.size - q + 1` budget does not
 truncate a body's accepted parses. Fuel zero returns a failure; direct left recursion reaches
 it, while other non-guarded bodies may vary with the supplied budget. -/
-@[specialize] def GParser.fixFuel (f : GParser conditional α → GParser conditional α) :
-    Nat → ByteArray → Nat → ParseResult α
-  | 0, _, q => .error ⟨q, []⟩
+@[specialize] private def GParser.fixFuelBounded
+    (f : GParser conditional α → GParser conditional α) :
+    (n : Nat) → (arr : ByteArray) → (q : Nat) → BoundedResult arr q α
+  | 0, _, q => ⟨.error ⟨q, []⟩, by
+      intro e hq h
+      simp only [ParseResult.error.injEq] at h
+      subst e
+      exact ⟨Nat.le_refl q, hq⟩⟩
   | n + 1, arr, q =>
   let self : GParser conditional α :=
-    { run := fun a p => clampAdvance a p (GParser.fixFuel f n a p)
+    { run := fun a p => clampAdvance a p (GParser.fixFuelBounded f n a p).val
       cwit := by
         intro a p x p' h
         show p < p'
@@ -192,8 +227,19 @@ it, while other non-guarded bodies may vary with the supplied budget. -/
             simp only [ParseResult.ok.injEq] at h
             omega
           · exact absurd h (by simp)
-        · exact absurd h (by simp) }
-  (f self).run arr q
+        · exact absurd h (by simp)
+      fwit := by
+        intro a p e hp h
+        exact clampAdvance_fwit (GParser.fixFuelBounded f n a p).property hp h }
+  ⟨(f self).run arr q, by
+    intro e hq h
+    exact (f self).fwit hq h⟩
+
+/-- The executable projection of `fixFuelBounded`. The bound proof is erased, so this remains
+the same `Nat → ByteArray → Nat → ParseResult` runtime interface. -/
+@[specialize] def GParser.fixFuel (f : GParser conditional α → GParser conditional α) :
+    Nat → ByteArray → Nat → ParseResult α :=
+  fun n arr q => (GParser.fixFuelBounded f n arr q).val
 
 /-- Build a recursive `conditional` parser as the fixpoint of `f`. See the module note
 above for the totality-not-productivity caveat. -/
@@ -223,6 +269,10 @@ above for the totality-not-productivity caveat. -/
         omega
       · exact absurd h (by simp)
     · exact absurd h (by simp)
+  fwit := by
+    intro arr q e hq h
+    exact clampAdvance_fwit
+      (GParser.fixFuelBounded f (arr.size - q + 1) arr q).property hq h
 
 /-- The clamped self-reference `fix` threads into the body at fuel level `n`: its recursive
 run is `fixFuel f n` behind the advance clamp. Exposed (with unfolding lemmas below) so the
@@ -254,6 +304,9 @@ def GParser.fixSelf (f : GParser conditional α → GParser conditional α) (n :
         omega
       · exact absurd h (by simp)
     · exact absurd h (by simp)
+  fwit := by
+    intro a p e hp h
+    exact clampAdvance_fwit (GParser.fixFuelBounded f n a p).property hp h
 
 /-- `fixSelf`'s run is the clamp of the lower-fuel `fixFuel`. -/
 @[simp] theorem GParser.fixSelf_run (f : GParser conditional α → GParser conditional α)

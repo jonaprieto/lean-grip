@@ -130,6 +130,10 @@ abbrev consumptionWitness (n m : Nat) : Modality → Prop
 
 namespace consumptionWitness
 
+/-- Every consumption witness is monotone in the absolute input offset. -/
+theorem le {n m : Nat} {a : Modality} (w : consumptionWitness n m a) : n ≤ m := by
+  cases a <;> simp only [consumptionWitness] at w <;> omega
+
 /-- A reflexive witness holds for any grade `a ≤ possibly`
     (i.e. `a ≠ always`), since no input has been consumed. -/
 @[simp] theorem rfl {n : Nat} {a : Modality} (h : a ≤ possibly) :

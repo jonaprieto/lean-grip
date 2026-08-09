@@ -82,6 +82,7 @@ Always succeeds (result is `.ok`). -/
     simp only [ParseResult.ok.injEq] at heq
     obtain ⟨_, rfl⟩ := heq
     exact scanFwd_le arr f q hq
+  fwit := by intro arr q e hq h; exact absurd h (by simp)
 
 /-- Scan a JSON-style string body: advance until an *unescaped* `"` (0x22), treating a
 backslash (0x5c) as an escape that consumes the next byte too. Total: structural on
@@ -145,6 +146,7 @@ Always succeeds (result is `.ok`). Pair with a `"` on each side for a full strin
     simp only [ParseResult.ok.injEq] at heq
     obtain ⟨_, rfl⟩ := heq
     exact scanStrFwd_le arr q hq
+  fwit := by intro arr q e hq h; exact absurd h (by simp)
 
 /-- Scan a *strict* RFC-8259 string body: from just after the opening `"` at `q`, advance to
 and past the closing `"`, validating escapes. Returns `some end` (just past the closing quote)
@@ -282,6 +284,13 @@ offset is the current position. -/
       obtain ⟨_, rfl⟩ := heq
       exact scanStrLit_le arr q k hk
     next => exact absurd heq (by simp)
+  fwit := by
+    intro arr q e hq heq
+    split at heq
+    · contradiction
+    · simp only [ParseResult.error.injEq] at heq
+      subst e
+      exact ⟨Nat.le_refl q, hq⟩
 
 /-- One-or-more bytes satisfying `f`.
 On failure the furthest offset is the current position. -/
@@ -314,6 +323,17 @@ On failure the furthest offset is the current position. -/
         exact scanFwd_le arr f q hq
       · exact absurd heq (by simp)
     · exact absurd heq (by simp)
+  fwit := by
+    intro arr q e hq heq
+    split at heq
+    · split at heq
+      · contradiction
+      · simp only [ParseResult.error.injEq] at heq
+        subst e
+        exact ⟨Nat.le_refl q, hq⟩
+    · simp only [ParseResult.error.injEq] at heq
+      subst e
+      exact ⟨Nat.le_refl q, hq⟩
 
 /-- Total repetition core: fold `p`'s results into `a`, advancing while `p` succeeds
 and strictly consumes (in bounds). Total: structural on `arr.size - q`; the
@@ -377,6 +397,7 @@ Always succeeds (result is `.ok`). -/
     have hle := foldFwd_le h p arr acc pos hq
     obtain ⟨_, rfl⟩ := heq
     exact hle
+  fwit := by intro arr q e hq h; exact absurd h (by simp)
 
 /-- Fold decimal digits into `acc`. Total: structural on `arr.size - q`. -/
 @[specialize] def natFwd (arr : ByteArray) (acc q : Nat) : Nat × Nat :=
@@ -462,6 +483,20 @@ On failure the furthest offset is the current position. -/
       · simp only [Bool.not_eq_true] at hd
         simp [hd] at heq
     · exact absurd heq (by simp)
+  fwit := by
+    intro arr q e hq heq
+    split at heq
+    · rename_i hbound
+      by_cases hd : (48 ≤ arr[q] && arr[q] ≤ 57) = true
+      · simp only [hd, if_true] at heq
+        contradiction
+      · simp only [Bool.not_eq_true] at hd
+        simp [hd] at heq
+        subst e
+        exact ⟨Nat.le_refl q, hq⟩
+    · simp only [ParseResult.error.injEq] at heq
+      subst e
+      exact ⟨Nat.le_refl q, hq⟩
 
 /-- Zero-or-more `p` (always-consuming) into a list. Total (via `foldFwd`).
 Always succeeds (result is `.ok`). -/
@@ -492,5 +527,6 @@ Always succeeds (result is `.ok`). -/
       obtain ⟨_, rfl⟩ := heq
       rw [hfold] at hle
       exact hle
+  fwit := by intro arr q e hq h; exact absurd h (by simp)
 
 end Grip
