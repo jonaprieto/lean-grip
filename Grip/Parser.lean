@@ -95,6 +95,11 @@ def GParser.throwErr {α : Type} (e : Err) : Parser α where
   ewit := by intro _ arr q; exact ⟨{ e with pos := q }, rfl⟩
   swit := by intro he; exact absurd he (by decide)
   bwit := by intro arr q a q' hq h; exact absurd h (by simp)
+  fwit := by
+    intro arr q err hq h
+    simp only [ParseResult.error.injEq] at h
+    subst err
+    exact ⟨Nat.le_refl q, hq⟩
 
 /-- `tryCatch` at `fallible` grade: run `p`; on success pass through; on failure
 call the handler `h` and run its result from the same offset. -/
@@ -123,6 +128,12 @@ def GParser.tryCatch {α : Type} (p : Parser α) (h : Err → Parser α) : Parse
       exact p.bwit hq hp
     · rename_i e hp
       exact (h e).bwit hq heq
+  fwit := by
+    intro arr q err hq heq
+    split at heq
+    · contradiction
+    · rename_i e hp
+      exact (h e).fwit hq heq
 
 instance : MonadExcept Err Parser where
   throw e  := GParser.throwErr e
@@ -167,6 +178,8 @@ a lambda instead. -/
 syntax (name := gdoNotation) "gdo " doSeq : term
 
 open Lean in
+-- partiality: this macro recursively expands Syntax nodes whose shape is controlled by Lean's
+-- parser; the recursion is elaborator-time plumbing, not a public logical computation.
 private partial def expandGDoBlock (doSeq : Syntax) : MacroM (TSyntax `term) := do
   -- Use single-backtick name literals to avoid the double-backtick validation
   -- which would fail if `Lean.Parser.Term` isn't in the user's import chain.

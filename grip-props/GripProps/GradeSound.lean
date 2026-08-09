@@ -14,10 +14,11 @@ import Grip
 /-!
 # Grade soundness
 
-The three erased witnesses on `GParser` are exactly the runtime facts its grade
-predicts. These meta-theorems lift them to statements about arbitrary parsers, and pin
-down that the grade is no longer a phantom index: a `conditional` parser that claims to
-consume but does not is uninhabited.
+The three grade witnesses (`cwit`, `ewit`, and `swit`) on `GParser` are exactly the runtime facts
+its grade predicts. These meta-theorems lift them to statements about arbitrary parsers, and pin
+down that the grade is no longer a phantom index: a `conditional` parser that claims to consume
+but does not is uninhabited. The separate `bwit` and `fwit` fields bound success and failure
+offsets.
 -/
 
 open Grip
@@ -37,6 +38,11 @@ theorem neverError_succeeds {g : Grade} (hg : g.errors = never) (p : GParser g �
 /-- An always-error parser never succeeds. -/
 theorem alwaysError_fails {g : Grade} (hg : g.errors = always) (p : GParser g α)
     (arr : ByteArray) (q : Nat) : ∃ e, p.run arr q = .error e := p.ewit hg arr q
+
+/-- A failure from a valid start reports a byte offset in the interval from that start to EOF. -/
+theorem failure_position_bounded {g : Grade} (p : GParser g α) {arr : ByteArray} {q : Nat}
+    {e : Err} (hq : q ≤ arr.size) (h : p.run arr q = .error e) :
+    q ≤ e.pos ∧ e.pos ≤ arr.size := p.fwit hq h
 
 /-- Grade soundness closes the consumption gap: a `conditional` parser cannot succeed
 without advancing the offset. The "consumption liar" is uninhabited. -/

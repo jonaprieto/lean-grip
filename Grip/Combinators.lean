@@ -119,6 +119,13 @@ namespace GParser
     · exact absurd h (by simp)
     · simp only [ParseResult.ok.injEq] at h
       omega
+  fwit := by
+    intro arr q e hq h
+    split at h
+    · simp only [ParseResult.error.injEq] at h
+      subst e
+      exact ⟨Nat.le_refl q, hq⟩
+    · contradiction
 /-- Zero or more `p` until `endp` succeeds; `endp`'s result is discarded and the `p`
 results are collected. Total via `fix`; both parsers must always consume. -/
 @[inline] def manyTill (p : GParser conditional α) (endp : GParser conditional β) :

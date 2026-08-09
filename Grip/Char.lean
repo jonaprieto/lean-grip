@@ -142,6 +142,21 @@ theorem decodeUtf8_le {arr : ByteArray} {q : Nat} {c : Char} {q' : Nat}
         · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
+  fwit := by
+    intro arr q e hq h
+    split at h
+    · split at h
+      · split at h
+        · contradiction
+        · simp only [ParseResult.error.injEq] at h
+          subst e
+          exact ⟨Nat.le_refl q, hq⟩
+      · simp only [ParseResult.error.injEq] at h
+        subst e
+        exact ⟨Nat.le_refl q, hq⟩
+    · simp only [ParseResult.error.injEq] at h
+      subst e
+      exact ⟨Nat.le_refl q, hq⟩
 
 /-- Consume any one `Char`. Grade `conditional`. -/
 @[inline] def GParser.anyChar : GParser conditional Char := GParser.satisfyChar (fun _ => true)
@@ -208,6 +223,17 @@ literal (grade `conditional`); the `if q < q'` clamp fails an empty match. -/
         simpa using hb
       · exact absurd h (by simp)
     · exact absurd h (by simp)
+  fwit := by
+    intro arr q e hq h
+    split at h
+    · split at h
+      · contradiction
+      · simp only [ParseResult.error.injEq] at h
+        subst e
+        exact ⟨Nat.le_refl q, hq⟩
+    · simp only [ParseResult.error.injEq] at h
+      subst e
+      exact ⟨Nat.le_refl q, hq⟩
 
 end Grip
 

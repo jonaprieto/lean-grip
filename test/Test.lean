@@ -55,8 +55,8 @@ private def directLeft : GParser conditional Unit :=
   GParser.fix fun self => self
 
 #guard (match directLeft.run "x".toUTF8 0 with
-  | .error e => e.pos == 0
-  | .ok _ _ => false)
+| .error e => e.pos == 0 && e.pos ≤ "x".toUTF8.size
+| .ok _ _ => false)
 
 -- BEq for ParseResult, needed by the #guard comparisons below.
 private instance instBEqParseResult {β : Type} [BEq β] : BEq (ParseResult β) where
