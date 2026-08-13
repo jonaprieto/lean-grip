@@ -51,7 +51,11 @@ lake exe bench
 
 ## Related projects
 
-[`tptp`](https://github.com/jonaprieto/lean-grip-tptp) uses Grip for TPTP/TSTP parsing.
+[`tptp`](https://github.com/jonaprieto/lean-grip-tptp) uses Grip for TPTP/TSTP parsing;
+[`eventb-lean`](https://github.com/jonaprieto/eventb-lean),
+[`lean-argus`](https://github.com/jonaprieto/lean-argus),
+[`lean-calc-chat`](https://github.com/jonaprieto/lean-calc-chat), and
+[`oatp`](https://github.com/jonaprieto/oatp) build on the parser.
 
 ## License
 
