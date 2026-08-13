@@ -5,6 +5,21 @@ Notable changes to grip. Format loosely follows
 changes to the core grade machinery can still happen between minor versions without
 much ceremony beyond what's noted here.
 
+## 0.3.0 — 2026-08-12
+
+- Breaking: `GParser` gains a sixth field, `fwit`, proving that a failure reported from an
+  in-bounds start offset carries a position between that offset and the end of the input.
+  Parsers written with the combinator vocabulary are unaffected; code that constructs a
+  `GParser` literal must now supply the proof.
+- Document `Err.pos` and `ParseResult.error` against that contract. The position is proven
+  in bounds; "furthest failure" and label completeness stay diagnostic conventions of the
+  built-in combinators rather than obligations of the parser type.
+- Define `GParser.fixFuel` through a private bounded approximation so the fuel recursion
+  carries the failure-position invariant instead of discarding it. Its signature is unchanged.
+- Add `consumptionWitness.le`: every consumption witness is monotone in the absolute offset.
+- Prove the graded parser carrier equivalent to the primitive one in
+  `GripProps.ParserTypeEquiv`, and classify which recursive paths are structural.
+
 ## 0.2.0 — 2026-08-07
 
 - Move the JSON parser, corpus, properties, and benchmark to `lean-grip-json`; the core
