@@ -2,7 +2,7 @@ import Lake
 open Lake DSL
 
 package «grip» where
-  version := v!"0.3.1"
+  version := v!"0.3.2"
   -- Every binder explicit; the graded core relies on no auto-bound implicits.
   leanOptions := #[⟨`autoImplicit, false⟩, ⟨`relaxedAutoImplicit, false⟩]
 
@@ -11,10 +11,10 @@ require batteries from git
 
 -- API documentation (doc-gen4) is dev-only: build with `lake -Kenv=dev build Grip:docs`.
 -- Gated behind `-Kenv=dev` so a plain `require grip` never pulls it into the dependency
--- closure; the core stays batteries-only. Pinned to the doc-gen4 commit on Lean v4.32.
+-- closure; the core stays batteries-only. Pinned to the Lean v4.33.0 release.
 meta if get_config? env = some "dev" then
 require «doc-gen4» from git
-  "https://github.com/leanprover/doc-gen4" @ "092d6318789e7bb9160ade1e85bdbcc0abfd7f6e"
+  "https://github.com/leanprover/doc-gen4" @ "v4.33.0"
 
 @[default_target]
 lean_lib «Grip» where

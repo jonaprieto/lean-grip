@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2 — 2026-08-13
+
+- Update the development doc-gen4 pin for Lean v4.33.0.
+
 ## 0.3.1 — 2026-08-12
 
 - Adopt Lean v4.33.0 and precommit-lean v0.1.6.
