@@ -1,4 +1,4 @@
-# grip
+# lean-grip
 
 [![CI](https://github.com/jonaprieto/lean-grip/actions/workflows/ci.yml/badge.svg)](https://github.com/jonaprieto/lean-grip/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/jonaprieto/lean-grip?display_name=tag&sort=semver)](https://github.com/jonaprieto/lean-grip/releases)
@@ -16,6 +16,18 @@ The core package is Mathlib-free: its only runtime dependency is Batteries. The 
 normal `require grip` dependency closure.
 
 API documentation: <https://jonaprieto.github.io/lean-grip/>.
+
+## Status and review
+
+These libraries are actively evolving and are developed with AI assistance and human review.
+CI and machine-checked proofs provide useful evidence, but do not guarantee correctness,
+soundness, portability, performance, or suitability for every use case. Validate behavior
+and assumptions before relying on a release.
+
+Reviewer feedback is welcome, especially on correctness, proofs, API design, usability,
+portability, performance, documentation, and real-world use. Please use the
+[issue tracker](https://github.com/jonaprieto/lean-grip/issues) or open a PR with a
+reproducible example and the expected behavior.
 
 ## Quick start
 
