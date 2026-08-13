@@ -2,7 +2,7 @@
 
 ## 0.3.1 — 2026-08-12
 
-- Adopt Lean v4.33.0 and precommit-lean v0.1.5.
+- Adopt Lean v4.33.0 and precommit-lean v0.1.6.
 
 Notable changes to grip. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); grip is pre-1.0, so breaking
