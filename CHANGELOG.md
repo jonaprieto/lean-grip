@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3 — 2026-08-13
+
+- Publish the dependency-graph README cleanup.
+
 ## 0.3.2 — 2026-08-13
 
 - Update the development doc-gen4 pin for Lean v4.33.0.
