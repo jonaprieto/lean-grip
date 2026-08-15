@@ -106,4 +106,8 @@ jobs:
           lake build
       - name: Audit core completeness theorem axioms
         working-directory: grip-props
-        run: lake env lean -R . GripProps/AxiomAudit.lean
+        run: |
+          audit=$(lake env lean -R . GripProps/AxiomAudit.lean 2>&1)
+          echo "$audit"
+          grep -Fq "'Grip.FixComplete.fix_complete' depends on axioms: [propext, Classical.choice, Quot.sound]" <<<"$audit"
+          grep -Fq "'EquivAudit.sizedParserEquiv' depends on axioms: [propext, Quot.sound]" <<<"$audit"
