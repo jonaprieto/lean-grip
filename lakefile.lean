@@ -2,7 +2,7 @@ import Lake
 open Lake DSL
 
 package «grip» where
-  version := v!"0.3.4"
+  version := v!"0.3.5"
   -- Every binder explicit; the graded core relies on no auto-bound implicits.
   leanOptions := #[⟨`autoImplicit, false⟩, ⟨`relaxedAutoImplicit, false⟩]
 

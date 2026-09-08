@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.5 — 2026-09-08
+
+- Support Lean v4.33.1, including Mathlib v4.33.1 for the property suite.
+- Clarify AI-assisted development.
+
 ## 0.3.4 — 2026-08-13
 
 - Add the standard review guidance to the README.
