@@ -11,10 +11,10 @@ require batteries from git
 
 -- API documentation (doc-gen4) is dev-only: build with `lake -Kenv=dev build Grip:docs`.
 -- Gated behind `-Kenv=dev` so a plain `require grip` never pulls it into the dependency
--- closure; the core stays batteries-only. Pinned to the Lean v4.33.0 release.
+-- closure; the core stays batteries-only. Pinned to the Lean v4.33.1 release.
 meta if get_config? env = some "dev" then
 require «doc-gen4» from git
-  "https://github.com/leanprover/doc-gen4" @ "v4.33.0"
+  "https://github.com/leanprover/doc-gen4" @ "v4.33.1"
 
 @[default_target]
 lean_lib «Grip» where
