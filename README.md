@@ -15,6 +15,11 @@ The core package is Mathlib-free: its only runtime dependency is Batteries. The 
 `grip-props/` proof project imports Mathlib for the machine-checked law suite and is not part of a
 normal `require grip` dependency closure.
 
+## Problem
+
+Recursive byte parsers need a way to rule out non-consuming repetition and keep reported offsets
+within the input that was actually parsed.
+
 API documentation: <https://jonaprieto.github.io/lean-grip/>.
 
 ## Development
@@ -57,10 +62,16 @@ lake exe bench
 ## Related projects
 
 [`tptp`](https://github.com/jonaprieto/lean-grip-tptp) uses Grip for TPTP/TSTP parsing;
-[`eventb-lean`](https://github.com/jonaprieto/eventb-lean),
 [`lean-argus`](https://github.com/jonaprieto/lean-argus),
 [`lean-calc-chat`](https://github.com/jonaprieto/lean-calc-chat), and
 [`oatp`](https://github.com/jonaprieto/oatp) build on the parser.
+
+## Acknowledgements
+
+Grip took its inspiration from [prim-parser](https://github.com/janmasrovira/prim-parser) by Jan
+Mas Rovira. It diverges by encoding parser behavior at the type level: grades track failure and
+input consumption, making repetition safe by construction. Grip also uses a byte-level core,
+`ParseResult`, first-byte `dispatch`, and `@[specialize]` scan loops.
 
 ## License
 
