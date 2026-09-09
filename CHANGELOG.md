@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.6 — 2026-09-09
+
+- Document the contribution policy, package problem, and prim-parser attribution.
+
 ## 0.3.5 — 2026-09-08
 
 - Support Lean v4.33.1, including Mathlib v4.33.1 for the property suite.
