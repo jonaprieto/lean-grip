@@ -46,14 +46,16 @@ def AgreeOk
 /-- Agreement is reflexive. -/
 theorem AgreeOk.refl
     : ∀ r : ParseResult α,
-      AgreeOk r r := by
+      AgreeOk r r
+    := by
   intro r; cases r <;> simp [AgreeOk]
 
 /-- Agreement is symmetric. -/
 theorem AgreeOk.symm
     {r₁ r₂ : ParseResult α}
     (h : AgreeOk r₁ r₂)
-    : AgreeOk r₂ r₁ := by
+    : AgreeOk r₂ r₁
+    := by
   cases r₁ <;> cases r₂ <;> simp_all [AgreeOk]
 
 /-- Agreement is transitive. -/
@@ -61,7 +63,8 @@ theorem AgreeOk.trans
     {r₁ r₂ r₃ : ParseResult α}
     (h₁ : AgreeOk r₁ r₂)
     (h₂ : AgreeOk r₂ r₃)
-    : AgreeOk r₁ r₃ := by
+    : AgreeOk r₁ r₃
+    := by
   cases r₁ <;> cases r₂ <;> cases r₃ <;> simp_all [AgreeOk]
 
 /-- Acceptance agreement propagates through the advance clamp. -/
@@ -70,7 +73,8 @@ theorem clamp_agree
     (arr : ByteArray)
     (q : Nat)
     (h : AgreeOk r₁ r₂)
-    : AgreeOk (clampAdvance arr q r₁) (clampAdvance arr q r₂) := by
+    : AgreeOk (clampAdvance arr q r₁) (clampAdvance arr q r₂)
+    := by
   cases r₁ with
   | ok a q' => cases r₂ with
     | ok b q'' => simp only [AgreeOk] at h; obtain ⟨ha, hq⟩ := h; subst ha; subst hq
@@ -87,7 +91,8 @@ theorem clamp_oob
     (arr : ByteArray)
     (q : Nat)
     (hq : arr.size ≤ q)
-    : AgreeOk (clampAdvance arr q r₁) (clampAdvance arr q r₂) := by
+    : AgreeOk (clampAdvance arr q r₁) (clampAdvance arr q r₂)
+    := by
   have oob : ∀ r : ParseResult α, ∃ e, clampAdvance arr q r = .error e := by
     intro r
     cases r with
@@ -112,7 +117,8 @@ def Guarded
     {β : Type}
     {g : Grade}
     (F : GParser conditional α → GParser g β)
-    : Prop :=
+    : Prop
+    :=
   ∀ (s₁ s₂ : GParser conditional α) (arr : ByteArray) (q : Nat),
     (∀ q', q < q' → AgreeOk (s₁.run arr q') (s₂.run arr q')) →
     AgreeOk ((F s₁).run arr q) ((F s₂).run arr q)
@@ -128,7 +134,8 @@ theorem step
     (arr : ByteArray)
     (q m : Nat)
     (hm : arr.size - q < m)
-    : AgreeOk (GParser.fixFuel f m arr q) (GParser.fixFuel f (m + 1) arr q) := by
+    : AgreeOk (GParser.fixFuel f m arr q) (GParser.fixFuel f (m + 1) arr q)
+    := by
   obtain ⟨m', rfl⟩ : ∃ m', m = m' + 1 := ⟨m - 1, by omega⟩
   rw [GParser.fixFuel_succ, GParser.fixFuel_succ]
   apply hf
@@ -167,7 +174,8 @@ theorem fixFuel_complete
     {a : α}
     {q' : Nat}
     (h : GParser.fixFuel f m arr q = .ok a q')
-    : GParser.fixFuel f (arr.size - q + 1) arr q = .ok a q' := by
+    : GParser.fixFuel f (arr.size - q + 1) arr q = .ok a q'
+    := by
   have hag := agree_add f hf arr q (m - (arr.size - q + 1))
   have hmB : arr.size - q + 1 + (m - (arr.size - q + 1)) = m := by omega
   rw [hmB, h] at hag
@@ -193,7 +201,8 @@ theorem fix_complete
     {a : α}
     {q' : Nat}
     (h : GParser.fixFuel f m arr q = .ok a q')
-    : (GParser.fix f).run arr q = .ok a q' := by
+    : (GParser.fix f).run arr q = .ok a q'
+    := by
   have hB := fixFuel_complete f hf arr q hm h
   have hs : GParser.fixFuel f (arr.size - q + 1) arr q
       = (f (GParser.fixSelf f (arr.size - q))).run arr q :=
@@ -217,7 +226,8 @@ theorem agree_error
     {r₁ r₂ : ParseResult α}
     (h₁ : ∃ e, r₁ = .error e)
     (h₂ : ∃ e, r₂ = .error e)
-    : AgreeOk r₁ r₂ := by
+    : AgreeOk r₁ r₂
+    := by
   obtain ⟨e₁, rfl⟩ := h₁; obtain ⟨e₂, rfl⟩ := h₂; exact True.intro
 
 /-- The furthest-reach merge two `alt` branches take on double failure is itself a failure. -/
@@ -237,7 +247,8 @@ theorem guarded_const
     {β : Type}
     {g : Grade}
     (c : GParser g β)
-    : Guarded (fun (_ : GParser conditional α) => c) := by
+    : Guarded (fun (_ : GParser conditional α) => c)
+    := by
   intro _ _ _ _ _; exact AgreeOk.refl _
 
 /-- The recursive call as the second argument of `map2` after a `conditional` first argument is
@@ -246,7 +257,8 @@ theorem guarded_map2_self
     {β δ : Type}
     (f : β → α → δ)
     (p : GParser conditional β)
-    : Guarded (fun (rec : GParser conditional α) => GParser.map2 f p rec) := by
+    : Guarded (fun (rec : GParser conditional α) => GParser.map2 f p rec)
+    := by
   intro s₁ s₂ arr q hpre
   simp only [GParser.map2]
   cases hp : p.run arr q with
@@ -264,7 +276,8 @@ theorem guarded_alt
     (x y : GParser conditional α → GParser ⟨ge, gc⟩ β)
     (hx : Guarded x)
     (hy : Guarded y)
-    : Guarded (fun rec => GParser.alt (x rec) (y rec)) := by
+    : Guarded (fun rec => GParser.alt (x rec) (y rec))
+    := by
   intro s₁ s₂ arr q hpre
   have hx' := hx s₁ s₂ arr q hpre
   have hy' := hy s₁ s₂ arr q hpre

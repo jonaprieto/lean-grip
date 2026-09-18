@@ -96,7 +96,8 @@ def Outcome.Sound
     {α : Type}
     (errors : Modality)
     (o : Outcome ε n c α)
-    : Prop :=
+    : Prop
+    :=
   match o with
   | .failure _ => possibly ≤ errors
   | .success _ => errors ≤ possibly
@@ -131,7 +132,8 @@ def ValidRunEq
     {g : Grade}
     {α : Type}
     (p q : GParser g α)
-    : Prop :=
+    : Prop
+    :=
   ∀ (arr : ByteArray) (pos : Nat), pos ≤ arr.size → p.run arr pos = q.run arr pos
 
 def zeroOutside : GParser pure Bool where
@@ -172,7 +174,8 @@ theorem failure_in_bounds
     (hq : q ≤ arr.size)
     (h : p.run arr q = .error e)
     : q ≤ e.pos ∧
-      e.pos ≤ arr.size :=
+      e.pos ≤ arr.size
+    :=
   p.fwit hq h
 
 end Current
@@ -216,7 +219,8 @@ theorem SafeGParser.run_congr
     (h : q = q')
     (hq : q ≤ arr.size)
     (hq' : q' ≤ arr.size)
-    : p.run arr q hq = p.run arr q' hq' := by
+    : p.run arr q hq = p.run arr q' hq'
+    := by
   subst q'
   rfl
 
@@ -227,7 +231,8 @@ theorem toRestWitness
     (t : Prim.Text n)
     (hc : consumptionWitness t.pos q' c)
     (hq' : q' ≤ t.bytes.size)
-    : consumptionWitness (t.bytes.size - q') n c := by
+    : consumptionWitness (t.bytes.size - q') n c
+    := by
   have hv := t.valid
   simp only [Prim.Text.pos] at hc
   cases c <;> simp only [consumptionWitness] at hc ⊢ <;> omega
@@ -240,7 +245,8 @@ theorem fromRestWitness
     {q : Nat}
     (hq : q ≤ arr.size)
     (s : Prim.Success (arr.size - q) c α)
-    : consumptionWitness q (arr.size - s.restSize) c := by
+    : consumptionWitness q (arr.size - s.restSize) c
+    := by
   have hw := s.witness
   cases c <;> simp only [consumptionWitness] at hw ⊢ <;> omega
 
@@ -359,7 +365,8 @@ theorem fromPrim_toPrim_run
     (arr : ByteArray)
     (q : Nat)
     (hq : q ≤ arr.size)
-    : (fromPrim (toPrim p)).run arr q hq = p.run arr q hq := by
+    : (fromPrim (toPrim p)).run arr q hq = p.run arr q hq
+    := by
   let t : Prim.Text (arr.size - q) := ⟨arr, by omega⟩
   change
     (match (toPrim p).run t with
@@ -404,7 +411,8 @@ theorem fromPrim_toPrim
     {g : Grade}
     {α : Type}
     (p : SafeGParser g α)
-    : fromPrim (toPrim p) = p := by
+    : fromPrim (toPrim p) = p
+    := by
   apply SafeGParser.ext
   exact fromPrim_toPrim_run p
 
@@ -444,7 +452,8 @@ theorem fromRestWitnessText
     {α : Type}
     (t : Prim.Text n)
     (s : Prim.Success n c α)
-    : consumptionWitness t.pos (t.bytes.size - s.restSize) c := by
+    : consumptionWitness t.pos (t.bytes.size - s.restSize) c
+    := by
   have hw := s.witness
   have hv := t.valid
   simp only [Prim.Text.pos]
@@ -456,7 +465,8 @@ def outcomeOfSized
     (p : SizedGParser g α)
     {n : Nat}
     (t : Prim.Text n)
-    : Prim.Outcome (List String) n g.consumes α :=
+    : Prim.Outcome (List String) n g.consumes α
+    :=
   match h : p.run t with
   | .ok a q' =>
     .success {
@@ -505,7 +515,8 @@ def resultOfPrim
     (p : Prim.Parser (List String) g α)
     {n : Nat}
     (t : Prim.Text n)
-    : ParseResult α :=
+    : ParseResult α
+    :=
   match p.run t with
   | .success s => .ok s.result (t.bytes.size - s.restSize)
   | .failure f => .error ⟨t.bytes.size - f.restSize, f.error⟩
@@ -574,7 +585,8 @@ theorem primToSized_sizedToPrim_run
     (p : SizedGParser g α)
     {n : Nat}
     (t : Prim.Text n)
-    : resultOfPrim (sizedToPrim p) t = p.run t := by
+    : resultOfPrim (sizedToPrim p) t = p.run t
+    := by
   unfold resultOfPrim
   dsimp only [sizedToPrim]
   unfold outcomeOfSized
@@ -609,7 +621,8 @@ theorem primToSized_sizedToPrim
     {g : Grade}
     {α : Type}
     (p : SizedGParser g α)
-    : primToSized (sizedToPrim p) = p := by
+    : primToSized (sizedToPrim p) = p
+    := by
   apply SizedGParser.ext
   exact primToSized_sizedToPrim_run p
 
@@ -619,7 +632,8 @@ theorem sizedToPrim_primToSized_run
     (p : Prim.Parser (List String) g α)
     {n : Nat}
     (t : Prim.Text n)
-    : outcomeOfSized (primToSized p) t = p.run t := by
+    : outcomeOfSized (primToSized p) t = p.run t
+    := by
   cases h : p.run t with
   | success s =>
       unfold outcomeOfSized
@@ -678,7 +692,8 @@ theorem sizedToPrim_primToSized
     {g : Grade}
     {α : Type}
     (p : Prim.Parser (List String) g α)
-    : sizedToPrim (primToSized p) = p := by
+    : sizedToPrim (primToSized p) = p
+    := by
   apply Prim.Parser.ext
   exact sizedToPrim_primToSized_run p
 

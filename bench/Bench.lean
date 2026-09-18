@@ -19,7 +19,8 @@ partial
 def repeatStr
     (s : String)
     (n : Nat)
-    : String :=
+    : String
+    :=
   if n == 0 then ""
   else if n == 1 then s
   else

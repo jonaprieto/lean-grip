@@ -52,7 +52,8 @@ theorem no_consumption_liar
     {q : Nat}
     {a : α}
     (h : p.run arr q = .ok a q)
-    : False :=
+    : False
+    :=
   absurd (p.cwit h) (Nat.lt_irrefl q)
 
 end Grip.GradeSound

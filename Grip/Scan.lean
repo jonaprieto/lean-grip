@@ -41,7 +41,8 @@ theorem scanFwd_ge
     (arr : ByteArray)
     (f : UInt8 → Bool)
     (q : Nat)
-    : q ≤ scanFwd arr f q := by
+    : q ≤ scanFwd arr f q
+    := by
   rw [scanFwd]
   split
   · split
@@ -58,7 +59,8 @@ theorem scanFwd_gt
     (q : Nat)
     (h : q < arr.size)
     (hf : f arr[q] = true)
-    : q < scanFwd arr f q := by
+    : q < scanFwd arr f q
+    := by
   rw [scanFwd, dif_pos h, if_pos hf]
   exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q) (scanFwd_ge arr f (q + 1))
 
@@ -68,7 +70,8 @@ theorem scanFwd_le
     (f : UInt8 → Bool)
     (q : Nat)
     (hq : q ≤ arr.size)
-    : scanFwd arr f q ≤ arr.size := by
+    : scanFwd arr f q ≤ arr.size
+    := by
   rw [scanFwd]
   split
   · rename_i hlt
@@ -114,7 +117,8 @@ decreasing_by all_goals omega
 theorem scanStrFwd_ge
     (arr : ByteArray)
     (q : Nat)
-    : q ≤ scanStrFwd arr q := by
+    : q ≤ scanStrFwd arr q
+    := by
   rw [scanStrFwd]
   split
   · rename_i h
@@ -134,7 +138,8 @@ theorem scanStrFwd_le
     (arr : ByteArray)
     (q : Nat)
     (hq : q ≤ arr.size)
-    : scanStrFwd arr q ≤ arr.size := by
+    : scanStrFwd arr q ≤ arr.size
+    := by
   rw [scanStrFwd]
   split
   · rename_i h
@@ -202,7 +207,8 @@ theorem scanStrBody_ge
     (arr : ByteArray)
     (q q' : Nat)
     (h : scanStrBody arr q = some q')
-    : q ≤ q' := by
+    : q ≤ q'
+    := by
   rw [scanStrBody] at h
   split at h
   · split at h
@@ -231,7 +237,8 @@ theorem scanStrBody_le
     (arr : ByteArray)
     (q q' : Nat)
     (h : scanStrBody arr q = some q')
-    : q' ≤ arr.size := by
+    : q' ≤ arr.size
+    := by
   rw [scanStrBody] at h
   split at h
   · rename_i hq
@@ -266,7 +273,8 @@ theorem scanStrLit_gt
     (arr : ByteArray)
     (q q' : Nat)
     (h : scanStrLit arr q = some q')
-    : q < q' := by
+    : q < q'
+    := by
   rw [scanStrLit] at h
   split at h
   · split at h
@@ -279,7 +287,8 @@ theorem scanStrLit_le
     (arr : ByteArray)
     (q q' : Nat)
     (h : scanStrLit arr q = some q')
-    : q' ≤ arr.size := by
+    : q' ≤ arr.size
+    := by
   rw [scanStrLit] at h
   split at h
   · split at h
@@ -388,7 +397,8 @@ theorem foldFwd_ge
     (arr : ByteArray)
     (a : β)
     (q : Nat)
-    : q ≤ (foldFwd step p arr a q).2 := by
+    : q ≤ (foldFwd step p arr a q).2
+    := by
   rw [foldFwd]
   split
   next x q' hp =>
@@ -410,7 +420,8 @@ theorem foldFwd_le
     (a : β)
     (q : Nat)
     (hq : q ≤ arr.size)
-    : (foldFwd step p arr a q).2 ≤ arr.size := by
+    : (foldFwd step p arr a q).2 ≤ arr.size
+    := by
   rw [foldFwd]
   split
   next x q' hp =>
@@ -466,7 +477,8 @@ theorem natFwd_eq (arr : ByteArray) (acc q : Nat) :
 theorem natFwd_ge
     (arr : ByteArray)
     (acc q : Nat)
-    : q ≤ (natFwd arr acc q).2 := by
+    : q ≤ (natFwd arr acc q).2
+    := by
   rw [natFwd_eq]
   split
   next hbound =>
@@ -483,7 +495,8 @@ theorem natFwd_gt
     (acc q : Nat)
     (h : q < arr.size)
     (hd : (48 ≤ arr[q] && arr[q] ≤ 57) = true)
-    : q < (natFwd arr acc q).2 := by
+    : q < (natFwd arr acc q).2
+    := by
   rw [natFwd_eq, dif_pos h, if_pos hd]
   exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q)
     (natFwd_ge arr (acc * 10 + (arr[q].toNat - 48)) (q + 1))
@@ -493,7 +506,8 @@ theorem natFwd_le
     (arr : ByteArray)
     (acc q : Nat)
     (hq : q ≤ arr.size)
-    : (natFwd arr acc q).2 ≤ arr.size := by
+    : (natFwd arr acc q).2 ≤ arr.size
+    := by
   rw [natFwd_eq]
   split
   next hbound =>

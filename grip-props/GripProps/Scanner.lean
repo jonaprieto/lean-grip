@@ -31,7 +31,8 @@ theorem scanFwd_mem
     (q i : Nat)
     (hqi : q ≤ i)
     (hi : i < scanFwd arr f q)
-    : f arr[i]! = true := by
+    : f arr[i]! = true
+    := by
   rw [scanFwd] at hi
   split at hi
   · rename_i h
@@ -53,7 +54,8 @@ theorem scanFwd_stop
     (q : Nat)
     (hq : q ≤ arr.size)
     : scanFwd arr f q = arr.size ∨
-      f arr[scanFwd arr f q]! = false := by
+      f arr[scanFwd arr f q]! = false
+    := by
   rw [scanFwd]
   split
   · rename_i h
