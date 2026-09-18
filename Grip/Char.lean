@@ -31,7 +31,8 @@ open Grip
 private
 def validSecond
     (b0 b1 : UInt8)
-    : Bool :=
+    : Bool
+    :=
   if !isCont b1 then false
   else if b0 == 0xE0 then 0xA0 ≤ b1
   else if b0 == 0xED then b1 ≤ 0x9F
@@ -83,7 +84,8 @@ theorem decodeUtf8_le
     {c : Char}
     {q' : Nat}
     (h : decodeUtf8 arr q = some (c, q'))
-    : q' ≤ arr.size := by
+    : q' ≤ arr.size
+    := by
   simp only [decodeUtf8] at h
   split at h
   · rename_i h0
@@ -176,7 +178,8 @@ theorem decodeUtf8_le
 def matchBytes
     (arr bs : ByteArray)
     (i q : Nat)
-    : Bool :=
+    : Bool
+    :=
   if i < bs.size then
     if q < arr.size then (arr[q]! == bs[i]!) && matchBytes arr bs (i + 1) (q + 1) else false
   else true
@@ -190,7 +193,8 @@ theorem matchBytes_le
     (i q : Nat)
     (hi : i < bs.size)
     (h : matchBytes arr bs i q = true)
-    : q + (bs.size - i) ≤ arr.size := by
+    : q + (bs.size - i) ≤ arr.size
+    := by
   rw [matchBytes] at h
   rw [if_pos hi] at h
   split at h

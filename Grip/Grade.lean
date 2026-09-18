@@ -104,13 +104,15 @@ def choice
 /-- The error grade of a product is the join of the error grades. -/
 theorem grade_mul_errors
     (a b : Grade)
-    : (a * b).errors = max a.errors b.errors := by
+    : (a * b).errors = max a.errors b.errors
+    := by
   cases a; cases b; rfl
 
 /-- The consumption grade of a product is the join of the consumption grades. -/
 theorem grade_mul_consumes
     (a b : Grade)
-    : (a * b).consumes = max a.consumes b.consumes := by
+    : (a * b).consumes = max a.consumes b.consumes
+    := by
   cases a; cases b; rfl
 
 -- Guard checks -----------------------------------------------------------
@@ -145,7 +147,8 @@ theorem le
     {n m : Nat}
     {a : Modality}
     (w : consumptionWitness n m a)
-    : n ≤ m := by
+    : n ≤ m
+    := by
   cases a <;> simp only [consumptionWitness] at w <;> omega
 
 /-- A reflexive witness holds for any grade `a ≤ possibly`
@@ -168,7 +171,8 @@ theorem trans
     {n1 n2 n3 : Nat}
     (w1 : consumptionWitness n2 n1 gc)
     (w2 : consumptionWitness n3 n2 gc')
-    : consumptionWitness n3 n1 (max gc gc') := by
+    : consumptionWitness n3 n1 (max gc gc')
+    := by
   -- Bridge `max` to `Modality.sup` (the `Max` instance body), then unfold
   -- `sup` using equation lemmas after making both grade arguments concrete.
   have max_sup : ∀ a b : Modality, max a b = Modality.sup a b := by intros; rfl
@@ -184,7 +188,8 @@ theorem ite_left
     {n m : Nat}
     (c : ge' ≤ possibly)
     (w : consumptionWitness n m gc')
-    : consumptionWitness n m (ge'.ite gc gc') := by
+    : consumptionWitness n m (ge'.ite gc gc')
+    := by
   -- After full case-split, `simp_all` reduces `Modality.ite` and
   -- `consumptionWitness` to arithmetic goals; `omega` closes the rest.
   cases ge' <;> cases gc <;> cases gc' <;>
@@ -199,7 +204,8 @@ theorem ite_right
     {n m : Nat}
     (c : possibly ≤ ge')
     (w : consumptionWitness n m gc)
-    : consumptionWitness n m (ge'.ite gc gc') := by
+    : consumptionWitness n m (ge'.ite gc gc')
+    := by
   cases ge' <;> cases gc <;> cases gc' <;>
     first | exact absurd c (by decide)
           | (simp_all [Modality.ite, consumptionWitness]; try omega)

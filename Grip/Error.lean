@@ -69,7 +69,8 @@ the list is empty. -/
 private
 def uniqueStrings
     (items : List String)
-    : List String :=
+    : List String
+    :=
   let rec go (seen : List String) : List String → List String
     | [] => seen
     | item :: rest =>
@@ -78,7 +79,8 @@ def uniqueStrings
 
 def ParseError.message
     (e : ParseError)
-    : String :=
+    : String
+    :=
   match uniqueStrings e.expected with
   | []  => "unexpected input"
   | xs  => "expected " ++ String.intercalate " or " xs
@@ -108,7 +110,8 @@ private
 def lineColOf
     (arr : ByteArray)
     (pos : Nat)
-    : Nat × Nat :=
+    : Nat × Nat
+    :=
   lineColLoop arr (min pos arr.size) 0 0 1
 
 /-- Find the byte index of the start of the line containing `pos`: the position
@@ -118,7 +121,8 @@ private
 def lineStartOf
     (arr : ByteArray)
     (pos : Nat)
-    : Nat :=
+    : Nat
+    :=
   let safePos := min pos arr.size
   let rec go : Nat → Nat
     | 0     => 0
@@ -131,7 +135,8 @@ private
 def lineEndOf
     (arr : ByteArray)
     (pos : Nat)
-    : Nat :=
+    : Nat
+    :=
   let safePos := min pos arr.size
   let rec go (i : Nat) : Nat :=
     if i >= arr.size then arr.size
@@ -146,7 +151,8 @@ private
 def sourceLine
     (arr : ByteArray)
     (pos : Nat)
-    : String :=
+    : String
+    :=
   let s := lineStartOf arr pos
   let e := lineEndOf arr pos
   match String.fromUTF8? (arr.extract s e) with
@@ -157,7 +163,8 @@ def sourceLine
 def mkParseError
     (arr : ByteArray)
     (e : Err)
-    : ParseError :=
+    : ParseError
+    :=
   let (line, col) := lineColOf arr e.pos
   { pos := e.pos, line := line, col := col, expected := e.expected }
 
@@ -166,7 +173,8 @@ source line and a caret (`^`). Rich terminal presentation belongs to `grip-diagn
 def ParseError.pretty
     (e : ParseError)
     (src : ByteArray)
-    : String :=
+    : String
+    :=
   let msg     := e.message
   let srcLine := sourceLine src e.pos
   let caret   := String.ofList (List.replicate (e.col - 1) ' ') ++ "^"

@@ -146,7 +146,8 @@ grade stays at that grade. -/
 private
 theorem choice_self
     (g : Grade)
-    : Grade.choice g g = g := by
+    : Grade.choice g g = g
+    := by
   cases g with | mk e c => cases e <;> cases c <;> rfl
 
 /-- Ordered choice over a non-empty list at a single grade `g`. The grade is preserved

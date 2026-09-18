@@ -74,7 +74,8 @@ instance : LT Modality := ⟨fun a b => a ≤ b ∧ ¬ b ≤ a⟩
 /-- Decidability of `≤` on `Modality`. -/
 instance
     (a b : Modality)
-    : Decidable (a ≤ b) :=
+    : Decidable (a ≤ b)
+    :=
   -- Wildcard arms are expanded to concrete constructors so that `le a b` always
   -- reduces definitionally (a free first argument blocks iota-reduction in Lean).
   match a, b with
@@ -94,7 +95,8 @@ instance
     - `possibly.ite a b = a` when `a = b`, otherwise `possibly` (conservative) -/
 def ite
     (sel a b : Modality)
-    : Modality :=
+    : Modality
+    :=
   match sel with
   | always   => a
   | never    => b
@@ -139,7 +141,8 @@ theorem sup_comm (a b : Modality) : max a b = max b a := by cases a <;> cases b 
 theorem le_possibly_of_ne_always
     {a : Modality}
     (h : a ≠ always)
-    : a ≤ possibly := by
+    : a ≤ possibly
+    := by
   cases a
   · exact True.intro
   · exact True.intro
@@ -149,7 +152,8 @@ theorem le_possibly_of_ne_always
 theorem possibly_le_of_ne_never
     {a : Modality}
     (h : a ≠ never)
-    : possibly ≤ a := by
+    : possibly ≤ a
+    := by
   cases a
   · exact absurd rfl h
   · exact True.intro

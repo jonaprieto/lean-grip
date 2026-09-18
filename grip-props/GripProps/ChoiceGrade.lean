@@ -38,7 +38,8 @@ success ending at some `q'`, `cwit` (always-consume) forces `0 < q'`, and `bwit`
 forces `q' ≤ ByteArray.empty.size = 0`; `0 < q' ≤ 0` is absurd. -/
 theorem impossible_uninhabited
     (p : GParser impossible α)
-    : False := by
+    : False
+    := by
   obtain ⟨a, q', h⟩ := p.swit rfl ByteArray.empty 0
   have hlt : 0 < q' := p.cwit h
   have hle : q' ≤ 0 := p.bwit (Nat.zero_le _) h

@@ -83,7 +83,8 @@ theorem cw_seq
     {q r s : Nat}
     (w0 : consumptionWitness q r c0)
     (w1 : consumptionWitness r s c1)
-    : consumptionWitness q s (max c0 c1) := by
+    : consumptionWitness q s (max c0 c1)
+    := by
   have h := consumptionWitness.trans w1 w0
   rwa [Modality.sup_comm] at h
 
@@ -192,7 +193,8 @@ theorem clampAdvance_fwit
     (hq : q ≤ arr.size)
     (h : clampAdvance arr q r = .error e)
     : q ≤ e.pos ∧
-      e.pos ≤ arr.size := by
+      e.pos ≤ arr.size
+    := by
   simp only [clampAdvance] at h
   split at h
   next a q' =>

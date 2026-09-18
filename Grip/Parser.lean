@@ -84,7 +84,8 @@ def GParser.parse
     {α : Type}
     (p : GParser g α)
     (arr : ByteArray)
-    : Except ParseError α :=
+    : Except ParseError α
+    :=
   match p.run arr 0 with
   | .ok a _  => .ok a
   | .error e => .error (mkParseError arr e)

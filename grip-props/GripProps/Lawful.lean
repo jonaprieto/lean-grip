@@ -30,7 +30,8 @@ namespace Grip.Grade
 private
 theorem max_assoc
     (a b c : Modality)
-    : max (max a b) c = max a (max b c) := by
+    : max (max a b) c = max a (max b c)
+    := by
   cases a <;> cases b <;> cases c <;> rfl
 
 /-- `Grade` is a monoid under sequential composition (`mul` = componentwise join,
