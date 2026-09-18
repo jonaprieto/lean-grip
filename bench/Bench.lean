@@ -60,7 +60,10 @@ structure Stats where
 
 @[noinline] def barrier (_k : Nat) (src : ByteArray) : ByteArray := src
 
-def sampleMs (reps : Nat) (act : Nat → Nat) : IO Stats := do
+def sampleMs
+    (reps : Nat)
+    (act : Nat → Nat)
+    : IO Stats := do
   let mut samples : Array Float := #[]
   for i in [0:reps] do
     let t0 ← IO.monoNanosNow
@@ -71,7 +74,11 @@ def sampleMs (reps : Nat) (act : Nat → Nat) : IO Stats := do
   if sorted.isEmpty then return { min := 0.0, median := 0.0 }
   return { min := sorted[0]!, median := sorted[sorted.size / 2]! }
 
-def benchOne (name : String) (src : ByteArray) (p : ByteArray → Nat) : IO Unit := do
+def benchOne
+    (name : String)
+    (src : ByteArray)
+    (p : ByteArray → Nat)
+    : IO Unit := do
   let count := p src
   let s ← sampleMs 20 (fun i => p (barrier i src))
   IO.println s!"{name} size={src.size} count={count} ms={s.min} med={s.median}"

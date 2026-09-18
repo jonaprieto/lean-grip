@@ -20,7 +20,9 @@ composition multiplies grades via the monoid operation. These are the classes th
 state and prove the graded-monad laws for `GParser`.
 -/
 
-variable {G : Type} [Monoid G]
+variable
+  {G : Type}
+  [Monoid G]
 
 /-- A type family indexed by a grade and a result type. -/
 abbrev GradedType (G : Type) := G → Type → Type

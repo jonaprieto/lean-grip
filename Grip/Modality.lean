@@ -72,7 +72,9 @@ instance : LE Modality := ⟨Modality.le⟩
 instance : LT Modality := ⟨fun a b => a ≤ b ∧ ¬ b ≤ a⟩
 
 /-- Decidability of `≤` on `Modality`. -/
-instance (a b : Modality) : Decidable (a ≤ b) :=
+instance
+    (a b : Modality)
+    : Decidable (a ≤ b) :=
   -- Wildcard arms are expanded to concrete constructors so that `le a b` always
   -- reduces definitionally (a free first argument blocks iota-reduction in Lean).
   match a, b with

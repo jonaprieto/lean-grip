@@ -36,52 +36,38 @@ namespace Grade
 -- Named grades ----------------------------------------------------------
 
 /-- A parser that always consumes and possibly errors. -/
-abbrev conditional
-    : Grade
-    where
+abbrev conditional : Grade where
   consumes := always
   errors   := possibly
 
 /-- A parser that possibly consumes and never errors. -/
-abbrev flexible
-    : Grade
-    where
+abbrev flexible : Grade where
   consumes := possibly
   errors   := never
 
 /-- A parser that possibly consumes and possibly errors. -/
-abbrev fallible
-    : Grade
-    where
+abbrev fallible : Grade where
   consumes := possibly
   errors   := possibly
 
 /-- A parser that never consumes and never errors. -/
-abbrev pure
-    : Grade
-    where
+abbrev pure : Grade where
   consumes := never
   errors   := never
 
 /-- A parser that never consumes and possibly errors. -/
-abbrev lookahead
-    : Grade
-    where
+abbrev lookahead : Grade where
   consumes := never
   errors   := possibly
 
 /-- A parser that never consumes and always errors. -/
-abbrev empty
-    : Grade
-    where
+abbrev empty : Grade where
   consumes := never
   errors   := always
 
 /-- The impossible grade: always consumes, never errors.
     No parser can inhabit this grade on arbitrary input (it must accept empty input). -/
-abbrev impossible
-    : Grade
-    where
+abbrev impossible : Grade where
   consumes := always
   errors   := never
 

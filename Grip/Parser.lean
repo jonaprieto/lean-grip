@@ -179,8 +179,7 @@ Supported forms:
 Example:
 ```
 -- grade is `conditional`, not collapsed to `fallible`
-def twoBytes
-    : GParser conditional (UInt8 × UInt8) :=
+def twoBytes : GParser conditional (UInt8 × UInt8) :=
   gdo
     let a ← GParser.satisfy (fun _ => true)
     let b ← GParser.satisfy (fun _ => true)
@@ -194,7 +193,11 @@ syntax (name := gdoNotation) "gdo " doSeq : term
 open Lean in
 -- partiality: this macro recursively expands Syntax nodes whose shape is controlled by Lean's
 -- parser; the recursion is elaborator-time plumbing, not a public logical computation.
-private partial def expandGDoBlock (doSeq : Syntax) : MacroM (TSyntax `term) := do
+private
+partial
+def expandGDoBlock
+    (doSeq : Syntax)
+    : MacroM (TSyntax `term) := do
   -- Use single-backtick name literals to avoid the double-backtick validation
   -- which would fail if `Lean.Parser.Term` isn't in the user's import chain.
   let itemsNode :=
@@ -247,9 +250,7 @@ open Grip
 
 -- Coercion: a `conditional` parser coerces to `Parser` via the `CoeOut` instance.
 -- The coercion is "source-driven" (left-to-right), so no explicit cast annotation needed.
-private
-def digitP
-    : Parser UInt8 :=
+private def digitP : Parser UInt8 :=
   GParser.satisfy (fun b => 48 ≤ b && b ≤ 57)
 
 example (f : UInt8 → Bool) : Parser UInt8 := GParser.satisfy f
@@ -263,9 +264,7 @@ private def twoDigits : Parser (UInt8 × UInt8) := do
 #guard (GParser.run? twoDigits "57".toUTF8) == some (53, 55)
 
 -- `Alternative`: `<|>` and `failure` work at `Parser`.
-private
-def digitOrFail
-    : Parser UInt8 :=
+private def digitOrFail : Parser UInt8 :=
   digitP <|> failure
 
 #guard (GParser.run? digitOrFail "5".toUTF8) == some 53
@@ -279,9 +278,7 @@ example : GParser flexible (List UInt8) := GParser.many (GParser.satisfy (· != 
 -- `gdo`: grade is preserved precisely (stays `conditional`, not collapsed to `fallible`).
 -- `conditional * conditional = conditional` because
 --   `max always always = always` and `max possibly possibly = possibly` both hold.
-private
-def twoBytes
-    : GParser conditional (UInt8 × UInt8) :=
+private def twoBytes : GParser conditional (UInt8 × UInt8) :=
   gdo
     let a ← GParser.satisfy (fun _ => true)
     let b ← GParser.satisfy (fun _ => true)
@@ -303,9 +300,7 @@ instance instBEqExceptPE
     | _,         _         => false
 
 -- `GParser.parse` surfaces a `ParseError` with positioned information.
-private
-def digitOrErr
-    : Parser Nat :=
+private def digitOrErr : Parser Nat :=
   GParser.weakenFallible (GParser.nat <?> "number")
 
 #guard (digitOrErr.parse "abc".toUTF8
@@ -315,9 +310,7 @@ def digitOrErr
 
 -- `pretty` is the dependency-free plain fallback; rich terminal output lives in
 -- `grip-diagnostics` and delegates to `TermColor.Diagnostics`.
-private
-def prettyTest
-    : String :=
+private def prettyTest : String :=
   let e : ParseError := { pos := 5, line := 3, col := 2, expected := ["!"] }
   e.pretty "a\nb\n1".toUTF8
 

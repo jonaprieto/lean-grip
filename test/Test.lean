@@ -14,9 +14,7 @@ error and turns the `core` CI job red. Real parser tests arrive in Milestone 1. 
 section
 open Grip
 
-private
-def digits
-    : GParser conditional Nat :=
+private def digits : GParser conditional Nat :=
   GParser.takeWhile1 (fun b => 48 ≤ b && b ≤ 57)
 
 private def sample :=
@@ -29,14 +27,10 @@ private def sample :=
 
 /-! ### Incremental migration: recover one precise primitive without grading the caller. -/
 
-private
-def migratedDigits
-    : GParser conditional Nat :=
+private def migratedDigits : GParser conditional Nat :=
   GParser.takeWhile1 Ascii.isDigit
 
-private
-def migratedGroups
-    : Parser (List Nat) :=
+private def migratedGroups : Parser (List Nat) :=
   GParser.many migratedDigits
 
 #guard (GParser.run? migratedGroups "12".toUTF8) == some [2]
@@ -44,9 +38,7 @@ def migratedGroups
 -- fix: a recursive nested-parens parser returning the nesting depth. Each level
 -- consumes "(" before recursing, so the always-consume clamp never fires on
 -- balanced input; unbalanced input fails.
-private
-def parenDepth
-    : GParser conditional Nat :=
+private def parenDepth : GParser conditional Nat :=
   GParser.fix fun self =>
     GParser.map (· + 1)
       (GParser.seqR (GParser.byte 40)
@@ -59,9 +51,7 @@ def parenDepth
 -- Direct left recursion type-checks, but the input-bounded fuel makes it terminate as a
 -- failure instead of looping. Guarded bodies such as `parenDepth` above have the stronger
 -- completeness theorem; the `conditional → conditional` transformer type alone is insufficient.
-private
-def directLeft
-    : GParser conditional Unit :=
+private def directLeft : GParser conditional Unit :=
   GParser.fix fun self => self
 
 #guard (match directLeft.run "x".toUTF8 0 with

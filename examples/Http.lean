@@ -59,9 +59,7 @@ that is not the `:` separator. -/
   GParser.seqR (GParser.byte Ascii.cr) (GParser.byte Ascii.lf)
 
 /-- One header line, as `(name, value)`; always consumes (the name is non-empty). -/
-private
-def header
-    : GParser conditional (String × String) :=
+private def header : GParser conditional (String × String) :=
   GParser.map2 (·, ·)
     (GParser.capture (GParser.takeWhile1 isNameByte))          -- field name
     (GParser.seqR (GParser.byte Ascii.colon)                   -- ':'
@@ -72,24 +70,16 @@ def header
 -- Request-line fields, weakened to the ungraded `Parser` face so the `do`-block below
 -- binds them directly. `weakenFallible` makes the graded-to-`Parser` step explicit
 -- (the same bridge `Grip.Examples.Json` uses).
-private
-def methodP
-    : Parser String :=
+private def methodP : Parser String :=
   GParser.weakenFallible (GParser.capture (GParser.takeWhile1 Ascii.isUpper))
 private def spP : Parser Unit := GParser.weakenFallible (GParser.byte Ascii.space)
 private def slashP : Parser Unit := GParser.weakenFallible (GParser.string "HTTP/")
-private
-def targetP
-    : Parser String :=
+private def targetP : Parser String :=
   GParser.weakenFallible (GParser.capture (GParser.takeWhile1 (· != Ascii.space)))
-private
-def versionP
-    : Parser String :=
+private def versionP : Parser String :=
   GParser.weakenFallible (GParser.capture (GParser.takeWhile1 isVersionByte))
 private def crlfP : Parser Unit := GParser.weakenFallible crlf
-private
-def headersP
-    : Parser (List (String × String)) :=
+private def headersP : Parser (List (String × String)) :=
   GParser.weakenFallible (GParser.many header)
 
 /-- Parse a request start-line and its header block. -/
