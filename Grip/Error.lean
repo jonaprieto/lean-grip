@@ -41,7 +41,9 @@ structure Err where
 diagnostic. One constructor holds the value and the new offset inline, so a
 successful step allocates a single object rather than an `Except.ok` wrapping a `Prod`
 (the representation `Except Err (α × Nat)` used before). -/
-inductive ParseResult (α : Type) where
+inductive ParseResult
+    (α : Type)
+    where
   /-- Success: the parsed `value` and the `newOffset` reached. -/
   | ok : (value : α) → (newOffset : Nat) → ParseResult α
   /-- Failure carrying an `Err`; built-in combinators retain the furthest one they observe. -/
@@ -64,14 +66,19 @@ structure ParseError where
 /-- Compose a human-readable message from an expected-label list.
 Returns "expected a or b" when labels are present, or "unexpected input" when
 the list is empty. -/
-private def uniqueStrings (items : List String) : List String :=
+private
+def uniqueStrings
+    (items : List String)
+    : List String :=
   let rec go (seen : List String) : List String → List String
     | [] => seen
     | item :: rest =>
         if seen.contains item then go seen rest else go (seen ++ [item]) rest
   go [] items
 
-def ParseError.message (e : ParseError) : String :=
+def ParseError.message
+    (e : ParseError)
+    : String :=
   match uniqueStrings e.expected with
   | []  => "unexpected input"
   | xs  => "expected " ++ String.intercalate " or " xs
@@ -79,8 +86,12 @@ def ParseError.message (e : ParseError) : String :=
 /-- `lineColLoop arr safePos i lineStart line` counts 0x0a bytes in
 `arr[i : safePos]` and returns `(lineNumber, colNumber)`, both 1-based.
 Terminates because `safePos - i` strictly decreases each step. -/
-private def lineColLoop (arr : ByteArray) (safePos : Nat) :
-    (i lineStart line : Nat) → Nat × Nat
+private
+def lineColLoop
+    (arr : ByteArray)
+    (safePos : Nat)
+    : (i lineStart line : Nat) →
+      Nat × Nat
   | i, lineStart, line =>
     if i >= safePos then
       (line, safePos - lineStart + 1)
@@ -93,13 +104,21 @@ termination_by i _ _ => safePos - i
 /-- Compute 1-based `(line, col)` for byte offset `pos` in `arr`.
 Line is the count of 0x0a bytes in `arr[0:pos]` plus one.
 Col is `pos` minus the index just after the last 0x0a before `pos`, plus one. -/
-private def lineColOf (arr : ByteArray) (pos : Nat) : Nat × Nat :=
+private
+def lineColOf
+    (arr : ByteArray)
+    (pos : Nat)
+    : Nat × Nat :=
   lineColLoop arr (min pos arr.size) 0 0 1
 
 /-- Find the byte index of the start of the line containing `pos`: the position
 just after the last 0x0a strictly before `pos`, or 0 if none.
 `go i` scans backwards from `i` to 0. -/
-private def lineStartOf (arr : ByteArray) (pos : Nat) : Nat :=
+private
+def lineStartOf
+    (arr : ByteArray)
+    (pos : Nat)
+    : Nat :=
   let safePos := min pos arr.size
   let rec go : Nat → Nat
     | 0     => 0
@@ -108,7 +127,11 @@ private def lineStartOf (arr : ByteArray) (pos : Nat) : Nat :=
 
 /-- Find the byte index of the end of the line containing `pos`: the first 0x0a
 at or after `pos`, or `arr.size` if none. -/
-private def lineEndOf (arr : ByteArray) (pos : Nat) : Nat :=
+private
+def lineEndOf
+    (arr : ByteArray)
+    (pos : Nat)
+    : Nat :=
   let safePos := min pos arr.size
   let rec go (i : Nat) : Nat :=
     if i >= arr.size then arr.size
@@ -119,7 +142,11 @@ private def lineEndOf (arr : ByteArray) (pos : Nat) : Nat :=
 
 /-- Extract the source line containing byte offset `pos` as a `String`.
 Returns an empty string when UTF-8 decoding fails. -/
-private def sourceLine (arr : ByteArray) (pos : Nat) : String :=
+private
+def sourceLine
+    (arr : ByteArray)
+    (pos : Nat)
+    : String :=
   let s := lineStartOf arr pos
   let e := lineEndOf arr pos
   match String.fromUTF8? (arr.extract s e) with
@@ -127,13 +154,19 @@ private def sourceLine (arr : ByteArray) (pos : Nat) : String :=
   | none     => ""
 
 /-- Build a `ParseError` from a raw `Err` and the source `ByteArray`. -/
-def mkParseError (arr : ByteArray) (e : Err) : ParseError :=
+def mkParseError
+    (arr : ByteArray)
+    (e : Err)
+    : ParseError :=
   let (line, col) := lineColOf arr e.pos
   { pos := e.pos, line := line, col := col, expected := e.expected }
 
 /-- Render a dependency-free plain fallback as `line:col: message`, followed by the offending
 source line and a caret (`^`). Rich terminal presentation belongs to `grip-diagnostics`. -/
-def ParseError.pretty (e : ParseError) (src : ByteArray) : String :=
+def ParseError.pretty
+    (e : ParseError)
+    (src : ByteArray)
+    : String :=
   let msg     := e.message
   let srcLine := sourceLine src e.pos
   let caret   := String.ofList (List.replicate (e.col - 1) ' ') ++ "^"

@@ -31,7 +31,9 @@ executable maps in both directions and proves both round trips using Lean's stan
 identical Grade/Modality after constructor renaming so both representations coexist. -/
 namespace Prim
 
-structure Text (n : Nat) where
+structure Text
+    (n : Nat)
+    where
   bytes : ByteArray
   valid : n ≤ bytes.size
 
@@ -43,7 +45,11 @@ abbrev Text.pos {n : Nat} (t : Text n) : Nat := t.bytes.size - n
   cases h
   rfl
 
-structure Success (n : Nat) (consumes : Modality) (α : Type) where
+structure Success
+    (n : Nat)
+    (consumes : Modality)
+    (α : Type)
+    where
   result : α
   restSize : Nat
   witness : consumptionWitness restSize n consumes
@@ -57,7 +63,10 @@ structure Success (n : Nat) (consumes : Modality) (α : Type) where
   cases hs
   rfl
 
-structure Failure (n : Nat) (ε : Type) where
+structure Failure
+    (n : Nat)
+    (ε : Type)
+    where
   error : ε
   restSize : Nat
   witness : restSize ≤ n
@@ -71,17 +80,32 @@ structure Failure (n : Nat) (ε : Type) where
   cases hs
   rfl
 
-inductive Outcome (ε : Type) (n : Nat) (consumes : Modality) (α : Type) where
+inductive Outcome
+    (ε : Type)
+    (n : Nat)
+    (consumes : Modality)
+    (α : Type)
+    where
   | failure : Failure n ε → Outcome ε n consumes α
   | success : Success n consumes α → Outcome ε n consumes α
 
-def Outcome.Sound {ε : Type} {n : Nat} {c : Modality} {α : Type}
-    (errors : Modality) (o : Outcome ε n c α) : Prop :=
+def Outcome.Sound
+    {ε : Type}
+    {n : Nat}
+    {c : Modality}
+    {α : Type}
+    (errors : Modality)
+    (o : Outcome ε n c α)
+    : Prop :=
   match o with
   | .failure _ => possibly ≤ errors
   | .success _ => errors ≤ possibly
 
-structure Parser (ε : Type) (g : Grade) (α : Type) where
+structure Parser
+    (ε : Type)
+    (g : Grade)
+    (α : Type)
+    where
   run : ∀ {n : Nat}, Text n → Outcome ε n g.consumes α
   sound : ∀ {n : Nat} (t : Text n), Outcome.Sound g.errors (run t)
 
@@ -103,10 +127,16 @@ open Grip
 namespace Current
 
 /-- Equality of observable runs when the starting offset is valid. -/
-def ValidRunEq {g : Grade} {α : Type} (p q : GParser g α) : Prop :=
+def ValidRunEq
+    {g : Grade}
+    {α : Type}
+    (p q : GParser g α)
+    : Prop :=
   ∀ (arr : ByteArray) (pos : Nat), pos ≤ arr.size → p.run arr pos = q.run arr pos
 
-def zeroOutside : GParser pure Bool where
+def zeroOutside
+    : GParser pure Bool
+    where
   run := fun _ q => .ok false q
   cwit := by intro arr q a q' h; cases h; rfl
   ewit := by intro h; exact Modality.noConfusion h
@@ -114,7 +144,9 @@ def zeroOutside : GParser pure Bool where
   bwit := by intro arr q a q' hq h; cases h; exact hq
   fwit := by intro arr q e hq h; contradiction
 
-def signalOutside : GParser pure Bool where
+def signalOutside
+    : GParser pure Bool
+    where
   run := fun arr q => .ok (decide (arr.size < q)) q
   cwit := by intro arr q a q' h; cases h; rfl
   ewit := by intro h; exact Modality.noConfusion h
@@ -124,19 +156,29 @@ def signalOutside : GParser pure Bool where
 
 /-- PrimParser cannot observe the distinction between these parsers because its
 `Text n` input represents only valid starting offsets. -/
-theorem same_on_valid_inputs : ValidRunEq zeroOutside signalOutside := by
+theorem same_on_valid_inputs
+    : ValidRunEq zeroOutside signalOutside := by
   intro arr q hq
   simp [zeroOutside, signalOutside, Nat.not_lt.mpr hq]
 
-theorem different_as_GParser : zeroOutside ≠ signalOutside := by
+theorem different_as_GParser
+    : zeroOutside ≠ signalOutside := by
   intro h
   have hr := congrArg (fun p => p.run ByteArray.empty 1) h
   simp [zeroOutside, signalOutside] at hr
 
 /-- The former future-position counterexample is now excluded by the carrier itself. -/
-theorem failure_in_bounds {g : Grade} {α : Type} (p : GParser g α)
-    {arr : ByteArray} {q : Nat} {e : Err} (hq : q ≤ arr.size)
-    (h : p.run arr q = .error e) : q ≤ e.pos ∧ e.pos ≤ arr.size :=
+theorem failure_in_bounds
+    {g : Grade}
+    {α : Type}
+    (p : GParser g α)
+    {arr : ByteArray}
+    {q : Nat}
+    {e : Err}
+    (hq : q ≤ arr.size)
+    (h : p.run arr q = .error e)
+    : q ≤ e.pos ∧
+      e.pos ≤ arr.size :=
   p.fwit hq h
 
 end Current
@@ -145,7 +187,10 @@ end Current
 * callers provide an erased proof that the start offset is in bounds;
 * failures prove that their absolute position lies between start and EOF.
 The runtime data remains `ByteArray → Nat → ParseResult α`. -/
-structure SafeGParser (g : Grade) (α : Type) where
+structure SafeGParser
+    (g : Grade)
+    (α : Type)
+    where
   run : ∀ (arr : ByteArray) (q : Nat), q ≤ arr.size → ParseResult α
   cwit : ∀ {arr q} (hq : q ≤ arr.size) {a q'},
     run arr q hq = .ok a q' → consumptionWitness q q' g.consumes
@@ -168,31 +213,49 @@ structure SafeGParser (g : Grade) (α : Type) where
   subst hr
   rfl
 
-theorem SafeGParser.run_congr {g : Grade} {α : Type} (p : SafeGParser g α)
-    {arr : ByteArray} {q q' : Nat} (h : q = q')
-    (hq : q ≤ arr.size) (hq' : q' ≤ arr.size) :
-    p.run arr q hq = p.run arr q' hq' := by
+theorem SafeGParser.run_congr
+    {g : Grade}
+    {α : Type}
+    (p : SafeGParser g α)
+    {arr : ByteArray}
+    {q q' : Nat}
+    (h : q = q')
+    (hq : q ≤ arr.size)
+    (hq' : q' ≤ arr.size)
+    : p.run arr q hq = p.run arr q' hq' := by
   subst q'
   rfl
 
-private theorem toRestWitness {c : Modality} {n q' : Nat}
+private
+theorem toRestWitness
+    {c : Modality}
+    {n q' : Nat}
     (t : Prim.Text n)
     (hc : consumptionWitness t.pos q' c)
-    (hq' : q' ≤ t.bytes.size) :
-    consumptionWitness (t.bytes.size - q') n c := by
+    (hq' : q' ≤ t.bytes.size)
+    : consumptionWitness (t.bytes.size - q') n c := by
   have hv := t.valid
   simp only [Prim.Text.pos] at hc
   cases c <;> simp only [consumptionWitness] at hc ⊢ <;> omega
 
-private theorem fromRestWitness {c : Modality} {α : Type}
-    {arr : ByteArray} {q : Nat} (hq : q ≤ arr.size)
-    (s : Prim.Success (arr.size - q) c α) :
-    consumptionWitness q (arr.size - s.restSize) c := by
+private
+theorem fromRestWitness
+    {c : Modality}
+    {α : Type}
+    {arr : ByteArray}
+    {q : Nat}
+    (hq : q ≤ arr.size)
+    (s : Prim.Success (arr.size - q) c α)
+    : consumptionWitness q (arr.size - s.restSize) c := by
   have hw := s.witness
   cases c <;> simp only [consumptionWitness] at hw ⊢ <;> omega
 
-def toPrim {g : Grade} {α : Type} (p : SafeGParser g α) :
-    Prim.Parser (List String) g α where
+def toPrim
+    {g : Grade}
+    {α : Type}
+    (p : SafeGParser g α)
+    : Prim.Parser (List String) g α
+    where
   run {n} t :=
     let q := t.pos
     have hq : q ≤ t.bytes.size := Nat.sub_le ..
@@ -234,8 +297,12 @@ def toPrim {g : Grade} {α : Type} (p : SafeGParser g α) :
       rw [hs] at h
       contradiction
 
-def fromPrim {g : Grade} {α : Type} (p : Prim.Parser (List String) g α) :
-    SafeGParser g α where
+def fromPrim
+    {g : Grade}
+    {α : Type}
+    (p : Prim.Parser (List String) g α)
+    : SafeGParser g α
+    where
   run arr q hq :=
     let t : Prim.Text (arr.size - q) := ⟨arr, by omega⟩
     match p.run t with
@@ -291,9 +358,14 @@ def fromPrim {g : Grade} {α : Type} (p : Prim.Parser (List String) g α) :
       change q ≤ arr.size - f.restSize ∧ arr.size - f.restSize ≤ arr.size
       constructor <;> omega
 
-theorem fromPrim_toPrim_run {g : Grade} {α : Type}
-    (p : SafeGParser g α) (arr : ByteArray) (q : Nat) (hq : q ≤ arr.size) :
-    (fromPrim (toPrim p)).run arr q hq = p.run arr q hq := by
+theorem fromPrim_toPrim_run
+    {g : Grade}
+    {α : Type}
+    (p : SafeGParser g α)
+    (arr : ByteArray)
+    (q : Nat)
+    (hq : q ≤ arr.size)
+    : (fromPrim (toPrim p)).run arr q hq = p.run arr q hq := by
   let t : Prim.Text (arr.size - q) := ⟨arr, by omega⟩
   change
     (match (toPrim p).run t with
@@ -334,8 +406,11 @@ theorem fromPrim_toPrim_run {g : Grade} {α : Type}
       change ParseResult.error ⟨arr.size - (arr.size - e.pos), e.expected⟩ = ParseResult.error e
       rw [Nat.sub_sub_self hb]
 
-theorem fromPrim_toPrim {g : Grade} {α : Type}
-    (p : SafeGParser g α) : fromPrim (toPrim p) = p := by
+theorem fromPrim_toPrim
+    {g : Grade}
+    {α : Type}
+    (p : SafeGParser g α)
+    : fromPrim (toPrim p) = p := by
   apply SafeGParser.ext
   exact fromPrim_toPrim_run p
 
@@ -343,7 +418,10 @@ theorem fromPrim_toPrim {g : Grade} {α : Type}
 out-of-bounds calls. It keeps Grip's flat `ParseResult`, absolute offsets, and
 erased witnesses; only the valid start state moves into the input type. -/
 
-structure SizedGParser (g : Grade) (α : Type) where
+structure SizedGParser
+    (g : Grade)
+    (α : Type)
+    where
   run : ∀ {n : Nat}, Prim.Text n → ParseResult α
   cwit : ∀ {n : Nat} {t : Prim.Text n} {a q'},
     run t = .ok a q' → consumptionWitness t.pos q' g.consumes
@@ -365,16 +443,26 @@ structure SizedGParser (g : Grade) (α : Type) where
   subst hr
   rfl
 
-private theorem fromRestWitnessText {c : Modality} {n : Nat} {α : Type}
-    (t : Prim.Text n) (s : Prim.Success n c α) :
-    consumptionWitness t.pos (t.bytes.size - s.restSize) c := by
+private
+theorem fromRestWitnessText
+    {c : Modality}
+    {n : Nat}
+    {α : Type}
+    (t : Prim.Text n)
+    (s : Prim.Success n c α)
+    : consumptionWitness t.pos (t.bytes.size - s.restSize) c := by
   have hw := s.witness
   have hv := t.valid
   simp only [Prim.Text.pos]
   cases c <;> simp only [consumptionWitness] at hw ⊢ <;> omega
 
-def outcomeOfSized {g : Grade} {α : Type} (p : SizedGParser g α)
-    {n : Nat} (t : Prim.Text n) : Prim.Outcome (List String) n g.consumes α :=
+def outcomeOfSized
+    {g : Grade}
+    {α : Type}
+    (p : SizedGParser g α)
+    {n : Nat}
+    (t : Prim.Text n)
+    : Prim.Outcome (List String) n g.consumes α :=
   match h : p.run t with
   | .ok a q' =>
     .success {
@@ -392,8 +480,12 @@ def outcomeOfSized {g : Grade} {α : Type} (p : SizedGParser g α)
         omega
     }
 
-def sizedToPrim {g : Grade} {α : Type} (p : SizedGParser g α) :
-    Prim.Parser (List String) g α where
+def sizedToPrim
+    {g : Grade}
+    {α : Type}
+    (p : SizedGParser g α)
+    : Prim.Parser (List String) g α
+    where
   run t := outcomeOfSized p t
   sound {n} t := by
     simp only [outcomeOfSized]
@@ -413,14 +505,23 @@ def sizedToPrim {g : Grade} {α : Type} (p : SizedGParser g α) :
       rw [hs] at h
       contradiction
 
-def resultOfPrim {g : Grade} {α : Type} (p : Prim.Parser (List String) g α)
-    {n : Nat} (t : Prim.Text n) : ParseResult α :=
+def resultOfPrim
+    {g : Grade}
+    {α : Type}
+    (p : Prim.Parser (List String) g α)
+    {n : Nat}
+    (t : Prim.Text n)
+    : ParseResult α :=
   match p.run t with
   | .success s => .ok s.result (t.bytes.size - s.restSize)
   | .failure f => .error ⟨t.bytes.size - f.restSize, f.error⟩
 
-def primToSized {g : Grade} {α : Type} (p : Prim.Parser (List String) g α) :
-    SizedGParser g α where
+def primToSized
+    {g : Grade}
+    {α : Type}
+    (p : Prim.Parser (List String) g α)
+    : SizedGParser g α
+    where
   run t := resultOfPrim p t
   cwit := by
     intro n t a q' h
@@ -473,9 +574,13 @@ def primToSized {g : Grade} {α : Type} (p : Prim.Parser (List String) g α) :
       simp only [Prim.Text.pos]
       constructor <;> omega
 
-theorem primToSized_sizedToPrim_run {g : Grade} {α : Type}
-    (p : SizedGParser g α) {n : Nat} (t : Prim.Text n) :
-    resultOfPrim (sizedToPrim p) t = p.run t := by
+theorem primToSized_sizedToPrim_run
+    {g : Grade}
+    {α : Type}
+    (p : SizedGParser g α)
+    {n : Nat}
+    (t : Prim.Text n)
+    : resultOfPrim (sizedToPrim p) t = p.run t := by
   unfold resultOfPrim
   dsimp only [sizedToPrim]
   unfold outcomeOfSized
@@ -506,14 +611,21 @@ theorem primToSized_sizedToPrim_run {g : Grade} {α : Type}
           rw [Nat.sub_sub_self hb]
         _ = p.run t := h.symm
 
-theorem primToSized_sizedToPrim {g : Grade} {α : Type}
-    (p : SizedGParser g α) : primToSized (sizedToPrim p) = p := by
+theorem primToSized_sizedToPrim
+    {g : Grade}
+    {α : Type}
+    (p : SizedGParser g α)
+    : primToSized (sizedToPrim p) = p := by
   apply SizedGParser.ext
   exact primToSized_sizedToPrim_run p
 
-theorem sizedToPrim_primToSized_run {g : Grade} {α : Type}
-    (p : Prim.Parser (List String) g α) {n : Nat} (t : Prim.Text n) :
-    outcomeOfSized (primToSized p) t = p.run t := by
+theorem sizedToPrim_primToSized_run
+    {g : Grade}
+    {α : Type}
+    (p : Prim.Parser (List String) g α)
+    {n : Nat}
+    (t : Prim.Text n)
+    : outcomeOfSized (primToSized p) t = p.run t := by
   cases h : p.run t with
   | success s =>
       unfold outcomeOfSized
@@ -568,13 +680,19 @@ theorem sizedToPrim_primToSized_run {g : Grade} {α : Type}
           _ = p.run t := h.symm
         case calc.step => exact h
 
-theorem sizedToPrim_primToSized {g : Grade} {α : Type}
-    (p : Prim.Parser (List String) g α) : sizedToPrim (primToSized p) = p := by
+theorem sizedToPrim_primToSized
+    {g : Grade}
+    {α : Type}
+    (p : Prim.Parser (List String) g α)
+    : sizedToPrim (primToSized p) = p := by
   apply Prim.Parser.ext
   exact sizedToPrim_primToSized_run p
 
-def sizedParserEquiv (g : Grade) (α : Type) :
-    Equiv (SizedGParser g α) (Prim.Parser (List String) g α) where
+def sizedParserEquiv
+    (g : Grade)
+    (α : Type)
+    : Equiv (SizedGParser g α) (Prim.Parser (List String) g α)
+    where
   toFun := sizedToPrim
   invFun := primToSized
   left_inv := primToSized_sizedToPrim

@@ -46,8 +46,13 @@ theorem failure_position_bounded {g : Grade} (p : GParser g α) {arr : ByteArray
 
 /-- Grade soundness closes the consumption gap: a `conditional` parser cannot succeed
 without advancing the offset. The "consumption liar" is uninhabited. -/
-theorem no_consumption_liar (p : GParser conditional α) {arr : ByteArray} {q : Nat}
-    {a : α} (h : p.run arr q = .ok a q) : False :=
+theorem no_consumption_liar
+    (p : GParser conditional α)
+    {arr : ByteArray}
+    {q : Nat}
+    {a : α}
+    (h : p.run arr q = .ok a q)
+    : False :=
   absurd (p.cwit h) (Nat.lt_irrefl q)
 
 end Grip.GradeSound
