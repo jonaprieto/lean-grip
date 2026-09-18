@@ -28,7 +28,10 @@ open Grip
 /-- Is `b` a UTF-8 continuation byte (`10xxxxxx`)? -/
 @[inline] private def isCont (b : UInt8) : Bool := 0x80 ≤ b && b ≤ 0xBF
 
-private def validSecond (b0 b1 : UInt8) : Bool :=
+private
+def validSecond
+    (b0 b1 : UInt8)
+    : Bool :=
   if !isCont b1 then false
   else if b0 == 0xE0 then 0xA0 ≤ b1
   else if b0 == 0xED then b1 ≤ 0x9F
@@ -74,8 +77,13 @@ new offset `q + width` (width 1 to 4), or `none` on truncated or invalid input. 
 
 /-- A successful `decodeUtf8` ends within bounds: each branch that returns `some (c, q + k)`
 first checks the byte at `q + (k-1)`, so `q + k ≤ arr.size`. -/
-theorem decodeUtf8_le {arr : ByteArray} {q : Nat} {c : Char} {q' : Nat}
-    (h : decodeUtf8 arr q = some (c, q')) : q' ≤ arr.size := by
+theorem decodeUtf8_le
+    {arr : ByteArray}
+    {q : Nat}
+    {c : Char}
+    {q' : Nat}
+    (h : decodeUtf8 arr q = some (c, q'))
+    : q' ≤ arr.size := by
   simp only [decodeUtf8] at h
   split at h
   · rename_i h0
@@ -165,7 +173,10 @@ theorem decodeUtf8_le {arr : ByteArray} {q : Nat} {c : Char} {q' : Nat}
 @[inline] def GParser.char (c : Char) : GParser conditional Char := GParser.satisfyChar (· == c)
 
 /-- Do the bytes of `bs` from index `i` match `arr` from offset `q`? -/
-def matchBytes (arr bs : ByteArray) (i q : Nat) : Bool :=
+def matchBytes
+    (arr bs : ByteArray)
+    (i q : Nat)
+    : Bool :=
   if i < bs.size then
     if q < arr.size then (arr[q]! == bs[i]!) && matchBytes arr bs (i + 1) (q + 1) else false
   else true
@@ -174,8 +185,12 @@ decreasing_by omega
 
 /-- A successful `matchBytes` starting at a real index (`i < bs.size`) ends within bounds:
 each matched byte requires `q < arr.size`, so `q + (bs.size - i) ≤ arr.size`. -/
-theorem matchBytes_le (arr bs : ByteArray) (i q : Nat) (hi : i < bs.size)
-    (h : matchBytes arr bs i q = true) : q + (bs.size - i) ≤ arr.size := by
+theorem matchBytes_le
+    (arr bs : ByteArray)
+    (i q : Nat)
+    (hi : i < bs.size)
+    (h : matchBytes arr bs i q = true)
+    : q + (bs.size - i) ≤ arr.size := by
   rw [matchBytes] at h
   rw [if_pos hi] at h
   split at h

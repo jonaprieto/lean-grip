@@ -44,7 +44,10 @@ namespace Modality
   | never, never   => never
 
 /-- Infimum on `Modality`: the meet in `never < possibly < always`. -/
-def inf : Modality → Modality → Modality
+def inf
+    : Modality →
+      Modality →
+      Modality
   | never, _       => never
   | _, never       => never
   | possibly, _    => possibly
@@ -56,7 +59,10 @@ instance : Max Modality where max := Modality.sup
 instance : Min Modality where min := Modality.inf
 
 /-- Order relation: `never ≤ possibly ≤ always`. -/
-def le : Modality → Modality → Prop
+def le
+    : Modality →
+      Modality →
+      Prop
   | never, _           => True
   | _, always          => True
   | possibly, possibly => True
@@ -84,7 +90,9 @@ instance (a b : Modality) : Decidable (a ≤ b) :=
     - `always.ite a b = a` (first branch wins)
     - `never.ite a b = b` (second branch wins)
     - `possibly.ite a b = a` when `a = b`, otherwise `possibly` (conservative) -/
-def ite (sel a b : Modality) : Modality :=
+def ite
+    (sel a b : Modality)
+    : Modality :=
   match sel with
   | always   => a
   | never    => b
@@ -126,14 +134,20 @@ def ite (sel a b : Modality) : Modality :=
 theorem sup_comm (a b : Modality) : max a b = max b a := by cases a <;> cases b <;> rfl
 
 /-- If `a ≠ always` then `a ≤ possibly`. -/
-theorem le_possibly_of_ne_always {a : Modality} (h : a ≠ always) : a ≤ possibly := by
+theorem le_possibly_of_ne_always
+    {a : Modality}
+    (h : a ≠ always)
+    : a ≤ possibly := by
   cases a
   · exact True.intro
   · exact True.intro
   · exact absurd rfl h
 
 /-- If `a ≠ never` then `possibly ≤ a`. -/
-theorem possibly_le_of_ne_never {a : Modality} (h : a ≠ never) : possibly ≤ a := by
+theorem possibly_le_of_ne_never
+    {a : Modality}
+    (h : a ≠ never)
+    : possibly ≤ a := by
   cases a
   · exact absurd rfl h
   · exact True.intro

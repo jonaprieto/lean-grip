@@ -25,8 +25,13 @@ open Grip
 namespace Grip.Scanner
 
 /-- Every byte `scanFwd` consumes satisfies the predicate `f`. -/
-theorem scanFwd_mem (arr : ByteArray) (f : UInt8 → Bool) (q i : Nat)
-    (hqi : q ≤ i) (hi : i < scanFwd arr f q) : f arr[i]! = true := by
+theorem scanFwd_mem
+    (arr : ByteArray)
+    (f : UInt8 → Bool)
+    (q i : Nat)
+    (hqi : q ≤ i)
+    (hi : i < scanFwd arr f q)
+    : f arr[i]! = true := by
   rw [scanFwd] at hi
   split at hi
   · rename_i h
@@ -42,8 +47,13 @@ decreasing_by omega
 
 /-- `scanFwd` stops at end-of-input or at the first non-matching byte: starting in bounds, its
 result is either `arr.size` or a position where `f` fails. -/
-theorem scanFwd_stop (arr : ByteArray) (f : UInt8 → Bool) (q : Nat) (hq : q ≤ arr.size) :
-    scanFwd arr f q = arr.size ∨ f arr[scanFwd arr f q]! = false := by
+theorem scanFwd_stop
+    (arr : ByteArray)
+    (f : UInt8 → Bool)
+    (q : Nat)
+    (hq : q ≤ arr.size)
+    : scanFwd arr f q = arr.size ∨
+      f arr[scanFwd arr f q]! = false := by
   rw [scanFwd]
   split
   · rename_i h

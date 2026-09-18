@@ -37,7 +37,11 @@ termination_by arr.size - q
 decreasing_by omega
 
 /-- `scanFwd` never rewinds. -/
-theorem scanFwd_ge (arr : ByteArray) (f : UInt8 → Bool) (q : Nat) : q ≤ scanFwd arr f q := by
+theorem scanFwd_ge
+    (arr : ByteArray)
+    (f : UInt8 → Bool)
+    (q : Nat)
+    : q ≤ scanFwd arr f q := by
   rw [scanFwd]
   split
   · split
@@ -48,14 +52,23 @@ termination_by arr.size - q
 decreasing_by omega
 
 /-- With a leading matching byte, `scanFwd` strictly advances. -/
-theorem scanFwd_gt (arr : ByteArray) (f : UInt8 → Bool) (q : Nat)
-    (h : q < arr.size) (hf : f arr[q] = true) : q < scanFwd arr f q := by
+theorem scanFwd_gt
+    (arr : ByteArray)
+    (f : UInt8 → Bool)
+    (q : Nat)
+    (h : q < arr.size)
+    (hf : f arr[q] = true)
+    : q < scanFwd arr f q := by
   rw [scanFwd, dif_pos h, if_pos hf]
   exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q) (scanFwd_ge arr f (q + 1))
 
 /-- `scanFwd` stays within bounds when it starts within bounds. -/
-theorem scanFwd_le (arr : ByteArray) (f : UInt8 → Bool) (q : Nat) (hq : q ≤ arr.size) :
-    scanFwd arr f q ≤ arr.size := by
+theorem scanFwd_le
+    (arr : ByteArray)
+    (f : UInt8 → Bool)
+    (q : Nat)
+    (hq : q ≤ arr.size)
+    : scanFwd arr f q ≤ arr.size := by
   rw [scanFwd]
   split
   · rename_i hlt
@@ -98,7 +111,10 @@ termination_by arr.size - q
 decreasing_by all_goals omega
 
 /-- `scanStrFwd` never rewinds. -/
-theorem scanStrFwd_ge (arr : ByteArray) (q : Nat) : q ≤ scanStrFwd arr q := by
+theorem scanStrFwd_ge
+    (arr : ByteArray)
+    (q : Nat)
+    : q ≤ scanStrFwd arr q := by
   rw [scanStrFwd]
   split
   · rename_i h
@@ -114,8 +130,11 @@ termination_by arr.size - q
 decreasing_by all_goals omega
 
 /-- `scanStrFwd` stays within bounds when it starts within bounds. -/
-theorem scanStrFwd_le (arr : ByteArray) (q : Nat) (hq : q ≤ arr.size) :
-    scanStrFwd arr q ≤ arr.size := by
+theorem scanStrFwd_le
+    (arr : ByteArray)
+    (q : Nat)
+    (hq : q ≤ arr.size)
+    : scanStrFwd arr q ≤ arr.size := by
   rw [scanStrFwd]
   split
   · rename_i h
@@ -179,8 +198,11 @@ termination_by arr.size - q
 decreasing_by all_goals omega
 
 /-- A successful `scanStrBody` never rewinds. -/
-theorem scanStrBody_ge (arr : ByteArray) (q q' : Nat) (h : scanStrBody arr q = some q') :
-    q ≤ q' := by
+theorem scanStrBody_ge
+    (arr : ByteArray)
+    (q q' : Nat)
+    (h : scanStrBody arr q = some q')
+    : q ≤ q' := by
   rw [scanStrBody] at h
   split at h
   · split at h
@@ -205,8 +227,11 @@ termination_by arr.size - q
 decreasing_by all_goals omega
 
 /-- A successful `scanStrBody` stays within bounds. -/
-theorem scanStrBody_le (arr : ByteArray) (q q' : Nat) (h : scanStrBody arr q = some q') :
-    q' ≤ arr.size := by
+theorem scanStrBody_le
+    (arr : ByteArray)
+    (q q' : Nat)
+    (h : scanStrBody arr q = some q')
+    : q' ≤ arr.size := by
   rw [scanStrBody] at h
   split at h
   · rename_i hq
@@ -237,8 +262,11 @@ closing `"`) or `none`. -/
   if h : q < arr.size then (if arr[q] == 34 then scanStrBody arr (q + 1) else none) else none
 
 /-- A successful `scanStrLit` strictly advances (it consumes the opening quote). -/
-theorem scanStrLit_gt (arr : ByteArray) (q q' : Nat) (h : scanStrLit arr q = some q') :
-    q < q' := by
+theorem scanStrLit_gt
+    (arr : ByteArray)
+    (q q' : Nat)
+    (h : scanStrLit arr q = some q')
+    : q < q' := by
   rw [scanStrLit] at h
   split at h
   · split at h
@@ -247,8 +275,11 @@ theorem scanStrLit_gt (arr : ByteArray) (q q' : Nat) (h : scanStrLit arr q = som
   · exact absurd h (by simp)
 
 /-- A successful `scanStrLit` stays within bounds. -/
-theorem scanStrLit_le (arr : ByteArray) (q q' : Nat) (h : scanStrLit arr q = some q') :
-    q' ≤ arr.size := by
+theorem scanStrLit_le
+    (arr : ByteArray)
+    (q q' : Nat)
+    (h : scanStrLit arr q = some q')
+    : q' ≤ arr.size := by
   rw [scanStrLit] at h
   split at h
   · split at h
@@ -349,8 +380,15 @@ termination_by arr.size - q
 decreasing_by (obtain ⟨h1, h2⟩ := _hq; omega)
 
 /-- `foldFwd` never rewinds. -/
-theorem foldFwd_ge {ge : Modality} {α β : Type} (step : β → α → β) (p : GParser ⟨ge, always⟩ α)
-    (arr : ByteArray) (a : β) (q : Nat) : q ≤ (foldFwd step p arr a q).2 := by
+theorem foldFwd_ge
+    {ge : Modality}
+    {α β : Type}
+    (step : β → α → β)
+    (p : GParser ⟨ge, always⟩ α)
+    (arr : ByteArray)
+    (a : β)
+    (q : Nat)
+    : q ≤ (foldFwd step p arr a q).2 := by
   rw [foldFwd]
   split
   next x q' hp =>
@@ -363,9 +401,16 @@ termination_by arr.size - q
 decreasing_by omega
 
 /-- `foldFwd` stays within bounds when it starts within bounds (using the element's `bwit`). -/
-theorem foldFwd_le {ge : Modality} {α β : Type} (step : β → α → β) (p : GParser ⟨ge, always⟩ α)
-    (arr : ByteArray) (a : β) (q : Nat) (hq : q ≤ arr.size) :
-    (foldFwd step p arr a q).2 ≤ arr.size := by
+theorem foldFwd_le
+    {ge : Modality}
+    {α β : Type}
+    (step : β → α → β)
+    (p : GParser ⟨ge, always⟩ α)
+    (arr : ByteArray)
+    (a : β)
+    (q : Nat)
+    (hq : q ≤ arr.size)
+    : (foldFwd step p arr a q).2 ≤ arr.size := by
   rw [foldFwd]
   split
   next x q' hp =>
@@ -418,7 +463,10 @@ theorem natFwd_eq (arr : ByteArray) (acc q : Nat) :
   rw [natFwd]
 
 /-- `natFwd` never rewinds. -/
-theorem natFwd_ge (arr : ByteArray) (acc q : Nat) : q ≤ (natFwd arr acc q).2 := by
+theorem natFwd_ge
+    (arr : ByteArray)
+    (acc q : Nat)
+    : q ≤ (natFwd arr acc q).2 := by
   rw [natFwd_eq]
   split
   next hbound =>
@@ -430,15 +478,22 @@ termination_by arr.size - q
 decreasing_by omega
 
 /-- With a leading digit, `natFwd` strictly advances. -/
-theorem natFwd_gt (arr : ByteArray) (acc q : Nat) (h : q < arr.size)
-    (hd : (48 ≤ arr[q] && arr[q] ≤ 57) = true) : q < (natFwd arr acc q).2 := by
+theorem natFwd_gt
+    (arr : ByteArray)
+    (acc q : Nat)
+    (h : q < arr.size)
+    (hd : (48 ≤ arr[q] && arr[q] ≤ 57) = true)
+    : q < (natFwd arr acc q).2 := by
   rw [natFwd_eq, dif_pos h, if_pos hd]
   exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q)
     (natFwd_ge arr (acc * 10 + (arr[q].toNat - 48)) (q + 1))
 
 /-- `natFwd` stays within bounds when it starts within bounds. -/
-theorem natFwd_le (arr : ByteArray) (acc q : Nat) (hq : q ≤ arr.size) :
-    (natFwd arr acc q).2 ≤ arr.size := by
+theorem natFwd_le
+    (arr : ByteArray)
+    (acc q : Nat)
+    (hq : q ≤ arr.size)
+    : (natFwd arr acc q).2 ≤ arr.size := by
   rw [natFwd_eq]
   split
   next hbound =>

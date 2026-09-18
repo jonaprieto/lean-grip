@@ -45,7 +45,10 @@ the type proves only its interval, not that every client parser reports an hones
 
 The five `Prop` fields are the *parser soundness* witnesses; they are erased at
 runtime (proof-irrelevant, carrying no data), so `run` is the whole runtime cost. -/
-structure GParser (g : Grade) (α : Type) where
+structure GParser
+    (g : Grade)
+    (α : Type)
+    where
   /-- Run the parser at an offset, returning `.ok value newOffset` on success or `.error e` on
   failure. -/
   run : ByteArray → Nat → ParseResult α
@@ -75,9 +78,12 @@ variable {g g' : Grade} {α β : Type}
 
 /-- Chain two consumption witnesses across a shared midpoint. Used by the sequencing
 combinators in `Grip.Byte`. -/
-theorem cw_seq {c0 c1 : Modality} {q r s : Nat}
-    (w0 : consumptionWitness q r c0) (w1 : consumptionWitness r s c1) :
-    consumptionWitness q s (max c0 c1) := by
+theorem cw_seq
+    {c0 c1 : Modality}
+    {q r s : Nat}
+    (w0 : consumptionWitness q r c0)
+    (w1 : consumptionWitness r s c1)
+    : consumptionWitness q s (max c0 c1) := by
   have h := consumptionWitness.trans w1 w0
   rwa [Modality.sup_comm] at h
 
@@ -167,14 +173,26 @@ without unfolding the fuel recursion. -/
 /-- A raw result paired with the erased failure-position contract needed to expose it as a
 `GParser` run. The subtype erases to its `ParseResult`; it exists only to let the structurally
 recursive fuel approximation carry its induction hypothesis. -/
-private abbrev BoundedResult (arr : ByteArray) (q : Nat) (α : Type) :=
+private
+abbrev BoundedResult
+    (arr : ByteArray)
+    (q : Nat)
+    (α : Type)
+    :=
   { r : ParseResult α // ∀ {e}, q ≤ arr.size → r = .error e →
       q ≤ e.pos ∧ e.pos ≤ arr.size }
 
-private theorem clampAdvance_fwit {arr : ByteArray} {q : Nat} {r : ParseResult α}
+private
+theorem clampAdvance_fwit
+    {arr : ByteArray}
+    {q : Nat}
+    {r : ParseResult α}
     (hr : ∀ {e}, q ≤ arr.size → r = .error e → q ≤ e.pos ∧ e.pos ≤ arr.size)
-    {e : Err} (hq : q ≤ arr.size) (h : clampAdvance arr q r = .error e) :
-    q ≤ e.pos ∧ e.pos ≤ arr.size := by
+    {e : Err}
+    (hq : q ≤ arr.size)
+    (h : clampAdvance arr q r = .error e)
+    : q ≤ e.pos ∧
+      e.pos ≤ arr.size := by
   simp only [clampAdvance] at h
   split at h
   next a q' =>
@@ -278,8 +296,11 @@ above for the totality-not-productivity caveat. -/
 run is `fixFuel f n` behind the advance clamp. Exposed (with unfolding lemmas below) so the
 metatheory can reason about `fixFuel` without unfolding the anonymous inner structure; see
 `grip-props/GripProps/FixComplete.lean`. -/
-def GParser.fixSelf (f : GParser conditional α → GParser conditional α) (n : Nat) :
-    GParser conditional α where
+def GParser.fixSelf
+    (f : GParser conditional α → GParser conditional α)
+    (n : Nat)
+    : GParser conditional α
+    where
   run a p := clampAdvance a p (GParser.fixFuel f n a p)
   cwit := by
     intro a p x p' h

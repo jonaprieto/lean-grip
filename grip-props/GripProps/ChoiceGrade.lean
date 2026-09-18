@@ -36,7 +36,9 @@ variable {α : Type}
 /-- No parser inhabits the `impossible` grade. On empty input, `swit` (never-error) forces a
 success ending at some `q'`, `cwit` (always-consume) forces `0 < q'`, and `bwit` (bounds)
 forces `q' ≤ ByteArray.empty.size = 0`; `0 < q' ≤ 0` is absurd. -/
-theorem impossible_uninhabited (p : GParser impossible α) : False := by
+theorem impossible_uninhabited
+    (p : GParser impossible α)
+    : False := by
   obtain ⟨a, q', h⟩ := p.swit rfl ByteArray.empty 0
   have hlt : 0 < q' := p.cwit h
   have hle : q' ≤ 0 := p.bwit (Nat.zero_le _) h

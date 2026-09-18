@@ -36,38 +36,52 @@ namespace Grade
 -- Named grades ----------------------------------------------------------
 
 /-- A parser that always consumes and possibly errors. -/
-abbrev conditional : Grade where
+abbrev conditional
+    : Grade
+    where
   consumes := always
   errors   := possibly
 
 /-- A parser that possibly consumes and never errors. -/
-abbrev flexible : Grade where
+abbrev flexible
+    : Grade
+    where
   consumes := possibly
   errors   := never
 
 /-- A parser that possibly consumes and possibly errors. -/
-abbrev fallible : Grade where
+abbrev fallible
+    : Grade
+    where
   consumes := possibly
   errors   := possibly
 
 /-- A parser that never consumes and never errors. -/
-abbrev pure : Grade where
+abbrev pure
+    : Grade
+    where
   consumes := never
   errors   := never
 
 /-- A parser that never consumes and possibly errors. -/
-abbrev lookahead : Grade where
+abbrev lookahead
+    : Grade
+    where
   consumes := never
   errors   := possibly
 
 /-- A parser that never consumes and always errors. -/
-abbrev empty : Grade where
+abbrev empty
+    : Grade
+    where
   consumes := never
   errors   := always
 
 /-- The impossible grade: always consumes, never errors.
     No parser can inhabit this grade on arbitrary input (it must accept empty input). -/
-abbrev impossible : Grade where
+abbrev impossible
+    : Grade
+    where
   consumes := always
   errors   := never
 
@@ -92,18 +106,25 @@ instance : One Grade := ⟨Grade.one⟩
 /-- Ordered-choice grade: errors is the meet (both must agree to fail),
     consumption is `a.errors.ite b.consumes a.consumes`
     (if `a` always errors, use `b`'s consumption; if `a` never errors, use `a`'s). -/
-def choice (a b : Grade) : Grade where
+def choice
+    (a b : Grade)
+    : Grade
+    where
   errors   := min a.errors b.errors
   consumes := a.errors.ite b.consumes a.consumes
 
 -- Lemmas needed by the byte-parser proofs --------------------------------
 
 /-- The error grade of a product is the join of the error grades. -/
-theorem grade_mul_errors (a b : Grade) : (a * b).errors = max a.errors b.errors := by
+theorem grade_mul_errors
+    (a b : Grade)
+    : (a * b).errors = max a.errors b.errors := by
   cases a; cases b; rfl
 
 /-- The consumption grade of a product is the join of the consumption grades. -/
-theorem grade_mul_consumes (a b : Grade) : (a * b).consumes = max a.consumes b.consumes := by
+theorem grade_mul_consumes
+    (a b : Grade)
+    : (a * b).consumes = max a.consumes b.consumes := by
   cases a; cases b; rfl
 
 -- Guard checks -----------------------------------------------------------
@@ -123,7 +144,10 @@ export Grade (conditional flexible fallible pure lookahead empty impossible)
     - `always`   requires `n < m` (at least one byte consumed)
     - `possibly` allows `n ≤ m` (consumed some or none)
     - `never`    requires `n = m` (no input consumed) -/
-abbrev consumptionWitness (n m : Nat) : Modality → Prop
+abbrev consumptionWitness
+    (n m : Nat)
+    : Modality →
+      Prop
   | always   => n < m
   | possibly => n ≤ m
   | never    => n = m
@@ -131,7 +155,11 @@ abbrev consumptionWitness (n m : Nat) : Modality → Prop
 namespace consumptionWitness
 
 /-- Every consumption witness is monotone in the absolute input offset. -/
-theorem le {n m : Nat} {a : Modality} (w : consumptionWitness n m a) : n ≤ m := by
+theorem le
+    {n m : Nat}
+    {a : Modality}
+    (w : consumptionWitness n m a)
+    : n ≤ m := by
   cases a <;> simp only [consumptionWitness] at w <;> omega
 
 /-- A reflexive witness holds for any grade `a ≤ possibly`
@@ -149,7 +177,9 @@ theorem le {n m : Nat} {a : Modality} (w : consumptionWitness n m a) : n ≤ m :
 /-- Transitivity: chain two witnesses through a common midpoint.
     If `gc` witnesses `(n2, n1)` and `gc'` witnesses `(n3, n2)`,
     then `max gc gc'` witnesses `(n3, n1)`. -/
-theorem trans {gc gc' : Modality} {n1 n2 n3 : Nat}
+theorem trans
+    {gc gc' : Modality}
+    {n1 n2 n3 : Nat}
     (w1 : consumptionWitness n2 n1 gc)
     (w2 : consumptionWitness n3 n2 gc')
     : consumptionWitness n3 n1 (max gc gc') := by
@@ -163,7 +193,9 @@ theorem trans {gc gc' : Modality} {n1 n2 n3 : Nat}
 /-- If the error grade `ge'` is at most `possibly` (i.e. `ge' ≠ always`),
     a consumption witness for the second branch `gc'` lifts to a witness for
     the `ite`-computed consumption `ge'.ite gc gc'`. -/
-theorem ite_left {ge' gc gc' : Modality} {n m : Nat}
+theorem ite_left
+    {ge' gc gc' : Modality}
+    {n m : Nat}
     (c : ge' ≤ possibly)
     (w : consumptionWitness n m gc')
     : consumptionWitness n m (ge'.ite gc gc') := by
@@ -176,7 +208,9 @@ theorem ite_left {ge' gc gc' : Modality} {n m : Nat}
 /-- If the error grade `ge'` is at least `possibly` (i.e. `ge' ≠ never`),
     a consumption witness for the first branch `gc` lifts to a witness for
     the `ite`-computed consumption `ge'.ite gc gc'`. -/
-theorem ite_right {ge' gc gc' : Modality} {n m : Nat}
+theorem ite_right
+    {ge' gc gc' : Modality}
+    {n m : Nat}
     (c : possibly ≤ ge')
     (w : consumptionWitness n m gc)
     : consumptionWitness n m (ge'.ite gc gc') := by

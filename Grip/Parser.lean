@@ -79,8 +79,12 @@ instance {g : Grade} {α : Type} : CoeOut (GParser g α) (Parser α) := ⟨GPars
 
 /-- Run a parser from offset 0, returning a positioned `ParseError` on failure.
 Line and column are 1-based byte positions derived by scanning `arr` for newlines. -/
-def GParser.parse {g : Grade} {α : Type} (p : GParser g α) (arr : ByteArray) :
-    Except ParseError α :=
+def GParser.parse
+    {g : Grade}
+    {α : Type}
+    (p : GParser g α)
+    (arr : ByteArray)
+    : Except ParseError α :=
   match p.run arr 0 with
   | .ok a _  => .ok a
   | .error e => .error (mkParseError arr e)
@@ -89,7 +93,11 @@ def GParser.parse {g : Grade} {α : Type} (p : GParser g α) (arr : ByteArray) :
 
 /-- `throw` at `fallible` grade: immediately fail with the supplied labels, its
 offset set to the current position. -/
-def GParser.throwErr {α : Type} (e : Err) : Parser α where
+def GParser.throwErr
+    {α : Type}
+    (e : Err)
+    : Parser α
+    where
   run := fun _ p => .error { e with pos := p }
   cwit := by intro arr q a q' h; exact absurd h (by simp)
   ewit := by intro _ arr q; exact ⟨{ e with pos := q }, rfl⟩
@@ -103,7 +111,12 @@ def GParser.throwErr {α : Type} (e : Err) : Parser α where
 
 /-- `tryCatch` at `fallible` grade: run `p`; on success pass through; on failure
 call the handler `h` and run its result from the same offset. -/
-def GParser.tryCatch {α : Type} (p : Parser α) (h : Err → Parser α) : Parser α where
+def GParser.tryCatch
+    {α : Type}
+    (p : Parser α)
+    (h : Err → Parser α)
+    : Parser α
+    where
   run := fun arr q =>
     match p.run arr q with
     | .ok a q' => .ok a q'
@@ -166,7 +179,8 @@ Supported forms:
 Example:
 ```
 -- grade is `conditional`, not collapsed to `fallible`
-def twoBytes : GParser conditional (UInt8 × UInt8) :=
+def twoBytes
+    : GParser conditional (UInt8 × UInt8) :=
   gdo
     let a ← GParser.satisfy (fun _ => true)
     let b ← GParser.satisfy (fun _ => true)
@@ -233,7 +247,9 @@ open Grip
 
 -- Coercion: a `conditional` parser coerces to `Parser` via the `CoeOut` instance.
 -- The coercion is "source-driven" (left-to-right), so no explicit cast annotation needed.
-private def digitP : Parser UInt8 :=
+private
+def digitP
+    : Parser UInt8 :=
   GParser.satisfy (fun b => 48 ≤ b && b ≤ 57)
 
 example (f : UInt8 → Bool) : Parser UInt8 := GParser.satisfy f
@@ -247,7 +263,9 @@ private def twoDigits : Parser (UInt8 × UInt8) := do
 #guard (GParser.run? twoDigits "57".toUTF8) == some (53, 55)
 
 -- `Alternative`: `<|>` and `failure` work at `Parser`.
-private def digitOrFail : Parser UInt8 :=
+private
+def digitOrFail
+    : Parser UInt8 :=
   digitP <|> failure
 
 #guard (GParser.run? digitOrFail "5".toUTF8) == some 53
@@ -261,7 +279,9 @@ example : GParser flexible (List UInt8) := GParser.many (GParser.satisfy (· != 
 -- `gdo`: grade is preserved precisely (stays `conditional`, not collapsed to `fallible`).
 -- `conditional * conditional = conditional` because
 --   `max always always = always` and `max possibly possibly = possibly` both hold.
-private def twoBytes : GParser conditional (UInt8 × UInt8) :=
+private
+def twoBytes
+    : GParser conditional (UInt8 × UInt8) :=
   gdo
     let a ← GParser.satisfy (fun _ => true)
     let b ← GParser.satisfy (fun _ => true)
@@ -271,14 +291,21 @@ private def twoBytes : GParser conditional (UInt8 × UInt8) :=
 #guard (GParser.run? twoBytes "".toUTF8) == none
 
 -- BEq for Except ParseError, needed by the #guard comparisons below.
-private instance instBEqExceptPE {β : Type} [BEq β] : BEq (Except ParseError β) where
+private
+instance instBEqExceptPE
+    {β : Type}
+    [BEq β]
+    : BEq (Except ParseError β)
+    where
   beq
     | .error e1, .error e2 => e1 == e2
     | .ok a,     .ok b     => a == b
     | _,         _         => false
 
 -- `GParser.parse` surfaces a `ParseError` with positioned information.
-private def digitOrErr : Parser Nat :=
+private
+def digitOrErr
+    : Parser Nat :=
   GParser.weakenFallible (GParser.nat <?> "number")
 
 #guard (digitOrErr.parse "abc".toUTF8
@@ -288,7 +315,9 @@ private def digitOrErr : Parser Nat :=
 
 -- `pretty` is the dependency-free plain fallback; rich terminal output lives in
 -- `grip-diagnostics` and delegates to `TermColor.Diagnostics`.
-private def prettyTest : String :=
+private
+def prettyTest
+    : String :=
   let e : ParseError := { pos := 5, line := 3, col := 2, expected := ["!"] }
   e.pretty "a\nb\n1".toUTF8
 
