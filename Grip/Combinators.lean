@@ -160,7 +160,10 @@ via `choice_self` (choosing between two grade-`g` parsers is again grade `g`). -
     (weakenFallible fail)
 
 /-- Exactly `n` copies of `p`, at the `Parser` face (grade is `n`-dependent). -/
-def count (n : Nat) (p : Parser α) : Parser (List α) := do
+def count
+    (n : Nat)
+    (p : Parser α)
+    : Parser (List α) := do
   match n with
   | 0 => return []
   | n + 1 => let x ← p; let xs ← count n p; return (x :: xs)

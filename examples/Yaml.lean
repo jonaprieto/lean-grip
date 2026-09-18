@@ -60,8 +60,7 @@ inductive Yaml where
   GParser.dispatch fun b => if b == Ascii.quote then quoted else plain
 
 /-- Parse one flow-style YAML value. -/
-def value
-    : GParser conditional Yaml :=
+def value : GParser conditional Yaml :=
   GParser.fix fun value =>
     -- sequence: "[" ws ( value ("," value)* )? ws "]"
     let commaValue : GParser conditional Yaml :=

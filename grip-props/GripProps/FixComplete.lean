@@ -143,15 +143,10 @@ decreasing_by omega
 
 /-- Above the bytes-remaining bound all fuels accept the same parses: for a guarded body, every
 `fixFuel f (arr.size - q + 1 + k)` accepts exactly what `fixFuel f (arr.size - q + 1)` does. -/
-theorem agree_add
-    (f : GParser conditional α → GParser conditional α)
-    (hf : Guarded f)
-    (arr : ByteArray)
-    (q : Nat)
-    : ∀ k,
-      AgreeOk
-        (GParser.fixFuel f (arr.size - q + 1 + k) arr q)
-        (GParser.fixFuel f (arr.size - q + 1) arr q) := by
+theorem agree_add (f : GParser conditional α → GParser conditional α) (hf : Guarded f)
+    (arr : ByteArray) (q : Nat) :
+    ∀ k, AgreeOk (GParser.fixFuel f (arr.size - q + 1 + k) arr q)
+      (GParser.fixFuel f (arr.size - q + 1) arr q) := by
   intro k
   induction k with
   | zero => exact AgreeOk.refl _
@@ -226,17 +221,10 @@ theorem agree_error
   obtain ⟨e₁, rfl⟩ := h₁; obtain ⟨e₂, rfl⟩ := h₂; exact True.intro
 
 /-- The furthest-reach merge two `alt` branches take on double failure is itself a failure. -/
-theorem altMergeError
-    {β : Type}
-    (ex ey : Err)
-    : ∃ e,
-      (if ex.pos < ey.pos then
-          (.error ey : ParseResult β)
-        else if ey.pos < ex.pos then
-          .error ex
-        else
-          .error ⟨ex.pos, ex.expected ++ ey.expected⟩) =
-        .error e := by
+theorem altMergeError {β : Type} (ex ey : Err) :
+    ∃ e, (if ex.pos < ey.pos then (.error ey : ParseResult β)
+          else if ey.pos < ex.pos then .error ex
+          else .error ⟨ex.pos, ex.expected ++ ey.expected⟩) = .error e := by
   by_cases h1 : ex.pos < ey.pos
   · rw [if_pos h1]; exact ⟨ey, rfl⟩
   · rw [if_neg h1]; by_cases h2 : ey.pos < ex.pos
@@ -356,38 +344,21 @@ is guarded purely by composition of the lemmas above: the left branch ignores `r
 fixpoint: the fuel bound truncates none of its parses. -/
 
 /-- `manyTill`'s body is guarded, assembled from the closure lemmas. -/
-theorem guarded_manyTillBody
-    {β : Type}
-    (p : GParser conditional α)
-    (endp : GParser conditional β)
-    : Guarded (fun (rec : GParser conditional (List α)) =>
-        GParser.alt
-          (GParser.map (fun _ => ([] : List α)) endp)
-          (GParser.map2 (fun x xs => x :: xs) p rec)) :=
+theorem guarded_manyTillBody {β : Type} (p : GParser conditional α)
+    (endp : GParser conditional β) :
+    Guarded (fun (rec : GParser conditional (List α)) =>
+      GParser.alt (GParser.map (fun _ => ([] : List α)) endp)
+        (GParser.map2 (fun x xs => x :: xs) p rec)) :=
   guarded_alt _ _ (guarded_const _) (guarded_map2_self _ _)
 
 /-- `manyTill` is complete: a success reachable at any larger fuel is produced by `manyTill`
 itself. A combinator-built recursive grammar, proved complete end to end. -/
-theorem manyTill_complete
-    {β : Type}
-    (p : GParser conditional α)
-    (endp : GParser conditional β)
-    (arr : ByteArray)
-    (q : Nat)
-    (hq : q ≤ arr.size)
-    {m : Nat}
-    (hm : arr.size - q + 1 ≤ m)
-    {a : List α}
-    {q' : Nat}
-    (h :
-      GParser.fixFuel
-        (fun rec =>
-          GParser.alt
-            (GParser.map (fun _ => ([] : List α)) endp)
-            (GParser.map2 (fun x xs => x :: xs) p rec))
-        m arr q =
-        .ok a q')
-    : (GParser.manyTill p endp).run arr q = .ok a q' :=
+theorem manyTill_complete {β : Type} (p : GParser conditional α) (endp : GParser conditional β)
+    (arr : ByteArray) (q : Nat) (hq : q ≤ arr.size) {m : Nat} (hm : arr.size - q + 1 ≤ m)
+    {a : List α} {q' : Nat}
+    (h : GParser.fixFuel (fun rec => GParser.alt (GParser.map (fun _ => ([] : List α)) endp)
+      (GParser.map2 (fun x xs => x :: xs) p rec)) m arr q = .ok a q') :
+    (GParser.manyTill p endp).run arr q = .ok a q' :=
   fix_complete _ (guarded_manyTillBody p endp) arr q hq hm h
 
 end Grip.FixComplete

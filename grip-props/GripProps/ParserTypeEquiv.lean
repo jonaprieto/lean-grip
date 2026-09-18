@@ -134,9 +134,7 @@ def ValidRunEq
     : Prop :=
   ∀ (arr : ByteArray) (pos : Nat), pos ≤ arr.size → p.run arr pos = q.run arr pos
 
-def zeroOutside
-    : GParser pure Bool
-    where
+def zeroOutside : GParser pure Bool where
   run := fun _ q => .ok false q
   cwit := by intro arr q a q' h; cases h; rfl
   ewit := by intro h; exact Modality.noConfusion h
@@ -144,9 +142,7 @@ def zeroOutside
   bwit := by intro arr q a q' hq h; cases h; exact hq
   fwit := by intro arr q e hq h; contradiction
 
-def signalOutside
-    : GParser pure Bool
-    where
+def signalOutside : GParser pure Bool where
   run := fun arr q => .ok (decide (arr.size < q)) q
   cwit := by intro arr q a q' h; cases h; rfl
   ewit := by intro h; exact Modality.noConfusion h
@@ -156,13 +152,11 @@ def signalOutside
 
 /-- PrimParser cannot observe the distinction between these parsers because its
 `Text n` input represents only valid starting offsets. -/
-theorem same_on_valid_inputs
-    : ValidRunEq zeroOutside signalOutside := by
+theorem same_on_valid_inputs : ValidRunEq zeroOutside signalOutside := by
   intro arr q hq
   simp [zeroOutside, signalOutside, Nat.not_lt.mpr hq]
 
-theorem different_as_GParser
-    : zeroOutside ≠ signalOutside := by
+theorem different_as_GParser : zeroOutside ≠ signalOutside := by
   intro h
   have hr := congrArg (fun p => p.run ByteArray.empty 1) h
   simp [zeroOutside, signalOutside] at hr
