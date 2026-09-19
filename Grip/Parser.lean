@@ -43,7 +43,9 @@ abbrev Parser (α : Type) := GParser fallible α
 /-- `Monad` instance for `Parser`. `pure` wraps a value with
 `GParser.weakenFallible ∘ GParser.pure`; `bind` sequences two `Parser` actions,
 weakening the `fallible * fallible` result grade back to `fallible`. -/
-instance : Monad Parser where
+instance
+    : Monad Parser
+    where
   pure a   := GParser.weakenFallible (GParser.pure a)
   bind x f := GParser.weakenFallible (GParser.bind x f)
 
@@ -51,7 +53,9 @@ instance : Monad Parser where
 
 /-- `Alternative` instance for `Parser`. `failure` is `GParser.fail` weakened to
 `fallible`; `orElse` uses `GParser.alt` and weakens the choice result to `fallible`. -/
-instance : Alternative Parser where
+instance
+    : Alternative Parser
+    where
   failure   := GParser.weakenFallible GParser.fail
   orElse x y := GParser.weakenFallible (GParser.alt x (y ()))
 
@@ -71,8 +75,14 @@ instance {g : Grade} {α : Type} : CoeOut (GParser g α) (Parser α) := ⟨GPars
 
 /-- Cast a parser's grade via an equality proof. Used by the `grade_by` tail of
 `gdo` blocks to coerce the elaborated product grade to the expected type. -/
-@[inline] def GParser.gcast {g g' : Grade} {α : Type} (h : g = g') (p : GParser g α) :
-    GParser g' α :=
+@[inline]
+def GParser.gcast
+    {g g' : Grade}
+    {α : Type}
+    (h : g = g')
+    (p : GParser g α)
+    : GParser g' α
+    :=
   h ▸ p
 
 /-! ### Top-level entry point -/
@@ -149,7 +159,9 @@ def GParser.tryCatch
     · rename_i e hp
       exact (h e).fwit hq heq
 
-instance : MonadExcept Err Parser where
+instance
+    : MonadExcept Err Parser
+    where
   throw e  := GParser.throwErr e
   tryCatch := GParser.tryCatch
 
@@ -198,7 +210,8 @@ private
 partial
 def expandGDoBlock
     (doSeq : Syntax)
-    : MacroM (TSyntax `term) := do
+    : MacroM (TSyntax `term)
+    := do
   -- Use single-backtick name literals to avoid the double-backtick validation
   -- which would fail if `Lean.Parser.Term` isn't in the user's import chain.
   let itemsNode :=
@@ -251,13 +264,19 @@ open Grip
 
 -- Coercion: a `conditional` parser coerces to `Parser` via the `CoeOut` instance.
 -- The coercion is "source-driven" (left-to-right), so no explicit cast annotation needed.
-private def digitP : Parser UInt8 :=
+private
+def digitP
+    : Parser UInt8
+    :=
   GParser.satisfy (fun b => 48 ≤ b && b ≤ 57)
 
 example (f : UInt8 → Bool) : Parser UInt8 := GParser.satisfy f
 
 -- `Monad` do-notation collapses grade to `fallible`; `#guard` checks round-trip.
-private def twoDigits : Parser (UInt8 × UInt8) := do
+private
+def twoDigits
+    : Parser (UInt8 × UInt8)
+    := do
   let a ← digitP
   let b ← digitP
   return (a, b)
@@ -265,7 +284,10 @@ private def twoDigits : Parser (UInt8 × UInt8) := do
 #guard (GParser.run? twoDigits "57".toUTF8) == some (53, 55)
 
 -- `Alternative`: `<|>` and `failure` work at `Parser`.
-private def digitOrFail : Parser UInt8 :=
+private
+def digitOrFail
+    : Parser UInt8
+    :=
   digitP <|> failure
 
 #guard (GParser.run? digitOrFail "5".toUTF8) == some 53
@@ -279,7 +301,10 @@ example : GParser flexible (List UInt8) := GParser.many (GParser.satisfy (· != 
 -- `gdo`: grade is preserved precisely (stays `conditional`, not collapsed to `fallible`).
 -- `conditional * conditional = conditional` because
 --   `max always always = always` and `max possibly possibly = possibly` both hold.
-private def twoBytes : GParser conditional (UInt8 × UInt8) :=
+private
+def twoBytes
+    : GParser conditional (UInt8 × UInt8)
+    :=
   gdo
     let a ← GParser.satisfy (fun _ => true)
     let b ← GParser.satisfy (fun _ => true)
@@ -301,7 +326,10 @@ instance instBEqExceptPE
     | _,         _         => false
 
 -- `GParser.parse` surfaces a `ParseError` with positioned information.
-private def digitOrErr : Parser Nat :=
+private
+def digitOrErr
+    : Parser Nat
+    :=
   GParser.weakenFallible (GParser.nat <?> "number")
 
 #guard (digitOrErr.parse "abc".toUTF8
@@ -311,7 +339,10 @@ private def digitOrErr : Parser Nat :=
 
 -- `pretty` is the dependency-free plain fallback; rich terminal output lives in
 -- `grip-diagnostics` and delegates to `TermColor.Diagnostics`.
-private def prettyTest : String :=
+private
+def prettyTest
+    : String
+    :=
   let e : ParseError := { pos := 5, line := 3, col := 2, expected := ["!"] }
   e.pretty "a\nb\n1".toUTF8
 

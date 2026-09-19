@@ -45,8 +45,14 @@ variable {α : Type}
 /-- Consumption soundness of `fix`: every success of `GParser.fix f` advances the
 offset, enforced by the runtime clamp. This is the guarantee that keeps `many`/`foldMany`
 sound over recursive parsers. -/
-theorem fix_advances (f : GParser conditional α → GParser conditional α)
-    {arr : ByteArray} {q : Nat} {a : α} {q' : Nat}
-    (h : (GParser.fix f).run arr q = .ok a q') : q < q' := (GParser.fix f).cwit h
+theorem fix_advances
+    (f : GParser conditional α → GParser conditional α)
+    {arr : ByteArray}
+    {q : Nat}
+    {a : α}
+    {q' : Nat}
+    (h : (GParser.fix f).run arr q = .ok a q')
+    : q < q'
+    := (GParser.fix f).cwit h
 
 end Grip.Productivity

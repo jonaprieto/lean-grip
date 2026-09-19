@@ -31,7 +31,13 @@ variable {ge : Modality} {α β : Type}
 `arr.size - q` (each step advances one byte, bounded by `arr.size`). `@[specialize]` so
 a known predicate (e.g. `Ascii.isWs`) is monomorphized into the loop rather than called
 indirectly per byte. -/
-@[specialize] def scanFwd (arr : ByteArray) (f : UInt8 → Bool) (q : Nat) : Nat :=
+@[specialize]
+def scanFwd
+    (arr : ByteArray)
+    (f : UInt8 → Bool)
+    (q : Nat)
+    : Nat
+    :=
   if h : q < arr.size then (if f arr[q] then scanFwd arr f (q + 1) else q) else q
 termination_by arr.size - q
 decreasing_by omega
@@ -84,7 +90,11 @@ decreasing_by omega
 
 /-- Scan while `f` holds, returning the number of bytes consumed.
 Always succeeds (result is `.ok`). -/
-@[inline] def GParser.takeWhile (f : UInt8 → Bool) : GParser flexible Nat where
+@[inline]
+def GParser.takeWhile
+    (f : UInt8 → Bool)
+    : GParser flexible Nat
+    where
   run := fun arr p => let q := scanFwd arr f p; .ok (q - p) q
   cwit := by
     intro arr q a q' heq
@@ -103,7 +113,12 @@ Always succeeds (result is `.ok`). -/
 /-- Scan a JSON-style string body: advance until an *unescaped* `"` (0x22), treating a
 backslash (0x5c) as an escape that consumes the next byte too. Total: structural on
 `arr.size - q`. -/
-@[specialize] def scanStrFwd (arr : ByteArray) (q : Nat) : Nat :=
+@[specialize]
+def scanStrFwd
+    (arr : ByteArray)
+    (q : Nat)
+    : Nat
+    :=
   if h : q < arr.size then
     if arr[q] == 34 then q                                     -- unescaped `"`: stop
     else if arr[q] == 92 then
@@ -156,7 +171,10 @@ decreasing_by all_goals omega
 
 /-- Scan a JSON string body (escape-aware), returning the number of bytes consumed.
 Always succeeds (result is `.ok`). Pair with a `"` on each side for a full string literal. -/
-@[inline] def GParser.takeStringBody : GParser flexible Nat where
+@[inline]
+def GParser.takeStringBody
+    : GParser flexible Nat
+    where
   run := fun arr p => let q := scanStrFwd arr p; .ok (q - p) q
   cwit := by
     intro arr q a q' heq
@@ -178,7 +196,12 @@ on a well-formed body, or `none` on a malformed one: an unescaped control byte (
 unknown `\`-escape, a `\u` not followed by four hex digits, or end of input before the closing
 quote. Total (structural on `arr.size - q`). Unlike `scanStrFwd`, this *validates* and can
 reject, so the parser built on it is `conditional`, not `flexible`. -/
-@[specialize] def scanStrBody (arr : ByteArray) (q : Nat) : Option Nat :=
+@[specialize]
+def scanStrBody
+    (arr : ByteArray)
+    (q : Nat)
+    : Option Nat
+    :=
   if h : q < arr.size then
     if arr[q] == 34 then some (q + 1)                                    -- closing `"`
     else if arr[q] == 92 then                                           -- `\` escape
@@ -265,7 +288,12 @@ decreasing_by all_goals omega
 
 /-- Scan a strict JSON string literal starting at the opening `"`: `some end` (past the
 closing `"`) or `none`. -/
-@[inline] def scanStrLit (arr : ByteArray) (q : Nat) : Option Nat :=
+@[inline]
+def scanStrLit
+    (arr : ByteArray)
+    (q : Nat)
+    : Option Nat
+    :=
   if h : q < arr.size then (if arr[q] == 34 then scanStrBody arr (q + 1) else none) else none
 
 /-- A successful `scanStrLit` strictly advances (it consumes the opening quote). -/
@@ -301,7 +329,10 @@ consumed (both quotes included). Fails on a malformed literal (see `scanStrBody`
 strict, single-pass counterpart to `ch '"' *> takeStringBody *> ch '"'`: it validates
 escapes and rejects control bytes without per-byte combinator dispatch. On failure the furthest
 offset is the current position. -/
-@[inline] def GParser.stringLit : GParser conditional Nat where
+@[inline]
+def GParser.stringLit
+    : GParser conditional Nat
+    where
   run := fun arr p =>
     match scanStrLit arr p with
     | some q => .ok (q - p) q
@@ -334,7 +365,11 @@ offset is the current position. -/
 
 /-- One-or-more bytes satisfying `f`.
 On failure the furthest offset is the current position. -/
-@[inline] def GParser.takeWhile1 (f : UInt8 → Bool) : GParser conditional Nat where
+@[inline]
+def GParser.takeWhile1
+    (f : UInt8 → Bool)
+    : GParser conditional Nat
+    where
   run := fun arr p =>
     if h : p < arr.size then
       if f arr[p] then (GParser.takeWhile f).run arr p else .error ⟨p, []⟩
@@ -379,8 +414,17 @@ On failure the furthest offset is the current position. -/
 and strictly consumes (in bounds). Total: structural on `arr.size - q`; the
 guard `q < q' ≤ arr.size` guarantees the measure drops. `@[specialize]` so the `step`
 and the element parser fuse into the loop when they are statically known. -/
-@[specialize] def foldFwd {ge : Modality} {α β : Type} (step : β → α → β)
-    (p : GParser ⟨ge, always⟩ α) (arr : ByteArray) (a : β) (q : Nat) : β × Nat :=
+@[specialize]
+def foldFwd
+    {ge : Modality}
+    {α β : Type}
+    (step : β → α → β)
+    (p : GParser ⟨ge, always⟩ α)
+    (arr : ByteArray)
+    (a : β)
+    (q : Nat)
+    : β × Nat
+    :=
   match p.run arr q with
   | .ok x q' =>
     if _hq : q < q' ∧ q' ≤ arr.size then foldFwd step p arr (step a x) q' else (step a x, q')
@@ -436,8 +480,13 @@ decreasing_by omega
 
 /-- Fold `p` zero-or-more times into `acc` (no list). Total (see `foldFwd`).
 Always succeeds (result is `.ok`). -/
-@[inline] def GParser.foldMany (h : β → α → β) (acc : β) (p : GParser ⟨ge, always⟩ α) :
-    GParser flexible β where
+@[inline]
+def GParser.foldMany
+    (h : β → α → β)
+    (acc : β)
+    (p : GParser ⟨ge, always⟩ α)
+    : GParser flexible β
+    where
   run := fun arr pos => match foldFwd h p arr acc pos with | (b, q) => .ok b q
   cwit := by
     intro arr pos b q' heq
@@ -456,7 +505,12 @@ Always succeeds (result is `.ok`). -/
   fwit := by intro arr q e hq h; exact absurd h (by simp)
 
 /-- Fold decimal digits into `acc`. Total: structural on `arr.size - q`. -/
-@[specialize] def natFwd (arr : ByteArray) (acc q : Nat) : Nat × Nat :=
+@[specialize]
+def natFwd
+    (arr : ByteArray)
+    (acc q : Nat)
+    : Nat × Nat
+    :=
   if h : q < arr.size then
     let b := arr[q]
     if 48 ≤ b && b ≤ 57 then natFwd arr (acc * 10 + (b.toNat - 48)) (q + 1) else (acc, q)
@@ -520,7 +574,10 @@ decreasing_by omega
 
 /-- Parse a decimal natural number (one or more digits). Always consumes on success.
 On failure the furthest offset is the current position. -/
-@[inline] def GParser.nat : GParser conditional Nat where
+@[inline]
+def GParser.nat
+    : GParser conditional Nat
+    where
   run := fun arr p0 =>
     if h : p0 < arr.size then
       let b := arr[p0]
@@ -569,7 +626,11 @@ On failure the furthest offset is the current position. -/
 
 /-- Zero-or-more `p` (always-consuming) into a list. Total (via `foldFwd`).
 Always succeeds (result is `.ok`). -/
-@[inline] def GParser.many (p : GParser ⟨ge, always⟩ α) : GParser flexible (List α) where
+@[inline]
+def GParser.many
+    (p : GParser ⟨ge, always⟩ α)
+    : GParser flexible (List α)
+    where
   run := fun arr pos =>
     match foldFwd (fun acc x => x :: acc) p arr [] pos with
     | (xs, q) => .ok xs.reverse q

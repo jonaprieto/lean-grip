@@ -33,7 +33,11 @@ specific whitespace byte, or `isBlank` for just space and tab. -/
 /-- ASCII letter or decimal digit. -/
 @[inline] def isAlphaNum (b : UInt8) : Bool := isAlpha b || isDigit b
 /-- Hexadecimal digit `0`-`9`, `a`-`f`, `A`-`F`. -/
-@[inline] def isHexDigit (b : UInt8) : Bool :=
+@[inline]
+def isHexDigit
+    (b : UInt8)
+    : Bool
+    :=
   isDigit b || (97 ≤ b && b ≤ 102) || (65 ≤ b && b ≤ 70)
 /-- Octal digit `0`-`7`. -/
 @[inline] def isOctDigit (b : UInt8) : Bool := 48 ≤ b && b ≤ 55
@@ -51,7 +55,11 @@ specific whitespace byte, or `isBlank` for just space and tab. -/
 /-- Numeric value of a decimal digit byte (meaningful only when `isDigit`). -/
 @[inline] def digitValue (b : UInt8) : Nat := b.toNat - 48
 /-- Numeric value of a hex digit byte (0-15); `0` for non-hex bytes. -/
-@[inline] def hexValue (b : UInt8) : Nat :=
+@[inline]
+def hexValue
+    (b : UInt8)
+    : Nat
+    :=
   if isDigit b then b.toNat - 48
   else if 97 ≤ b && b ≤ 102 then b.toNat - 87
   else if 65 ≤ b && b ≤ 70 then b.toNat - 55

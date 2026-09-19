@@ -24,7 +24,11 @@ namespace Grip
 variable {g g' : Grade} {ge ge' gc gc' : Modality} {α β : Type}
 
 /-- Consume nothing, never fail. -/
-@[inline] def GParser.pure (a : α) : GParser 1 α where
+@[inline]
+def GParser.pure
+    (a : α)
+    : GParser 1 α
+    where
   run := fun _ p => .ok a p
   cwit := by
     intro arr q b q' h
@@ -36,7 +40,10 @@ variable {g g' : Grade} {ge ge' gc gc' : Modality} {α β : Type}
   fwit := by intro arr q e hq h; exact absurd h (by simp)
 
 /-- Always fail, recording the current position as the furthest offset reached. -/
-@[inline] def GParser.fail : GParser empty α where
+@[inline]
+def GParser.fail
+    : GParser empty α
+    where
   run := fun _ p => .error ⟨p, []⟩
   cwit := by intro arr q a q' h; exact absurd h (by simp)
   ewit := by intro _ arr q; exact ⟨⟨q, []⟩, rfl⟩
@@ -50,7 +57,11 @@ variable {g g' : Grade} {ge ge' gc gc' : Modality} {α β : Type}
 
 /-- Consume one byte satisfying `f`, or fail without consuming.
 On failure the furthest offset is the current position `p`. -/
-@[inline] def GParser.satisfy (f : UInt8 → Bool) : GParser conditional UInt8 where
+@[inline]
+def GParser.satisfy
+    (f : UInt8 → Bool)
+    : GParser conditional UInt8
+    where
   run := fun arr p =>
     if h : p < arr.size then
       (if f arr[p] then .ok arr[p] (p + 1) else .error ⟨p, []⟩)
@@ -85,7 +96,11 @@ On failure the furthest offset is the current position `p`. -/
 
 /-- Match a specific byte.
 On failure the furthest offset is the current position `p`. -/
-@[inline] def GParser.byte (c : UInt8) : GParser conditional Unit where
+@[inline]
+def GParser.byte
+    (c : UInt8)
+    : GParser conditional Unit
+    where
   run := fun arr p =>
     if h : p < arr.size then
       (if arr[p] == c then .ok () (p + 1) else .error ⟨p, []⟩)
@@ -121,7 +136,11 @@ On failure the furthest offset is the current position `p`. -/
 /-- Return the input slice a parser consumed, decoded as text (grade preserved). Lets
 combinator parsers build real syntax trees (atom names, identifiers, header fields)
 instead of only structural counts. Invalid UTF-8 in the slice decodes to `""`. -/
-@[inline] def GParser.capture (p : GParser g α) : GParser g String where
+@[inline]
+def GParser.capture
+    (p : GParser g α)
+    : GParser g String
+    where
   run := fun arr q =>
     match p.run arr q with
     | .ok _ q' => .ok ((String.fromUTF8? (arr.extract q q')).getD "") q'
@@ -162,8 +181,12 @@ instead of only structural counts. Invalid UTF-8 in the slice decodes to `""`. -
 /-- Like `capture`, but hand the consumed byte range `(arr, start, stop)` to `f` instead
 of decoding it to a `String`. Lets a value parser fold over the raw input bytes directly,
 with no `extract`/`fromUTF8?`/`String` round-trip. -/
-@[inline] def GParser.captureWith (f : ByteArray → Nat → Nat → β) (p : GParser g α) :
-    GParser g β where
+@[inline]
+def GParser.captureWith
+    (f : ByteArray → Nat → Nat → β)
+    (p : GParser g α)
+    : GParser g β
+    where
   run := fun arr q =>
     match p.run arr q with
     | .ok _ q' => .ok (f arr q q') q'
@@ -206,8 +229,12 @@ case the parse fails at the entry offset. The result grade keeps `p`'s consumpti
 `errors := possibly` (the extra failure path), so a `conditional` `p` yields a `conditional`
 parser. Lets a value decoder veto a syntactically-valid but semantically-out-of-range slice
 (e.g. a JSON exponent so large that folding it would blow up). -/
-@[inline] def GParser.captureWith? (f : ByteArray → Nat → Nat → Option β) (p : GParser g α) :
-    GParser ⟨possibly, g.consumes⟩ β where
+@[inline]
+def GParser.captureWith?
+    (f : ByteArray → Nat → Nat → Option β)
+    (p : GParser g α)
+    : GParser ⟨possibly, g.consumes⟩ β
+    where
   run := fun arr q =>
     match p.run arr q with
     | .ok _ q' => match f arr q q' with
@@ -257,8 +284,11 @@ parser. Lets a value decoder veto a syntactically-valid but semantically-out-of-
 it, without an intermediate allocation. Fails without consuming at end-of-input. This is
 `peek`-then-branch fused into one step, so a keyword/number/string/array/object choice
 costs a single byte read and a jump rather than an `alt` chain of failed attempts. -/
-@[inline] def GParser.dispatch (select : UInt8 → GParser conditional α) :
-    GParser conditional α where
+@[inline]
+def GParser.dispatch
+    (select : UInt8 → GParser conditional α)
+    : GParser conditional α
+    where
   run := fun arr p => if h : p < arr.size then (select arr[p]).run arr p else .error ⟨p, []⟩
   cwit := by
     intro arr q a q' heq
@@ -281,7 +311,12 @@ costs a single byte read and a jump rather than an `alt` chain of failed attempt
       exact ⟨Nat.le_refl q, hq⟩
 
 /-- Map over the result (grade preserved). -/
-@[inline] def GParser.map (h : α → β) (x : GParser g α) : GParser g β where
+@[inline]
+def GParser.map
+    (h : α → β)
+    (x : GParser g α)
+    : GParser g β
+    where
   run := fun arr p =>
     match x.run arr p with
     | .ok a p' => .ok (h a) p'
@@ -321,7 +356,12 @@ costs a single byte read and a jump rather than an `alt` chain of failed attempt
 
 /-- Sequence, keeping the right value; grades multiply.
 Furthest offset from either `x` or `y` propagates on failure. -/
-@[inline] def GParser.seqR (x : GParser g α) (y : GParser g' β) : GParser (g * g') β where
+@[inline]
+def GParser.seqR
+    (x : GParser g α)
+    (y : GParser g' β)
+    : GParser (g * g') β
+    where
   run := fun arr p =>
     match x.run arr p with
     | .ok _ p' => y.run arr p'
@@ -372,7 +412,12 @@ Furthest offset from either `x` or `y` propagates on failure. -/
 
 /-- Sequence, keeping the left value; grades multiply.
 Furthest offset propagates on failure. -/
-@[inline] def GParser.seqL (x : GParser g α) (y : GParser g' β) : GParser (g * g') α where
+@[inline]
+def GParser.seqL
+    (x : GParser g α)
+    (y : GParser g' β)
+    : GParser (g * g') α
+    where
   run := fun arr p =>
     match x.run arr p with
     | .ok a p' =>
@@ -448,8 +493,12 @@ Furthest offset propagates on failure. -/
 On failure, the two errors are merged furthest-wins: if one branch reached a
 farther offset, that error wins; on a tie the expected-label sets are unioned.
 This is the megaparsec-style furthest-failure merge. -/
-@[inline] def GParser.alt (x : GParser ⟨ge, gc⟩ α) (y : GParser ⟨ge', gc'⟩ α) :
-    GParser ⟨min ge ge', ge.ite gc' gc⟩ α where
+@[inline]
+def GParser.alt
+    (x : GParser ⟨ge, gc⟩ α)
+    (y : GParser ⟨ge', gc'⟩ α)
+    : GParser ⟨min ge ge', ge.ite gc' gc⟩ α
+    where
   run := fun arr p =>
     match x.run arr p with
     | .ok a p' => .ok a p'
@@ -558,7 +607,12 @@ This is the megaparsec-style furthest-failure merge. -/
 
 /-- Monadic bind; grades multiply.
 Furthest offset propagates on failure. -/
-@[inline] def GParser.bind (x : GParser g α) (f : α → GParser g' β) : GParser (g * g') β where
+@[inline]
+def GParser.bind
+    (x : GParser g α)
+    (f : α → GParser g' β)
+    : GParser (g * g') β
+    where
   run := fun arr p =>
     match x.run arr p with
     | .ok a p' => (f a).run arr p'
@@ -609,8 +663,14 @@ Furthest offset propagates on failure. -/
 
 /-- Apply a binary function across two parses; grades multiply.
 Furthest offset propagates on failure. -/
-@[inline] def GParser.map2 {γ : Type} (f : α → β → γ) (x : GParser g α) (y : GParser g' β) :
-    GParser (g * g') γ where
+@[inline]
+def GParser.map2
+    {γ : Type}
+    (f : α → β → γ)
+    (x : GParser g α)
+    (y : GParser g' β)
+    : GParser (g * g') γ
+    where
   run := fun arr p =>
     match x.run arr p with
     | .ok a p' =>
@@ -684,7 +744,11 @@ Furthest offset propagates on failure. -/
 
 /-- Consume exactly `n` bytes if available.
 On failure the furthest offset is the current position. -/
-@[inline] def GParser.takeN (n : Nat) : GParser fallible Unit where
+@[inline]
+def GParser.takeN
+    (n : Nat)
+    : GParser fallible Unit
+    where
   run := fun arr p => if p + n ≤ arr.size then .ok () (p + n) else .error ⟨p, []⟩
   cwit := by
     intro arr q a q' heq
@@ -710,7 +774,12 @@ On failure the furthest offset is the current position. -/
 Mirrors megaparsec's `<?>` operator: on success the result is unchanged; on
 failure the `expected` field is overwritten so error messages read
 "expected name" rather than a raw position. -/
-@[inline] def GParser.label (name : String) (p : GParser g α) : GParser g α where
+@[inline]
+def GParser.label
+    (name : String)
+    (p : GParser g α)
+    : GParser g α
+    where
   run arr q := match p.run arr q with
     | .ok a q' => .ok a q'
     | .error e => .error { e with expected := [name] }

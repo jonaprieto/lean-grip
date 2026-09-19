@@ -43,23 +43,44 @@ structure Request where
 
 /-- A header-name byte: a visible ASCII character (excludes space, DEL, and non-ASCII)
 that is not the `:` separator. -/
-@[inline] private def isNameByte (b : UInt8) : Bool :=
+@[inline]
+private
+def isNameByte
+    (b : UInt8)
+    : Bool
+    :=
   b > Ascii.space && b < 127 && b != Ascii.colon
 
 /-- A version byte: digit or dot. -/
-@[inline] private def isVersionByte (b : UInt8) : Bool :=
+@[inline]
+private
+def isVersionByte
+    (b : UInt8)
+    : Bool
+    :=
   Ascii.isDigit b || b == Ascii.dot
 
 /-- Optional whitespace: space or tab only (no line breaks). -/
-@[inline] private def ows : GParser flexible Nat :=
+@[inline]
+private
+def ows
+    : GParser flexible Nat
+    :=
   GParser.takeWhile Ascii.isBlank
 
 /-- Carriage-return / line-feed. -/
-@[inline] private def crlf : GParser conditional Unit :=
+@[inline]
+private
+def crlf
+    : GParser conditional Unit
+    :=
   GParser.seqR (GParser.byte Ascii.cr) (GParser.byte Ascii.lf)
 
 /-- One header line, as `(name, value)`; always consumes (the name is non-empty). -/
-private def header : GParser conditional (String × String) :=
+private
+def header
+    : GParser conditional (String × String)
+    :=
   GParser.map2 (·, ·)
     (GParser.capture (GParser.takeWhile1 isNameByte))          -- field name
     (GParser.seqR (GParser.byte Ascii.colon)                   -- ':'
@@ -70,20 +91,34 @@ private def header : GParser conditional (String × String) :=
 -- Request-line fields, weakened to the ungraded `Parser` face so the `do`-block below
 -- binds them directly. `weakenFallible` makes the graded-to-`Parser` step explicit
 -- (the same bridge `Grip.Examples.Json` uses).
-private def methodP : Parser String :=
+private
+def methodP
+    : Parser String
+    :=
   GParser.weakenFallible (GParser.capture (GParser.takeWhile1 Ascii.isUpper))
 private def spP : Parser Unit := GParser.weakenFallible (GParser.byte Ascii.space)
 private def slashP : Parser Unit := GParser.weakenFallible (GParser.string "HTTP/")
-private def targetP : Parser String :=
+private
+def targetP
+    : Parser String
+    :=
   GParser.weakenFallible (GParser.capture (GParser.takeWhile1 (· != Ascii.space)))
-private def versionP : Parser String :=
+private
+def versionP
+    : Parser String
+    :=
   GParser.weakenFallible (GParser.capture (GParser.takeWhile1 isVersionByte))
 private def crlfP : Parser Unit := GParser.weakenFallible crlf
-private def headersP : Parser (List (String × String)) :=
+private
+def headersP
+    : Parser (List (String × String))
+    :=
   GParser.weakenFallible (GParser.many header)
 
 /-- Parse a request start-line and its header block. -/
-def request : Parser Request := do
+def request
+    : Parser Request
+    := do
   let method ← methodP
   let _ ← spP
   let target ← targetP

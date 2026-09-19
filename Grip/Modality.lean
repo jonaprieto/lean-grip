@@ -36,7 +36,11 @@ namespace Modality
     Reducible so that a grade product of named grades (`conditional * conditional`, ...)
     still reduces under `instances` transparency, which is what `dsimp`/`rw` type-check
     goals at since Lean v4.31. -/
-@[reducible] def sup : Modality → Modality → Modality
+@[reducible]
+def sup
+    : Modality →
+      Modality →
+      Modality
   | always, _      => always
   | _, always      => always
   | possibly, _    => possibly
@@ -104,7 +108,11 @@ def ite
 
 @[simp] theorem ite_always (a b : Modality) : ite always a b = a := rfl
 @[simp] theorem ite_never  (a b : Modality) : ite never  a b = b := rfl
-@[simp] theorem ite_possibly_eq (a : Modality) : ite possibly a a = a := by
+@[simp]
+theorem ite_possibly_eq
+    (a : Modality)
+    : ite possibly a a = a
+    := by
   simp [ite]
 @[simp] theorem ite_possibly (a b : Modality) :
     ite possibly a b = if a = b then a else possibly := rfl
@@ -119,19 +127,43 @@ def ite
 @[simp] theorem sup_always_right (a : Modality) : max a always = always := by cases a <;> rfl
 
 /-- A join equals `always` iff at least one operand is `always`. -/
-@[simp] theorem max_always (a b : Modality) : max a b = always ↔ a = always ∨ b = always := by
+@[simp]
+theorem max_always
+    (a b : Modality)
+    : max a b = always ↔
+      a = always ∨
+      b = always
+    := by
   cases a <;> cases b <;> decide
 
 /-- A join equals `never` iff both operands are `never`. -/
-@[simp] theorem max_never (a b : Modality) : max a b = never ↔ a = never ∧ b = never := by
+@[simp]
+theorem max_never
+    (a b : Modality)
+    : max a b = never ↔
+      a = never ∧
+      b = never
+    := by
   cases a <;> cases b <;> decide
 
 /-- A meet equals `never` iff at least one operand is `never`. -/
-@[simp] theorem min_never (a b : Modality) : min a b = never ↔ a = never ∨ b = never := by
+@[simp]
+theorem min_never
+    (a b : Modality)
+    : min a b = never ↔
+      a = never ∨
+      b = never
+    := by
   cases a <;> cases b <;> decide
 
 /-- A meet equals `always` iff both operands are `always`. -/
-@[simp] theorem min_always (a b : Modality) : min a b = always ↔ a = always ∧ b = always := by
+@[simp]
+theorem min_always
+    (a b : Modality)
+    : min a b = always ↔
+      a = always ∧
+      b = always
+    := by
   cases a <;> cases b <;> decide
 
 /-- Join is commutative. -/

@@ -49,61 +49,115 @@ namespace GParser
 /-- One lowercase letter byte. -/
 @[inline] def lower : GParser conditional UInt8 := satisfy Ascii.isLower
 /-- One byte from `bs`. -/
-@[inline] def oneOf (bs : List UInt8) : GParser conditional UInt8 :=
+@[inline]
+def oneOf
+    (bs : List UInt8)
+    : GParser conditional UInt8
+    :=
   satisfy (fun b => bs.contains b)
 /-- One byte not in `bs`. -/
-@[inline] def noneOf (bs : List UInt8) : GParser conditional UInt8 :=
+@[inline]
+def noneOf
+    (bs : List UInt8)
+    : GParser conditional UInt8
+    :=
   satisfy (fun b => !bs.contains b)
 
 /-! ### Higher-order combinators -/
 
 /-- `p` between `open`/`close`; grades multiply (megaparsec order: open, close, body). -/
-@[inline] def between (open_ : GParser g₁ β) (close : GParser g₂ γ) (p : GParser g α) :
-    GParser (g₁ * (g * g₂)) α :=
+@[inline]
+def between
+    (open_ : GParser g₁ β)
+    (close : GParser g₂ γ)
+    (p : GParser g α)
+    : GParser (g₁ * (g * g₂)) α
+    :=
   seqR open_ (seqL p close)
 
 /-- One or more `p` separated by `sep`; both must always consume. -/
-@[inline] def sepBy1 (p : GParser conditional α) (sep : GParser conditional β) :
-    GParser conditional (List α) :=
+@[inline]
+def sepBy1
+    (p : GParser conditional α)
+    (sep : GParser conditional β)
+    : GParser conditional (List α)
+    :=
   map2 (fun x xs => x :: xs) p (many (seqR sep p))
 
 /-- Zero or more `p` separated by `sep`. -/
-@[inline] def sepBy (p : GParser conditional α) (sep : GParser conditional β) :
-    GParser flexible (List α) :=
+@[inline]
+def sepBy
+    (p : GParser conditional α)
+    (sep : GParser conditional β)
+    : GParser flexible (List α)
+    :=
   alt (sepBy1 p sep) (pure [])
 
 /-- Zero or more `p` each followed by `sep`. -/
-@[inline] def endBy (p : GParser conditional α) (sep : GParser conditional β) :
-    GParser flexible (List α) :=
+@[inline]
+def endBy
+    (p : GParser conditional α)
+    (sep : GParser conditional β)
+    : GParser flexible (List α)
+    :=
   many (seqL p sep)
 
 /-- One or more `p` each followed by `sep`. -/
-@[inline] def endBy1 (p : GParser conditional α) (sep : GParser conditional β) :
-    GParser conditional (List α) :=
+@[inline]
+def endBy1
+    (p : GParser conditional α)
+    (sep : GParser conditional β)
+    : GParser conditional (List α)
+    :=
   map2 (fun x xs => x :: xs) (seqL p sep) (endBy p sep)
 
 /-- One or more `p` (always-consuming); the grade is the element parser's. -/
-@[inline] def many1 (p : GParser ⟨ge, always⟩ α) : GParser ⟨ge, always⟩ (List α) :=
+@[inline]
+def many1
+    (p : GParser ⟨ge, always⟩ α)
+    : GParser ⟨ge, always⟩ (List α)
+    :=
   gcast (by cases ge <;> rfl) (map2 (fun x xs => x :: xs) p (many p))
 
 /-- Skip zero or more `p` (always-consuming); returns the count skipped. -/
-@[inline] def skipMany (p : GParser ⟨ge, always⟩ α) : GParser flexible Nat :=
+@[inline]
+def skipMany
+    (p : GParser ⟨ge, always⟩ α)
+    : GParser flexible Nat
+    :=
   foldMany (fun n _ => n + 1) 0 p
 
 /-- Skip one or more `p` (always-consuming); returns the count. -/
-@[inline] def skipMany1 (p : GParser conditional α) : GParser conditional Nat :=
+@[inline]
+def skipMany1
+    (p : GParser conditional α)
+    : GParser conditional Nat
+    :=
   map2 (fun _ n => n + 1) p (skipMany p)
 
 /-- `p`, or `x` if `p` fails. Never fails; consumption follows `p`'s grade. -/
-@[inline] def option (x : α) (p : GParser g α) : GParser (Grade.choice g 1) α :=
+@[inline]
+def option
+    (x : α)
+    (p : GParser g α)
+    : GParser (Grade.choice g 1) α
+    :=
   alt p (pure x)
 
 /-- `some` of `p`, or `none`. Never fails; consumption follows `p`'s grade. -/
-@[inline] def optional (p : GParser g α) : GParser (Grade.choice g 1) (Option α) :=
+@[inline]
+def optional
+    (p : GParser g α)
+    : GParser (Grade.choice g 1) (Option α)
+    :=
   alt (map some p) (pure none)
 
 /-- Succeed (consuming nothing) exactly when `p` fails. -/
-@[inline] def notFollowedBy (p : GParser g α) : GParser lookahead Unit where
+@[inline]
+def notFollowedBy
+    (p : GParser g α)
+    : GParser lookahead Unit
+    where
   run := fun arr q => match p.run arr q with | .ok _ _ => .error ⟨q, []⟩ | .error _ => .ok () q
   cwit := by
     intro arr q a q' h
@@ -128,8 +182,12 @@ namespace GParser
     · contradiction
 /-- Zero or more `p` until `endp` succeeds; `endp`'s result is discarded and the `p`
 results are collected. Total via `fix`; both parsers must always consume. -/
-@[inline] def manyTill (p : GParser conditional α) (endp : GParser conditional β) :
-    GParser conditional (List α) :=
+@[inline]
+def manyTill
+    (p : GParser conditional α)
+    (endp : GParser conditional β)
+    : GParser conditional (List α)
+    :=
   fix fun rec =>
     alt (map (fun _ => ([] : List α)) endp)
       (map2 (fun x xs => x :: xs) p rec)
@@ -138,7 +196,10 @@ results are collected. Total via `fix`; both parsers must always consume. -/
 `notFollowedBy` of the any-byte parser; used to reject trailing input after a top-level parse.
 Labelled, since a failure here always means the same thing: something followed what should
 have been the last byte. -/
-@[inline] def eof : GParser lookahead Unit :=
+@[inline]
+def eof
+    : GParser lookahead Unit
+    :=
   notFollowedBy (satisfy (fun _ => true)) <?> "end of input"
 
 /-- Ordered choice is idempotent on the grade: choosing between two parsers of the same
@@ -152,11 +213,20 @@ theorem choice_self
 
 /-- Ordered choice over a non-empty list at a single grade `g`. The grade is preserved
 via `choice_self` (choosing between two grade-`g` parsers is again grade `g`). -/
-@[inline] def chooseG (x : GParser g α) (xs : List (GParser g α)) : GParser g α :=
+@[inline]
+def chooseG
+    (x : GParser g α)
+    (xs : List (GParser g α))
+    : GParser g α
+    :=
   xs.foldl (fun acc p => gcast (choice_self g) (alt acc p)) x
 
 /-- Ordered choice at the ungraded `Parser` face; empty list fails. -/
-@[inline] def choice (ps : List (Parser α)) : Parser α :=
+@[inline]
+def choice
+    (ps : List (Parser α))
+    : Parser α
+    :=
   ps.foldr (fun p acc => weakenFallible (alt p acc))
     (weakenFallible fail)
 
@@ -164,7 +234,8 @@ via `choice_self` (choosing between two grade-`g` parsers is again grade `g`). -
 def count
     (n : Nat)
     (p : Parser α)
-    : Parser (List α) := do
+    : Parser (List α)
+    := do
   match n with
   | 0 => return []
   | n + 1 => let x ← p; let xs ← count n p; return (x :: xs)

@@ -42,7 +42,12 @@ def validSecond
 
 /-- Decode one UTF-8 scalar starting at byte offset `q`, returning the `Char` and the
 new offset `q + width` (width 1 to 4), or `none` on truncated or invalid input. -/
-@[inline] def decodeUtf8 (arr : ByteArray) (q : Nat) : Option (Char × Nat) :=
+@[inline]
+def decodeUtf8
+    (arr : ByteArray)
+    (q : Nat)
+    : Option (Char × Nat)
+    :=
   if h0 : q < arr.size then
     let b0 := arr[q]
     if b0 < 0x80 then
@@ -116,7 +121,11 @@ theorem decodeUtf8_le
   · exact absurd h (by simp)
 
 /-- Consume one `Char` satisfying `p`, or fail without consuming. Grade `conditional`. -/
-@[inline] def GParser.satisfyChar (p : Char → Bool) : GParser conditional Char where
+@[inline]
+def GParser.satisfyChar
+    (p : Char → Bool)
+    : GParser conditional Char
+    where
   run arr q :=
     match decodeUtf8 arr q with
     | some (c, q') => if q < q' then (if p c then .ok c q' else .error ⟨q, []⟩) else .error ⟨q, []⟩
@@ -211,7 +220,11 @@ decreasing_by omega
 
 /-- Match the UTF-8 bytes of the literal `s`, consuming them. Intended for a nonempty
 literal (grade `conditional`); the `if q < q'` clamp fails an empty match. -/
-@[inline] def GParser.string (s : String) : GParser conditional Unit where
+@[inline]
+def GParser.string
+    (s : String)
+    : GParser conditional Unit
+    where
   run arr q :=
     if matchBytes arr s.toUTF8 0 q then
       if q < q + s.toUTF8.size then .ok () (q + s.toUTF8.size) else .error ⟨q, []⟩

@@ -41,26 +41,45 @@ inductive Yaml where
   deriving BEq, Repr
 
 /-- A plain-scalar byte: visible and not a flow delimiter (`, [ ] { } :` or `"`). -/
-@[inline] private def isPlainByte (b : UInt8) : Bool :=
+@[inline]
+private
+def isPlainByte
+    (b : UInt8)
+    : Bool
+    :=
   b > Ascii.space && b != Ascii.comma && b != Ascii.lbracket && b != Ascii.rbracket
   && b != Ascii.lbrace && b != Ascii.rbrace && b != Ascii.colon && b != Ascii.quote
 
 /-- A double-quoted scalar's `String` contents (escape-transparent). -/
-@[inline] private def quoted : GParser conditional String :=
+@[inline]
+private
+def quoted
+    : GParser conditional String
+    :=
   GParser.seqR (GParser.byte Ascii.quote)
     (GParser.seqL (GParser.capture (GParser.takeWhile (· != Ascii.quote)))
       (GParser.byte Ascii.quote))
 
 /-- A plain (unquoted) scalar's `String`. -/
-@[inline] private def plain : GParser conditional String :=
+@[inline]
+private
+def plain
+    : GParser conditional String
+    :=
   GParser.capture (GParser.takeWhile1 isPlainByte)
 
 /-- A scalar key/value string: quoted or plain, by first byte. -/
-@[inline] private def scalarStr : GParser conditional String :=
+@[inline]
+private
+def scalarStr
+    : GParser conditional String
+    :=
   GParser.dispatch fun b => if b == Ascii.quote then quoted else plain
 
 /-- Parse one flow-style YAML value. -/
-def value : GParser conditional Yaml :=
+def value
+    : GParser conditional Yaml
+    :=
   GParser.fix fun value =>
     -- sequence: "[" ws ( value ("," value)* )? ws "]"
     let commaValue : GParser conditional Yaml :=
