@@ -67,20 +67,38 @@ structure Document where
   deriving BEq, Repr
 
 /-- A bare-key byte: letter, digit, underscore, or dash. -/
-@[inline] private def isKeyByte (b : UInt8) : Bool :=
+@[inline]
+private
+def isKeyByte
+    (b : UInt8)
+    : Bool
+    :=
   Ascii.isAlpha b || Ascii.isDigit b || b == 95 || b == Ascii.dash
 
 /-- A header-key byte: a bare-key byte or a dot (for dotted headers like `a.b`). -/
-@[inline] private def isHeaderByte (b : UInt8) : Bool :=
+@[inline]
+private
+def isHeaderByte
+    (b : UInt8)
+    : Bool
+    :=
   isKeyByte b || b == Ascii.dot
 
 /-- An integer byte: digit or sign. -/
-@[inline] private def isIntByte (b : UInt8) : Bool :=
+@[inline]
+private
+def isIntByte
+    (b : UInt8)
+    : Bool
+    :=
   Ascii.isDigit b || b == Ascii.dash || b == Ascii.plus
 
 /-- One unit of skippable text: a single whitespace byte, or a whole `#`-comment (from
 `#` to just before the newline). Always consumes on success, so it drives `skipMany`. -/
-private def wsOrComment : GParser conditional Unit :=
+private
+def wsOrComment
+    : GParser conditional Unit
+    :=
   GParser.dispatch fun b =>
     if b == Ascii.hash then
       (fun _ => ()) <$> (GParser.byte Ascii.hash *> GParser.takeWhile (· != Ascii.lf))
@@ -92,7 +110,10 @@ private def tws : GParser flexible Nat := GParser.skipMany wsOrComment
 
 /-- A TOML value: string, array, bool, or integer, chosen by first byte. Recursive
 because an array holds values. -/
-private def value : GParser conditional Value :=
+private
+def value
+    : GParser conditional Value
+    :=
   GParser.fix fun value =>
     let strVal : GParser conditional Value :=
       Value.str <$>
@@ -128,14 +149,20 @@ private def value : GParser conditional Value :=
       else noValue
 
 /-- One `key = value` entry. -/
-private def entry : GParser conditional Entry :=
+private
+def entry
+    : GParser conditional Entry
+    :=
   GParser.map2 (·, ·)
     (GParser.capture (GParser.takeWhile1 isKeyByte))
     (tws *> GParser.byte Ascii.equals *> tws *> value)
 
 /-- A `[header]` or `[[header]]` line; returns the header key and whether it is an
 array-of-tables element. -/
-private def tableHeader : GParser conditional (String × Bool) :=
+private
+def tableHeader
+    : GParser conditional (String × Bool)
+    :=
   GParser.byte Ascii.lbracket *>
     GParser.dispatch fun b =>
       if b == Ascii.lbracket then
@@ -147,19 +174,28 @@ private def tableHeader : GParser conditional (String × Bool) :=
           (GParser.capture (GParser.takeWhile1 isHeaderByte) <* GParser.byte Ascii.rbracket)
 
 /-- One `[header]` section and its entries. -/
-private def table : GParser conditional Table :=
+private
+def table
+    : GParser conditional Table
+    :=
   GParser.map2 (fun (h, arr) ents => ⟨h, arr, ents⟩)
     tableHeader
     (tws *> GParser.many (entry <* tws))
 
 /-- Parse a whole TOML document. -/
-def document : GParser flexible Document :=
+def document
+    : GParser flexible Document
+    :=
   tws *> GParser.map2 (fun root tables => ⟨root, tables⟩)
     (GParser.many (entry <* tws))
     (GParser.many (table <* tws))
 
 /-- Parse a TOML document from `arr`, or `none` on failure. -/
-@[inline] def parse (arr : ByteArray) : Option Document :=
+@[inline]
+def parse
+    (arr : ByteArray)
+    : Option Document
+    :=
   GParser.run? document arr
 
 -- Acceptance guards -------------------------------------------------------

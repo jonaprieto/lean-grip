@@ -41,11 +41,18 @@ inductive Sexp where
   deriving BEq, Repr
 
 /-- An atom byte: any visible byte that is not a delimiter (`(` or `)`). -/
-@[inline] private def isAtomByte (b : UInt8) : Bool :=
+@[inline]
+private
+def isAtomByte
+    (b : UInt8)
+    : Bool
+    :=
   b > Ascii.space && b != Ascii.lparen && b != Ascii.rparen
 
 /-- Parse one S-expression (after any leading whitespace). -/
-def sexp : GParser conditional Sexp :=
+def sexp
+    : GParser conditional Sexp
+    :=
   GParser.fix fun sexp =>
     let atom : GParser conditional Sexp :=
       Sexp.atom <$> GParser.capture (GParser.takeWhile1 isAtomByte)

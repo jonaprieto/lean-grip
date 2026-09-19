@@ -105,7 +105,12 @@ theorem GParser.errors_ne_never {g : Grade} {α} (p : GParser g α) {arr q e}
 /-- Run a parser from offset 0, returning `some value` on success and `none` on
 failure.  The error payload is discarded; use `GParser.parse` (in `Grip.Parser`)
 for a positioned `ParseError`. -/
-@[inline] def GParser.run? (p : GParser g α) (arr : ByteArray) : Option α :=
+@[inline]
+def GParser.run?
+    (p : GParser g α)
+    (arr : ByteArray)
+    : Option α
+    :=
   match p.run arr 0 with
   | .ok a _ => some a
   | .error _ => none
@@ -118,10 +123,15 @@ Proofs required:
 - `hc`: a success that satisfies `g.consumes` also satisfies `g'.consumes`
 - `hew`: `g'.errors = always` implies `g.errors = always` (preserves must-fail)
 - `hsw`: `g'.errors = never` implies `g.errors = never` (preserves must-succeed) -/
-@[inline] def GParser.weaken {g g' : Grade} (p : GParser g α)
+@[inline]
+def GParser.weaken
+    {g g' : Grade}
+    (p : GParser g α)
     (hc : ∀ {n m : Nat}, consumptionWitness n m g.consumes → consumptionWitness n m g'.consumes)
     (hew : g'.errors = always → g.errors = always)
-    (hsw : g'.errors = never → g.errors = never) : GParser g' α where
+    (hsw : g'.errors = never → g.errors = never)
+    : GParser g' α
+    where
   run := p.run
   cwit := fun h => hc (p.cwit h)
   ewit := fun he => p.ewit (hew he)
@@ -131,7 +141,12 @@ Proofs required:
 
 /-- Weaken any parser to `fallible` (errors = possibly, consumes = possibly),
 losing all grade precision. Used by the ungraded `Parser` layer. -/
-@[inline] def GParser.weakenFallible {g : Grade} (p : GParser g α) : GParser fallible α :=
+@[inline]
+def GParser.weakenFallible
+    {g : Grade}
+    (p : GParser g α)
+    : GParser fallible α
+    :=
   p.weaken
     -- Term-mode match so that in each branch `w`'s type is specialised to the
     -- concrete `consumptionWitness` variant before being handed to the proof term.
@@ -167,7 +182,12 @@ replaces the `partial` loop the implementation once had; see
 /-- Clamp a raw result so a success that did not advance past `q` becomes a failure at
 `q`. This is what makes the `conditional` (`always`-consume) witness hold for `fix`
 without unfolding the fuel recursion. -/
-@[inline] def clampAdvance (arr : ByteArray) (q : Nat) : ParseResult α → ParseResult α
+@[inline]
+def clampAdvance
+    (arr : ByteArray)
+    (q : Nat)
+    : ParseResult α →
+      ParseResult α
   | .ok x q' => if q < q' ∧ q' ≤ arr.size then .ok x q' else .error ⟨q, []⟩
   | .error e => .error e
 
@@ -214,9 +234,14 @@ depth is bounded by the bytes remaining. The `Guarded` hypothesis in
 `grip-props/GripProps/FixComplete.lean` proves that the `arr.size - q + 1` budget does not
 truncate a body's accepted parses. Fuel zero returns a failure; direct left recursion reaches
 it, while other non-guarded bodies may vary with the supplied budget. -/
-@[specialize] private def GParser.fixFuelBounded
-    (f : GParser conditional α → GParser conditional α) :
-    (n : Nat) → (arr : ByteArray) → (q : Nat) → BoundedResult arr q α
+@[specialize]
+private
+def GParser.fixFuelBounded
+    (f : GParser conditional α → GParser conditional α)
+    : (n : Nat) →
+      (arr : ByteArray) →
+      (q : Nat) →
+      BoundedResult arr q α
   | 0, _, q => ⟨.error ⟨q, []⟩, by
       intro e hq h
       simp only [ParseResult.error.injEq] at h
@@ -257,14 +282,23 @@ it, while other non-guarded bodies may vary with the supplied budget. -/
 
 /-- The executable projection of `fixFuelBounded`. The bound proof is erased, so this remains
 the same `Nat → ByteArray → Nat → ParseResult` runtime interface. -/
-@[specialize] def GParser.fixFuel (f : GParser conditional α → GParser conditional α) :
-    Nat → ByteArray → Nat → ParseResult α :=
+@[specialize]
+def GParser.fixFuel
+    (f : GParser conditional α → GParser conditional α)
+    : Nat →
+      ByteArray →
+      Nat →
+      ParseResult α
+    :=
   fun n arr q => (GParser.fixFuelBounded f n arr q).val
 
 /-- Build a recursive `conditional` parser as the fixpoint of `f`. See the module note
 above for the totality-not-productivity caveat. -/
-@[specialize] def GParser.fix (f : GParser conditional α → GParser conditional α) :
-    GParser conditional α where
+@[specialize]
+def GParser.fix
+    (f : GParser conditional α → GParser conditional α)
+    : GParser conditional α
+    where
   run arr q := clampAdvance arr q (GParser.fixFuel f (arr.size - q + 1) arr q)
   cwit := by
     intro arr q a q' h
@@ -332,19 +366,32 @@ def GParser.fixSelf
     exact clampAdvance_fwit (GParser.fixFuelBounded f n a p).property hp h
 
 /-- `fixSelf`'s run is the clamp of the lower-fuel `fixFuel`. -/
-@[simp] theorem GParser.fixSelf_run (f : GParser conditional α → GParser conditional α)
-    (n : Nat) (a : ByteArray) (p : Nat) :
-    (GParser.fixSelf f n).run a p = clampAdvance a p (GParser.fixFuel f n a p) := rfl
+@[simp]
+theorem GParser.fixSelf_run
+    (f : GParser conditional α → GParser conditional α)
+    (n : Nat)
+    (a : ByteArray)
+    (p : Nat)
+    : (GParser.fixSelf f n).run a p = clampAdvance a p (GParser.fixFuel f n a p)
+    := rfl
 
 /-- The one-step unfolding of `fixFuel`: at fuel `n+1`, run the body applied to the clamped
 `fixSelf` at fuel `n`. -/
-theorem GParser.fixFuel_succ (f : GParser conditional α → GParser conditional α)
-    (n : Nat) (arr : ByteArray) (q : Nat) :
-    GParser.fixFuel f (n + 1) arr q = (f (GParser.fixSelf f n)).run arr q := rfl
+theorem GParser.fixFuel_succ
+    (f : GParser conditional α → GParser conditional α)
+    (n : Nat)
+    (arr : ByteArray)
+    (q : Nat)
+    : GParser.fixFuel f (n + 1) arr q = (f (GParser.fixSelf f n)).run arr q
+    := rfl
 
 /-- Fuel zero fails at the current offset. -/
-@[simp] theorem GParser.fixFuel_zero (f : GParser conditional α → GParser conditional α)
-    (arr : ByteArray) (q : Nat) :
-    GParser.fixFuel f 0 arr q = .error ⟨q, []⟩ := rfl
+@[simp]
+theorem GParser.fixFuel_zero
+    (f : GParser conditional α → GParser conditional α)
+    (arr : ByteArray)
+    (q : Nat)
+    : GParser.fixFuel f 0 arr q = .error ⟨q, []⟩
+    := rfl
 
 end Grip

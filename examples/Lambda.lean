@@ -44,11 +44,17 @@ inductive Term where
   deriving BEq, Repr
 
 /-- An identifier (one or more letters), after any leading whitespace. -/
-@[inline] private def name : GParser conditional String :=
+@[inline]
+private
+def name
+    : GParser conditional String
+    :=
   GParser.ws *> GParser.capture (GParser.takeWhile1 Ascii.isAlpha)
 
 /-- Parse one lambda term. -/
-def term : GParser conditional Term :=
+def term
+    : GParser conditional Term
+    :=
   GParser.fix fun term =>
     let var : GParser conditional Term :=
       Term.var <$> GParser.capture (GParser.takeWhile1 Ascii.isAlpha)

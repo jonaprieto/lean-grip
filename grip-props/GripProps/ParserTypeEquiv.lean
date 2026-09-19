@@ -39,7 +39,13 @@ structure Text
 
 abbrev Text.pos {n : Nat} (t : Text n) : Nat := t.bytes.size - n
 
-@[ext] theorem Text.ext {n : Nat} {a b : Text n} (h : a.bytes = b.bytes) : a = b := by
+@[ext]
+theorem Text.ext
+    {n : Nat}
+    {a b : Text n}
+    (h : a.bytes = b.bytes)
+    : a = b
+    := by
   cases a
   cases b
   cases h
@@ -54,9 +60,16 @@ structure Success
   restSize : Nat
   witness : consumptionWitness restSize n consumes
 
-@[ext] theorem Success.ext {n : Nat} {c : Modality} {α : Type}
+@[ext]
+theorem Success.ext
+    {n : Nat}
+    {c : Modality}
+    {α : Type}
     {a b : Success n c α}
-    (hr : a.result = b.result) (hs : a.restSize = b.restSize) : a = b := by
+    (hr : a.result = b.result)
+    (hs : a.restSize = b.restSize)
+    : a = b
+    := by
   cases a
   cases b
   cases hr
@@ -71,9 +84,15 @@ structure Failure
   restSize : Nat
   witness : restSize ≤ n
 
-@[ext] theorem Failure.ext {n : Nat} {ε : Type}
+@[ext]
+theorem Failure.ext
+    {n : Nat}
+    {ε : Type}
     {a b : Failure n ε}
-    (he : a.error = b.error) (hs : a.restSize = b.restSize) : a = b := by
+    (he : a.error = b.error)
+    (hs : a.restSize = b.restSize)
+    : a = b
+    := by
   cases a
   cases b
   cases he
@@ -110,9 +129,15 @@ structure Parser
   run : ∀ {n : Nat}, Text n → Outcome ε n g.consumes α
   sound : ∀ {n : Nat} (t : Text n), Outcome.Sound g.errors (run t)
 
-@[ext] theorem Parser.ext {ε : Type} {g : Grade} {α : Type}
+@[ext]
+theorem Parser.ext
+    {ε : Type}
+    {g : Grade}
+    {α : Type}
     {p q : Parser ε g α}
-    (h : ∀ {n : Nat} (t : Text n), p.run t = q.run t) : p = q := by
+    (h : ∀ {n : Nat} (t : Text n), p.run t = q.run t)
+    : p = q
+    := by
   obtain ⟨pr, ps⟩ := p
   obtain ⟨qr, qs⟩ := q
   have hr : @pr = @qr := by funext n t; exact h t
@@ -136,7 +161,9 @@ def ValidRunEq
     :=
   ∀ (arr : ByteArray) (pos : Nat), pos ≤ arr.size → p.run arr pos = q.run arr pos
 
-def zeroOutside : GParser pure Bool where
+def zeroOutside
+    : GParser pure Bool
+    where
   run := fun _ q => .ok false q
   cwit := by intro arr q a q' h; cases h; rfl
   ewit := by intro h; exact Modality.noConfusion h
@@ -144,7 +171,9 @@ def zeroOutside : GParser pure Bool where
   bwit := by intro arr q a q' hq h; cases h; exact hq
   fwit := by intro arr q e hq h; contradiction
 
-def signalOutside : GParser pure Bool where
+def signalOutside
+    : GParser pure Bool
+    where
   run := fun arr q => .ok (decide (arr.size < q)) q
   cwit := by intro arr q a q' h; cases h; rfl
   ewit := by intro h; exact Modality.noConfusion h
@@ -154,11 +183,15 @@ def signalOutside : GParser pure Bool where
 
 /-- PrimParser cannot observe the distinction between these parsers because its
 `Text n` input represents only valid starting offsets. -/
-theorem same_on_valid_inputs : ValidRunEq zeroOutside signalOutside := by
+theorem same_on_valid_inputs
+    : ValidRunEq zeroOutside signalOutside
+    := by
   intro arr q hq
   simp [zeroOutside, signalOutside, Nat.not_lt.mpr hq]
 
-theorem different_as_GParser : zeroOutside ≠ signalOutside := by
+theorem different_as_GParser
+    : zeroOutside ≠ signalOutside
+    := by
   intro h
   have hr := congrArg (fun p => p.run ByteArray.empty 1) h
   simp [zeroOutside, signalOutside] at hr
@@ -200,10 +233,14 @@ structure SafeGParser
   fwit : ∀ {arr q} (hq : q ≤ arr.size) {e},
     run arr q hq = .error e → q ≤ e.pos ∧ e.pos ≤ arr.size
 
-@[ext] theorem SafeGParser.ext {g : Grade} {α : Type}
+@[ext]
+theorem SafeGParser.ext
+    {g : Grade}
+    {α : Type}
     {p q : SafeGParser g α}
-    (h : ∀ (arr : ByteArray) (pos : Nat) (hp : pos ≤ arr.size),
-      p.run arr pos hp = q.run arr pos hp) : p = q := by
+    (h : ∀ (arr : ByteArray) (pos : Nat) (hp : pos ≤ arr.size), p.run arr pos hp = q.run arr pos hp)
+    : p = q
+    := by
   obtain ⟨pr, pc, pe, ps, pb, pf⟩ := p
   obtain ⟨qr, qc, qe, qs, qb, qf⟩ := q
   have hr : @pr = @qr := by funext arr pos hp; exact h arr pos hp
@@ -436,9 +473,14 @@ structure SizedGParser
   fwit : ∀ {n : Nat} {t : Prim.Text n} {e},
     run t = .error e → t.pos ≤ e.pos ∧ e.pos ≤ t.bytes.size
 
-@[ext] theorem SizedGParser.ext {g : Grade} {α : Type}
+@[ext]
+theorem SizedGParser.ext
+    {g : Grade}
+    {α : Type}
     {p q : SizedGParser g α}
-    (h : ∀ {n : Nat} (t : Prim.Text n), p.run t = q.run t) : p = q := by
+    (h : ∀ {n : Nat} (t : Prim.Text n), p.run t = q.run t)
+    : p = q
+    := by
   obtain ⟨pr, pc, pe, ps, pb, pf⟩ := p
   obtain ⟨qr, qc, qe, qs, qb, qf⟩ := q
   have hr : @pr = @qr := by funext n t; exact h t

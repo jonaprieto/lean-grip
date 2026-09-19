@@ -28,21 +28,50 @@ namespace Grip.GradeSound
 variable {α : Type}
 
 /-- A `conditional` (always-consuming) parser advances the offset on every success. -/
-theorem conditional_advances (p : GParser conditional α) {arr : ByteArray} {q : Nat}
-    {a : α} {q' : Nat} (h : p.run arr q = .ok a q') : q < q' := p.cwit h
+theorem conditional_advances
+    (p : GParser conditional α)
+    {arr : ByteArray}
+    {q : Nat}
+    {a : α}
+    {q' : Nat}
+    (h : p.run arr q = .ok a q')
+    : q < q'
+    := p.cwit h
 
 /-- A never-error parser always succeeds. -/
-theorem neverError_succeeds {g : Grade} (hg : g.errors = never) (p : GParser g α)
-    (arr : ByteArray) (q : Nat) : ∃ a q', p.run arr q = .ok a q' := p.swit hg arr q
+theorem neverError_succeeds
+    {g : Grade}
+    (hg : g.errors = never)
+    (p : GParser g α)
+    (arr : ByteArray)
+    (q : Nat)
+    : ∃ a q',
+      p.run arr q = .ok a q'
+    := p.swit hg arr q
 
 /-- An always-error parser never succeeds. -/
-theorem alwaysError_fails {g : Grade} (hg : g.errors = always) (p : GParser g α)
-    (arr : ByteArray) (q : Nat) : ∃ e, p.run arr q = .error e := p.ewit hg arr q
+theorem alwaysError_fails
+    {g : Grade}
+    (hg : g.errors = always)
+    (p : GParser g α)
+    (arr : ByteArray)
+    (q : Nat)
+    : ∃ e,
+      p.run arr q = .error e
+    := p.ewit hg arr q
 
 /-- A failure from a valid start reports a byte offset in the interval from that start to EOF. -/
-theorem failure_position_bounded {g : Grade} (p : GParser g α) {arr : ByteArray} {q : Nat}
-    {e : Err} (hq : q ≤ arr.size) (h : p.run arr q = .error e) :
-    q ≤ e.pos ∧ e.pos ≤ arr.size := p.fwit hq h
+theorem failure_position_bounded
+    {g : Grade}
+    (p : GParser g α)
+    {arr : ByteArray}
+    {q : Nat}
+    {e : Err}
+    (hq : q ≤ arr.size)
+    (h : p.run arr q = .error e)
+    : q ≤ e.pos ∧
+      e.pos ≤ arr.size
+    := p.fwit hq h
 
 /-- Grade soundness closes the consumption gap: a `conditional` parser cannot succeed
 without advancing the offset. The "consumption liar" is uninhabited. -/
