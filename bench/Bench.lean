@@ -18,12 +18,11 @@ workload, including the core Grip validator row and DOM comparisons, lives in `l
 partial
 def repeatStr
     (s : String)
-    (n : Nat)
-    : String
-    :=
-  if n == 0 then ""
-  else if n == 1 then s
-  else
+    : Nat →
+      String
+  | 0 => ""
+  | 1 => s
+  | n =>
     let half := repeatStr s (n / 2)
     let doubled := half ++ half
     if n % 2 == 0 then doubled else doubled ++ s
