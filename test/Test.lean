@@ -92,4 +92,15 @@ private def byteB : GParser conditional Unit := GParser.byte 66
 #guard ((GParser.alt (byteA <?> "A") (byteB <?> "B")).run "c".toUTF8 0
         == (.error ⟨0, ["A", "B"]⟩ : ParseResult Unit))
 
+-- gdo names what it supports instead of failing on an elaborator internal.
+/--
+error: gdo supports `let x ← p`, `let x := e`, bare parser lines, `return`, and a final
+`grade_by`; write anything else with `GParser.bind`
+-/
+#guard_msgs (whitespace := lax) in
+example : GParser conditional Unit :=
+  gdo
+    if true then byteA else byteB
+    byteA
+
 end

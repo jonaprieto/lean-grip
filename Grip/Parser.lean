@@ -242,14 +242,18 @@ where
       `(Grip.GParser.bind $e fun ($x : $ty) => $rest)
     | `(doElem| let $x:ident := $e:term)             => `(let $x := $e; $rest)
     | `(doElem| let $x:ident : $ty:term := $e:term) => `(let $x : $ty := $e; $rest)
-    | _ =>
-      let e : TSyntax `term := ⟨elem.getArgs.back!⟩
-      `(Grip.GParser.bind $e fun _ => $rest)
+    | `(doElem| $e:term)                            => `(Grip.GParser.bind $e fun _ => $rest)
+    | _                                             => unsupported elem
   expandGDoFinal (elem : Syntax) : MacroM (TSyntax `term) := do
     match elem with
     | `(doElem| return $e:term) => `(Grip.GParser.pure $e)
     | `(doElem| return)         => `(Grip.GParser.pure ())
-    | _                         => pure ⟨elem.getArgs.back!⟩
+    | `(doElem| $e:term)        => pure e
+    | _                         => unsupported elem
+  unsupported {α : Type} (elem : Syntax) : MacroM α :=
+    Macro.throwErrorAt elem
+      "gdo supports `let x ← p`, `let x := e`, bare parser lines, `return`, and a final \
+      `grade_by`; write anything else with `GParser.bind`"
 
 open Lean in
 @[macro gdoNotation] def expandGDo : Macro := fun stx =>
