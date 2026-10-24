@@ -63,25 +63,13 @@ structure ParseError where
   expected : List String
   deriving Repr, DecidableEq, BEq
 
-/-- The labels of `items` in first-seen order, each once. -/
-private
-def uniqueStrings
-    (items : List String)
-    : List String
-    :=
-  let rec go (seen : List String) : List String → List String
-    | [] => seen
-    | item :: rest =>
-        if seen.contains item then go seen rest else go (seen ++ [item]) rest
-  go [] items
-
 /-- Compose a human-readable message from the expected labels, each once:
 "expected a or b" when labels are present, or "unexpected input" when there are none. -/
 def ParseError.message
     (e : ParseError)
     : String
     :=
-  match uniqueStrings e.expected with
+  match e.expected.eraseDups with
   | []  => "unexpected input"
   | xs  => "expected " ++ String.intercalate " or " xs
 

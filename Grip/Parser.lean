@@ -205,10 +205,7 @@ a lambda instead. -/
 syntax (name := gdoNotation) "gdo " doSeq : term
 
 open Lean in
--- partiality: this macro recursively expands Syntax nodes whose shape is controlled by Lean's
--- parser; the recursion is elaborator-time plumbing, not a public logical computation.
 private
-partial
 def expandGDoBlock
     (doSeq : Syntax)
     : MacroM (TSyntax `term)
