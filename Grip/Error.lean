@@ -168,8 +168,4 @@ def ParseError.pretty
   let caret   := String.ofList (List.replicate (e.col - 1) ' ') ++ "^"
   s!"{e.line}:{e.col}: {msg}\n{srcLine}\n{caret}"
 
-#guard ParseError.message
-    { pos := 0, line := 1, col := 1, expected := ["number", "number", "string"] }
-    == "expected number or string"
-
 end Grip

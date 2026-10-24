@@ -4,6 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Jonathan Prieto-Cubides
 -/
 import Grip
+import Test.Modality
+import Test.Grade
+import Test.Error
+import Test.Byte
+import Test.Char
+import Test.Ascii
+import Test.Combinators
+import Test.Parser
 
 /-! Parser regression checks. `#guard` runs at elaboration, so a false guard is a build
 error and turns the `core` CI job red. -/

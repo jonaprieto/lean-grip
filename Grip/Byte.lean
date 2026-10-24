@@ -785,7 +785,4 @@ def GParser.label
 `p <?> "name"` produces "expected name" on failure at the same position. -/
 infixl:10 " <?> " => fun p name => GParser.label name p
 
--- A `conditional` parser weakened to `fallible` typechecks (see `Grip.Graded`).
-example (f : UInt8 → Bool) : GParser fallible UInt8 := GParser.weakenFallible (GParser.satisfy f)
-
 end Grip
