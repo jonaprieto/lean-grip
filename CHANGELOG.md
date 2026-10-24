@@ -1,5 +1,10 @@
 # Changelog
 
+Notable changes to grip. Format loosely follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); grip is pre-1.0, so breaking
+changes to the core grade machinery can still happen between minor versions without
+much ceremony beyond what's noted here.
+
 ## 0.3.6 — 2026-09-09
 
 - Document the contribution policy, package problem, and prim-parser attribution.
@@ -25,11 +30,6 @@
 
 - Adopt Lean v4.33.0 and precommit-lean v0.1.6.
 
-Notable changes to grip. Format loosely follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); grip is pre-1.0, so breaking
-changes to the core grade machinery can still happen between minor versions without
-much ceremony beyond what's noted here.
-
 ## 0.3.0 — 2026-08-12
 
 - Breaking: `GParser` gains a sixth field, `fwit`, proving that a failure reported from an
@@ -50,10 +50,7 @@ much ceremony beyond what's noted here.
 - Move the JSON parser, corpus, properties, and benchmark to `lean-grip-json`; the core
   package keeps its non-JSON parser examples and benchmark.
 
-## [Unreleased]
-
-Everything below predates the first tag; recorded here as the proposed contents of the
-first release, `v0.1.0`.
+## 0.1.0 — 2026-08-05
 
 ### Added
 
@@ -156,5 +153,3 @@ theorem. `alt`'s furthest-failure merge still only fires when both branches fail
 `GParser.foldMany` still cannot propagate a failed repetition -- `Grip.Json` no longer
 relies on either for its container bodies, but a client grammar built the same way would
 hit the same loss.
-
-[Unreleased]: https://github.com/jonaprieto/lean-grip/commits/main

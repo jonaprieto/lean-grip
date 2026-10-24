@@ -10,14 +10,14 @@ import Grip.Graded
 /-!
 # Grip.Scan: total scanners and repetition
 
-The looping combinators, all total (structural on `arr.size - q`) rather than `partial`.
+The looping combinators, all total (well-founded on `arr.size - q`) rather than `partial`.
 The raw scan loops `scanFwd`/`foldFwd`/`natFwd` with their forward-progress lemmas, and
 the parsers built on them: `takeWhile`/`takeWhile1`, `foldMany`/`many`, and `nat`. Also
 the JSON string scanners: the lenient `scanStrFwd`/`takeStringBody` (escape-aware, never
 fails) and the strict `scanStrBody`/`scanStrLit`/`stringLit` (validates escapes and
-control bytes). The `@[specialize]` on each loop lets a statically-known predicate
-monomorphize into it. The point combinators are in `Grip.Byte`; the graded type and
-`fix` in `Grip.Graded`.
+control bytes). `@[specialize]` on the loops that take a predicate or parser lets a
+statically-known argument monomorphize into them. The point combinators are in `Grip.Byte`;
+the graded type and `fix` in `Grip.Graded`.
 -/
 
 open Modality
@@ -27,7 +27,7 @@ namespace Grip
 
 variable {ge : Modality} {α β : Type}
 
-/-- Scan forward while `f` holds. Total: structural on the measure
+/-- Scan forward while `f` holds. Total: well-founded on the measure
 `arr.size - q` (each step advances one byte, bounded by `arr.size`). `@[specialize]` so
 a known predicate (e.g. `Ascii.isWs`) is monomorphized into the loop rather than called
 indirectly per byte. -/
@@ -111,7 +111,7 @@ def GParser.takeWhile
   fwit := by intro arr q e hq h; exact absurd h (by simp)
 
 /-- Scan a JSON-style string body: advance until an *unescaped* `"` (0x22), treating a
-backslash (0x5c) as an escape that consumes the next byte too. Total: structural on
+backslash (0x5c) as an escape that consumes the next byte too. Total: well-founded on
 `arr.size - q`. -/
 @[specialize]
 def scanStrFwd
@@ -194,7 +194,7 @@ def GParser.takeStringBody
 and past the closing `"`, validating escapes. Returns `some end` (just past the closing quote)
 on a well-formed body, or `none` on a malformed one: an unescaped control byte (`< 0x20`), an
 unknown `\`-escape, a `\u` not followed by four hex digits, or end of input before the closing
-quote. Total (structural on `arr.size - q`). Unlike `scanStrFwd`, this *validates* and can
+quote. Total (well-founded on `arr.size - q`). Unlike `scanStrFwd`, this *validates* and can
 reject, so the parser built on it is `conditional`, not `flexible`. -/
 @[specialize]
 def scanStrBody
@@ -411,7 +411,7 @@ def GParser.takeWhile1
       exact ⟨Nat.le_refl q, hq⟩
 
 /-- Total repetition core: fold `p`'s results into `a`, advancing while `p` succeeds
-and strictly consumes (in bounds). Total: structural on `arr.size - q`; the
+and strictly consumes (in bounds). Total: well-founded on `arr.size - q`; the
 guard `q < q' ≤ arr.size` guarantees the measure drops. `@[specialize]` so the `step`
 and the element parser fuse into the loop when they are statically known. -/
 @[specialize]
@@ -504,7 +504,7 @@ def GParser.foldMany
     exact hle
   fwit := by intro arr q e hq h; exact absurd h (by simp)
 
-/-- Fold decimal digits into `acc`. Total: structural on `arr.size - q`. -/
+/-- Fold decimal digits into `acc`. Total: well-founded on `arr.size - q`. -/
 @[specialize]
 def natFwd
     (arr : ByteArray)

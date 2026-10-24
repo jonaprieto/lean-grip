@@ -7,7 +7,7 @@ Inspired by prim-parser by Jan Mas Rovira
 (https://github.com/janmasrovira/prim-parser, PrimParser/Basic.lean, commit
 5a5ff0d, 2026-05-31): the goal of a total `fix` without `partial`. prim-parser
 gets it by size-indexing on `Text n`; grip gets it by grade-bounded fuel. The
-`fix_advances` theorem is grip's own consequence of that clamp.
+`fix_advances` theorem is grip's own.
 -/
 import Grip
 
@@ -20,9 +20,10 @@ rather than a loop. See `PrimParser/Basic.lean`.
 
 grip keeps the flat, fast core -- `run` is `ByteArray → Nat → ParseResult α`, with no length
 in the type -- and still gets kernel totality, by a different route. `GParser.fix` recurses on
-an explicit fuel (`GParser.fixFuel`), set to the bytes remaining (`arr.size - q + 1`). The
-runtime clamp downgrades any non-advancing success to a failure, so every self-success
-advances the offset. This makes the advertised `conditional` grade sound. Completeness is a
+an explicit fuel (`GParser.fixFuel`), set to the bytes remaining (`arr.size - q + 1`). Every
+self-success advances the offset because the body is itself `conditional`; the runtime clamp
+lets `fix` state that without an induction over the fuel and never changes an in-bounds
+result. This makes the advertised `conditional` grade sound. Completeness is a
 separate result: a `Guarded` proof must show that the particular body observes its
 self-reference only at greater offsets. For such a body the input-bounded fuel truncates no
 accepted parse. Direct left recursion instead exhausts the fuel and fails. Thus the *totality*
@@ -32,7 +33,7 @@ prim-parser buys with a size index, grip buys with explicit fuel while keeping t
 Totality is still not productivity. A directly left-recursive grammar reports fuel exhaustion
 rather than looping. More generally, a non-guarded body can be sensitive to the fuel budget, as
 `FixComplete.oscBody` demonstrates. The unconditional guarantee proved below is consumption
-soundness: the clamp makes every success of `fix f` advance the offset, so the
+soundness: every success of `fix f` advances the offset, so the
 `always`-consume grade never lies and the `many`/`foldMany` gate remains sound.
 -/
 
@@ -43,8 +44,8 @@ namespace Grip.Productivity
 variable {α : Type}
 
 /-- Consumption soundness of `fix`: every success of `GParser.fix f` advances the
-offset, enforced by the runtime clamp. This is the guarantee that keeps `many`/`foldMany`
-sound over recursive parsers. -/
+offset (`fix`'s own `cwit`, proved through the clamp). This is the guarantee that keeps
+`many`/`foldMany` sound over recursive parsers. -/
 theorem fix_advances
     (f : GParser conditional α → GParser conditional α)
     {arr : ByteArray}

@@ -40,7 +40,8 @@ inductive Sexp where
   | list : List Sexp → Sexp
   deriving BEq, Repr
 
-/-- An atom byte: any visible byte that is not a delimiter (`(` or `)`). -/
+/-- An atom byte: any byte above space (DEL and non-ASCII bytes included) that is not `(`
+or `)`. -/
 @[inline]
 private
 def isAtomByte

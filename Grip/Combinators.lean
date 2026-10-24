@@ -246,9 +246,11 @@ end GParser
 
 The familiar parser-combinator operators, at the graded level (grades multiply/combine as
 the underlying combinator dictates). `scoped`, so they activate on `open Grip`. The
-`Parser` (ungraded) face additionally gets the standard `Monad`/`Alternative` operators
-for free; these graded versions coexist with those and are chosen when the operands are
-graded `GParser`s. The label operator `<?>` is global (declared with the core). -/
+`Parser` (ungraded) face additionally gets the standard `Monad`/`Alternative` operators.
+A `Parser` is a `GParser fallible`, so with `open Grip` an operator on two `Parser` operands
+matches both readings and Lean reports an ambiguous term; at that face use the named
+combinators or leave `Grip` closed. The label operator `<?>` is global (declared with the
+core). -/
 
 /-- Functor map: `f <$> p`. -/
 scoped infixr:100 " <$> " => GParser.map

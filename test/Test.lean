@@ -5,10 +5,8 @@ Authors: Jonathan Prieto-Cubides
 -/
 import Grip
 
-/-! Milestone 0 smoke test. `#guard` runs at elaboration, so a false guard is a build
-error and turns the `core` CI job red. Real parser tests arrive in Milestone 1. -/
-
-#guard (1 + 1 = 2)
+/-! Parser regression checks. `#guard` runs at elaboration, so a false guard is a build
+error and turns the `core` CI job red. -/
 
 /-! ### Sanity: the graded byte backend parses. -/
 section
@@ -45,8 +43,7 @@ def migratedGroups
 #guard (GParser.run? migratedGroups "12".toUTF8) == some [2]
 
 -- fix: a recursive nested-parens parser returning the nesting depth. Each level
--- consumes "(" before recursing, so the always-consume clamp never fires on
--- balanced input; unbalanced input fails.
+-- consumes "(" before recursing; unbalanced input fails.
 private
 def parenDepth
     : GParser conditional Nat
