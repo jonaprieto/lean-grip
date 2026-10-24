@@ -101,7 +101,6 @@ jobs:
       - name: Build grip-props with mathlib cache
         working-directory: grip-props
         run: |
-          lake update
           lake exe cache get
           lake build
       - name: Audit core completeness theorem axioms

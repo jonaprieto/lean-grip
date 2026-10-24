@@ -23,5 +23,5 @@ repos:
   hooks:
   - id: lean-style
   - id: lean-modules
-    exclude: ^(grip-props/|bench/cross-lang/)
-exclude: ^(bench/data/|test/jsontestsuite/)
+    exclude: ^grip-props/
+exclude: ^bench/data/
