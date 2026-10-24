@@ -189,8 +189,8 @@ def matchBytes
     (i q : Nat)
     : Bool
     :=
-  if i < bs.size then
-    if q < arr.size then (arr[q]! == bs[i]!) && matchBytes arr bs (i + 1) (q + 1) else false
+  if hi : i < bs.size then
+    if hq : q < arr.size then (arr[q] == bs[i]) && matchBytes arr bs (i + 1) (q + 1) else false
   else true
 termination_by bs.size - i
 decreasing_by omega
@@ -205,7 +205,7 @@ theorem matchBytes_le
     : q + (bs.size - i) ≤ arr.size
     := by
   rw [matchBytes] at h
-  rw [if_pos hi] at h
+  rw [dif_pos hi] at h
   split at h
   · rename_i hq
     rw [Bool.and_eq_true] at h
@@ -219,53 +219,55 @@ termination_by bs.size - i
 decreasing_by omega
 
 /-- Match the UTF-8 bytes of the literal `s`, consuming them. Intended for a nonempty
-literal (grade `conditional`); the `if q < q'` clamp fails an empty match. -/
+literal (grade `conditional`); the `if q < q'` clamp fails an empty match. `s` is encoded once,
+when the parser is built, not on every run. -/
 @[inline]
 def GParser.string
     (s : String)
     : GParser conditional Unit
-    where
-  run arr q :=
-    if matchBytes arr s.toUTF8 0 q then
-      if q < q + s.toUTF8.size then .ok () (q + s.toUTF8.size) else .error ⟨q, []⟩
-    else .error ⟨q, []⟩
-  cwit := by
-    intro arr q a q' h
-    show q < q'
-    split at h
-    · split at h
-      · rename_i hlt
-        simp only [ParseResult.ok.injEq] at h
-        obtain ⟨_, rfl⟩ := h
-        exact hlt
-      · nomatch h
-    · nomatch h
-  ewit := nofun
-  swit := nofun
-  bwit := by
-    intro arr q a q' hq h
-    split at h
-    · rename_i hm
+    :=
+  let bs := s.toUTF8
+  { run arr q :=
+      if matchBytes arr bs 0 q then
+        if q < q + bs.size then .ok () (q + bs.size) else .error ⟨q, []⟩
+      else .error ⟨q, []⟩
+    cwit := by
+      intro arr q a q' h
+      show q < q'
       split at h
-      · rename_i hlt
-        simp only [ParseResult.ok.injEq] at h
-        obtain ⟨_, rfl⟩ := h
-        have hi : 0 < s.toUTF8.size := by omega
-        have hb := matchBytes_le arr s.toUTF8 0 q hi hm
-        simpa using hb
+      · split at h
+        · rename_i hlt
+          simp only [ParseResult.ok.injEq] at h
+          obtain ⟨_, rfl⟩ := h
+          exact hlt
+        · nomatch h
       · nomatch h
-    · nomatch h
-  fwit := by
-    intro arr q e hq h
-    split at h
-    · split at h
-      · contradiction
+    ewit := nofun
+    swit := nofun
+    bwit := by
+      intro arr q a q' hq h
+      split at h
+      · rename_i hm
+        split at h
+        · rename_i hlt
+          simp only [ParseResult.ok.injEq] at h
+          obtain ⟨_, rfl⟩ := h
+          have hi : 0 < bs.size := by omega
+          have hb := matchBytes_le arr bs 0 q hi hm
+          simpa using hb
+        · nomatch h
+      · nomatch h
+    fwit := by
+      intro arr q e hq h
+      split at h
+      · split at h
+        · contradiction
+        · simp only [ParseResult.error.injEq] at h
+          subst e
+          exact ⟨Nat.le_refl q, hq⟩
       · simp only [ParseResult.error.injEq] at h
         subst e
-        exact ⟨Nat.le_refl q, hq⟩
-    · simp only [ParseResult.error.injEq] at h
-      subst e
-      exact ⟨Nat.le_refl q, hq⟩
+        exact ⟨Nat.le_refl q, hq⟩ }
 
 end Grip
 
