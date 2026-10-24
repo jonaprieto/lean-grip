@@ -49,14 +49,7 @@ theorem scanFwd_ge
     (q : Nat)
     : q ≤ scanFwd arr f q
     := by
-  rw [scanFwd]
-  split
-  · split
-    · exact Nat.le_trans (Nat.le_succ q) (scanFwd_ge arr f (q + 1))
-    · exact Nat.le_refl q
-  · exact Nat.le_refl q
-termination_by arr.size - q
-decreasing_by omega
+  fun_induction scanFwd arr f q <;> omega
 
 /-- With a leading matching byte, `scanFwd` strictly advances. -/
 theorem scanFwd_gt
@@ -78,15 +71,7 @@ theorem scanFwd_le
     (hq : q ≤ arr.size)
     : scanFwd arr f q ≤ arr.size
     := by
-  rw [scanFwd]
-  split
-  · rename_i hlt
-    split
-    · exact scanFwd_le arr f (q + 1) hlt
-    · exact hq
-  · exact hq
-termination_by arr.size - q
-decreasing_by omega
+  fun_induction scanFwd arr f q <;> first | assumption | (apply_assumption; assumption)
 
 /-- Scan while `f` holds, returning the number of bytes consumed.
 Always succeeds (result is `.ok`). -/
@@ -133,19 +118,7 @@ theorem scanStrFwd_ge
     (q : Nat)
     : q ≤ scanStrFwd arr q
     := by
-  rw [scanStrFwd]
-  split
-  · rename_i h
-    split
-    · exact Nat.le_refl q
-    · split
-      · split
-        · have := scanStrFwd_ge arr (q + 2); omega
-        · omega
-      · have := scanStrFwd_ge arr (q + 1); omega
-  · exact Nat.le_refl q
-termination_by arr.size - q
-decreasing_by all_goals omega
+  fun_induction scanStrFwd arr q <;> omega
 
 /-- `scanStrFwd` stays within bounds when it starts within bounds. -/
 theorem scanStrFwd_le
@@ -154,19 +127,7 @@ theorem scanStrFwd_le
     (hq : q ≤ arr.size)
     : scanStrFwd arr q ≤ arr.size
     := by
-  rw [scanStrFwd]
-  split
-  · rename_i h
-    split
-    · exact hq
-    · split
-      · split
-        · have := scanStrFwd_le arr (q + 2) (by omega); omega
-        · omega
-      · have := scanStrFwd_le arr (q + 1) (by omega); omega
-  · exact hq
-termination_by arr.size - q
-decreasing_by all_goals omega
+  fun_induction scanStrFwd arr q <;> first | assumption | (apply_assumption; omega) | omega
 
 /-- Scan a JSON string body (escape-aware), returning the number of bytes consumed.
 Always succeeds (result is `.ok`). Pair with a `"` on each side for a full string literal. -/
@@ -230,28 +191,7 @@ theorem scanStrBody_ge
     (h : scanStrBody arr q = some q')
     : q ≤ q'
     := by
-  rw [scanStrBody] at h
-  split at h
-  · split at h
-    · simp only [Option.some.injEq] at h; omega
-    · split at h
-      · split at h
-        · split at h
-          · have := scanStrBody_ge arr (q + 2) q' h; omega
-          · split at h
-            · split at h
-              · split at h
-                · have := scanStrBody_ge arr (q + 6) q' h; omega
-                · nomatch h
-              · nomatch h
-            · nomatch h
-        · nomatch h
-      · split at h
-        · nomatch h
-        · have := scanStrBody_ge arr (q + 1) q' h; omega
-  · nomatch h
-termination_by arr.size - q
-decreasing_by all_goals omega
+  fun_induction scanStrBody arr q <;> simp_all <;> omega
 
 /-- A successful `scanStrBody` stays within bounds. -/
 theorem scanStrBody_le
@@ -260,29 +200,7 @@ theorem scanStrBody_le
     (h : scanStrBody arr q = some q')
     : q' ≤ arr.size
     := by
-  rw [scanStrBody] at h
-  split at h
-  · rename_i hq
-    split at h
-    · simp only [Option.some.injEq] at h; omega
-    · split at h
-      · split at h
-        · split at h
-          · exact scanStrBody_le arr (q + 2) q' h
-          · split at h
-            · split at h
-              · split at h
-                · exact scanStrBody_le arr (q + 6) q' h
-                · nomatch h
-              · nomatch h
-            · nomatch h
-        · nomatch h
-      · split at h
-        · nomatch h
-        · exact scanStrBody_le arr (q + 1) q' h
-  · nomatch h
-termination_by arr.size - q
-decreasing_by all_goals omega
+  fun_induction scanStrBody arr q <;> simp_all <;> omega
 
 /-- Scan a strict JSON string literal starting at the opening `"`: `some end` (past the
 closing `"`) or `none`. -/
@@ -441,16 +359,7 @@ theorem foldFwd_ge
     (q : Nat)
     : q ≤ (foldFwd step p arr a q).2
     := by
-  rw [foldFwd]
-  split
-  next x q' hp =>
-    have hlt : q < q' := p.cwit hp
-    split
-    · exact Nat.le_trans (Nat.le_of_lt hlt) (foldFwd_ge step p arr (step a x) q')
-    · exact Nat.le_of_lt hlt
-  next => exact Nat.le_refl q
-termination_by arr.size - q
-decreasing_by omega
+  fun_induction foldFwd step p arr a q <;> (try have := p.cwit ‹_›) <;> simp_all <;> omega
 
 /-- `foldFwd` stays within bounds when it starts within bounds (using the element's `bwit`). -/
 theorem foldFwd_le
@@ -464,16 +373,8 @@ theorem foldFwd_le
     (hq : q ≤ arr.size)
     : (foldFwd step p arr a q).2 ≤ arr.size
     := by
-  rw [foldFwd]
-  split
-  next x q' hp =>
-    have hlt : q < q' := p.cwit hp
-    have hb : q' ≤ arr.size := p.bwit hq hp
-    rw [dif_pos hb]
-    exact foldFwd_le step p arr (step a x) q' hb
-  next => exact hq
-termination_by arr.size - q
-decreasing_by omega
+  fun_induction foldFwd step p arr a q <;>
+    first | assumption | (apply_assumption; assumption) | exact p.bwit hq ‹_›
 
 /-- Fold `p` zero-or-more times into `acc` (no list). Total (see `foldFwd`).
 Always succeeds (result is `.ok`). -/
@@ -529,15 +430,7 @@ theorem natFwd_ge
     (acc q : Nat)
     : q ≤ (natFwd arr acc q).2
     := by
-  rw [natFwd_eq]
-  split
-  next hbound =>
-    split
-    · exact Nat.le_trans (Nat.le_succ q) (natFwd_ge arr (acc * 10 + (arr[q].toNat - 48)) (q + 1))
-    · exact Nat.le_refl q
-  next => exact Nat.le_refl q
-termination_by arr.size - q
-decreasing_by omega
+  fun_induction natFwd arr acc q <;> simp_all <;> omega
 
 /-- With a leading digit, `natFwd` strictly advances. -/
 theorem natFwd_gt
@@ -558,15 +451,7 @@ theorem natFwd_le
     (hq : q ≤ arr.size)
     : (natFwd arr acc q).2 ≤ arr.size
     := by
-  rw [natFwd_eq]
-  split
-  next hbound =>
-    split
-    · exact natFwd_le arr (acc * 10 + (arr[q].toNat - 48)) (q + 1) hbound
-    · exact hq
-  next => exact hq
-termination_by arr.size - q
-decreasing_by omega
+  fun_induction natFwd arr acc q <;> first | assumption | (apply_assumption; assumption)
 
 /-- Parse a decimal natural number (one or more digits). Always consumes on success.
 On failure the furthest offset is the current position. -/
