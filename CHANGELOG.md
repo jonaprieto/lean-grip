@@ -5,6 +5,13 @@ Notable changes to grip. Format loosely follows
 changes to the core grade machinery can still happen between minor versions without
 much ceremony beyond what's noted here.
 
+## 0.4.0 — 2026-10-24
+
+- Breaking: `GParser.seqR`, `GParser.seqL` and `GParser.map2` are defined through `bind` and
+  `map`. Their types and compiled code are unchanged, but a proof that unfolds one of them now
+  sees `bind`; rewrite with the new `seqR_run`, `seqL_run` or `map2_run`, which state the old
+  unfolding, so `simp only [GParser.seqR]` becomes `simp only [GParser.seqR_run]`.
+
 ## 0.3.8 — 2026-10-24
 
 - `capture` is `captureWith` with a UTF-8 decode rather than a copy with its own proofs.
