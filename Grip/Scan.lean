@@ -252,7 +252,7 @@ def GParser.stringLit
   run := fun arr p =>
     match scanStrLit arr p with
     | some q => .ok (q - p) q
-    | none   => .error ⟨p, []⟩
+    | none   => .error { pos := p }
   cwit := by
     intro arr q a q' heq
     split at heq
@@ -288,8 +288,8 @@ def GParser.takeWhile1
     where
   run := fun arr p =>
     if h : p < arr.size then
-      if f arr[p] then (GParser.takeWhile f).run arr p else .error ⟨p, []⟩
-    else .error ⟨p, []⟩
+      if f arr[p] then (GParser.takeWhile f).run arr p else .error { pos := p }
+    else .error { pos := p }
   cwit := by
     intro arr q a q' heq
     split at heq
@@ -465,8 +465,9 @@ def GParser.nat
   run := fun arr p0 =>
     if h : p0 < arr.size then
       let b := arr[p0]
-      if 48 ≤ b && b ≤ 57 then (match natFwd arr 0 p0 with | (n, q) => .ok n q) else .error ⟨p0, []⟩
-    else .error ⟨p0, []⟩
+      if 48 ≤ b && b ≤ 57 then (match natFwd arr 0 p0 with | (n, q) => .ok n q)
+      else .error { pos := p0 }
+    else .error { pos := p0 }
   cwit := by
     intro arr q a q' heq
     split at heq

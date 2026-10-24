@@ -85,14 +85,14 @@ instance instBEqParseResult
     | _,         _         => false
 
 -- Error payload: bare failure records pos; label sets expected.
-#guard (digits.run "abc".toUTF8 0 == (.error ⟨0, []⟩ : ParseResult Nat))
+#guard (digits.run "abc".toUTF8 0 == (.error { pos := 0 } : ParseResult Nat))
 #guard ((digits <?> "digit").run "abc".toUTF8 0
-        == (.error ⟨0, ["digit"]⟩ : ParseResult Nat))
+        == (.error { pos := 0, expected := ["digit"] } : ParseResult Nat))
 -- Tie-merge: both branches fail at pos 0; expected sets are unioned.
 private def byteA : GParser conditional Unit := GParser.byte 65
 private def byteB : GParser conditional Unit := GParser.byte 66
 #guard ((GParser.alt (byteA <?> "A") (byteB <?> "B")).run "c".toUTF8 0
-        == (.error ⟨0, ["A", "B"]⟩ : ParseResult Unit))
+        == (.error { pos := 0, expected := ["A", "B"] } : ParseResult Unit))
 
 -- gdo names what it supports instead of failing on an elaborator internal.
 /--

@@ -201,7 +201,7 @@ def parse
 -- Acceptance guards -------------------------------------------------------
 
 /-- Convenience: a document with only root entries. -/
-private def rootDoc (es : List Entry) : Document := ⟨es, []⟩
+private def rootDoc (es : List Entry) : Document := { root := es, tables := [] }
 
 #guard parse "name = \"grip\"".toUTF8 == some (rootDoc [("name", .str "grip")])
 #guard parse "count = 42".toUTF8 == some (rootDoc [("count", .int 42)])

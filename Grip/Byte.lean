@@ -44,9 +44,9 @@ def GParser.pure
 def GParser.fail
     : GParser empty α
     where
-  run := fun _ p => .error ⟨p, []⟩
+  run := fun _ p => .error { pos := p }
   cwit := nofun
-  ewit := by intro _ arr q; exact ⟨⟨q, []⟩, rfl⟩
+  ewit := by intro _ arr q; exact ⟨{ pos := q }, rfl⟩
   swit := nofun
   bwit := by intro arr q a q' hq h; nomatch h
   fwit := by
@@ -64,8 +64,8 @@ def GParser.satisfy
     where
   run := fun arr p =>
     if h : p < arr.size then
-      (if f arr[p] then .ok arr[p] (p + 1) else .error ⟨p, []⟩)
-    else .error ⟨p, []⟩
+      (if f arr[p] then .ok arr[p] (p + 1) else .error { pos := p })
+    else .error { pos := p }
   cwit := by
     intro arr q a q' heq
     split at heq
@@ -103,8 +103,8 @@ def GParser.byte
     where
   run := fun arr p =>
     if h : p < arr.size then
-      (if arr[p] == c then .ok () (p + 1) else .error ⟨p, []⟩)
-    else .error ⟨p, []⟩
+      (if arr[p] == c then .ok () (p + 1) else .error { pos := p })
+    else .error { pos := p }
   cwit := by
     intro arr q a q' heq
     split at heq
@@ -204,7 +204,7 @@ def GParser.captureWith?
     match p.run arr q with
     | .ok _ q' => match f arr q q' with
       | some b => .ok b q'
-      | none   => .error ⟨q, []⟩
+      | none   => .error { pos := q }
     | .error e => .error e
   cwit := by
     intro arr q b q' heq
@@ -254,7 +254,7 @@ def GParser.dispatch
     (select : UInt8 → GParser conditional α)
     : GParser conditional α
     where
-  run := fun arr p => if h : p < arr.size then (select arr[p]).run arr p else .error ⟨p, []⟩
+  run := fun arr p => if h : p < arr.size then (select arr[p]).run arr p else .error { pos := p }
   cwit := by
     intro arr q a q' heq
     split at heq
@@ -473,7 +473,7 @@ def GParser.alt
       | .error ey =>
         if ex.pos < ey.pos then .error ey
         else if ey.pos < ex.pos then .error ex
-        else .error ⟨ex.pos, ex.expected ++ ey.expected⟩
+        else .error { ex with expected := ex.expected ++ ey.expected }
   cwit := by
     intro arr q a q' heq
     split at heq
@@ -508,7 +508,7 @@ def GParser.alt
     · exact ⟨ey, by simp only [hex, hey, if_pos h1]⟩
     · by_cases h2 : ey.pos < ex.pos
       · exact ⟨ex, by simp only [hex, hey, if_neg h1, if_pos h2]⟩
-      · exact ⟨⟨ex.pos, ex.expected ++ ey.expected⟩,
+      · exact ⟨{ ex with expected := ex.expected ++ ey.expected },
                by simp only [hex, hey, if_neg h1, if_neg h2]⟩
   swit := by
     intro he arr q
@@ -714,7 +714,7 @@ def GParser.takeN
     (n : Nat)
     : GParser fallible Unit
     where
-  run := fun arr p => if p + n ≤ arr.size then .ok () (p + n) else .error ⟨p, []⟩
+  run := fun arr p => if p + n ≤ arr.size then .ok () (p + n) else .error { pos := p }
   cwit := by
     intro arr q a q' heq
     split at heq
