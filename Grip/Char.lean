@@ -101,24 +101,24 @@ theorem decodeUtf8_le
         · rename_i h1
           split at h
           · simp only [Option.some.injEq, Prod.mk.injEq] at h; omega
-          · exact absurd h (by simp)
-        · exact absurd h (by simp)
+          · nomatch h
+        · nomatch h
       · split at h
         · split at h
           · rename_i h2
             split at h
             · simp only [Option.some.injEq, Prod.mk.injEq] at h; omega
-            · exact absurd h (by simp)
-          · exact absurd h (by simp)
+            · nomatch h
+          · nomatch h
         · split at h
           · rename_i h3
             split at h
             · split at h
               · simp only [Option.some.injEq, Prod.mk.injEq] at h; omega
-              · exact absurd h (by simp)
-            · exact absurd h (by simp)
-          · exact absurd h (by simp)
-  · exact absurd h (by simp)
+              · nomatch h
+            · nomatch h
+          · nomatch h
+  · nomatch h
 
 /-- Consume one `Char` satisfying `p`, or fail without consuming. Grade `conditional`. -/
 @[inline]
@@ -142,11 +142,11 @@ def GParser.satisfyChar
           simp only [ParseResult.ok.injEq] at h
           obtain ⟨_, rfl⟩ := h
           exact hlt
-        · exact absurd h (by simp)
-      · exact absurd h (by simp)
-    · exact absurd h (by simp)
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
+        · nomatch h
+      · nomatch h
+    · nomatch h
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q c q' hq h
     split at h
@@ -158,9 +158,9 @@ def GParser.satisfyChar
           simp only [ParseResult.ok.injEq] at h
           obtain ⟨_, rfl⟩ := h
           exact decodeUtf8_le hd
-        · exact absurd h (by simp)
-      · exact absurd h (by simp)
-    · exact absurd h (by simp)
+        · nomatch h
+      · nomatch h
+    · nomatch h
   fwit := by
     intro arr q e hq h
     split at h
@@ -214,7 +214,7 @@ theorem matchBytes_le
     · have ih := matchBytes_le arr bs (i + 1) (q + 1) hi1 hrec
       omega
     · omega
-  · exact absurd h (by simp)
+  · nomatch h
 termination_by bs.size - i
 decreasing_by omega
 
@@ -238,10 +238,10 @@ def GParser.string
         simp only [ParseResult.ok.injEq] at h
         obtain ⟨_, rfl⟩ := h
         exact hlt
-      · exact absurd h (by simp)
-    · exact absurd h (by simp)
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
+      · nomatch h
+    · nomatch h
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q a q' hq h
     split at h
@@ -253,8 +253,8 @@ def GParser.string
         have hi : 0 < s.toUTF8.size := by omega
         have hb := matchBytes_le arr s.toUTF8 0 q hi hm
         simpa using hb
-      · exact absurd h (by simp)
-    · exact absurd h (by simp)
+      · nomatch h
+    · nomatch h
   fwit := by
     intro arr q e hq h
     split at h

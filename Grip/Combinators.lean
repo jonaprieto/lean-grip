@@ -162,15 +162,15 @@ def notFollowedBy
   cwit := by
     intro arr q a q' h
     split at h
-    · exact absurd h (by simp)
+    · nomatch h
     · simp only [ParseResult.ok.injEq] at h
       exact h.2
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q a q' hq h
     split at h
-    · exact absurd h (by simp)
+    · nomatch h
     · simp only [ParseResult.ok.injEq] at h
       omega
   fwit := by

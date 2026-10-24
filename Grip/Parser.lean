@@ -111,10 +111,10 @@ def GParser.throwErr
     : Parser α
     where
   run := fun _ p => .error { e with pos := p }
-  cwit := by intro arr q a q' h; exact absurd h (by simp)
+  cwit := nofun
   ewit := by intro _ arr q; exact ⟨{ e with pos := q }, rfl⟩
-  swit := by intro he; exact absurd he (by decide)
-  bwit := by intro arr q a q' hq h; exact absurd h (by simp)
+  swit := nofun
+  bwit := by intro arr q a q' hq h; nomatch h
   fwit := by
     intro arr q err hq h
     simp only [ParseResult.error.injEq] at h
@@ -142,8 +142,8 @@ def GParser.tryCatch
       exact p.cwit hp
     · rename_i e hp
       exact (h e).cwit heq
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q a q' hq heq
     split at heq
