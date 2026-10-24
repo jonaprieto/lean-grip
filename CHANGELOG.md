@@ -5,6 +5,12 @@ Notable changes to grip. Format loosely follows
 changes to the core grade machinery can still happen between minor versions without
 much ceremony beyond what's noted here.
 
+## 0.4.1 — 2026-10-24
+
+- Repetition (`many`, `skipMany`, `foldMany`, `sepBy`) specializes on its element parser instead
+  of calling it through a closure on every iteration, so a statically known element is inlined
+  into the loop.
+
 ## 0.4.0 — 2026-10-24
 
 - Breaking: `GParser.seqR`, `GParser.seqL` and `GParser.map2` are defined through `bind` and
