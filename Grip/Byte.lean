@@ -34,10 +34,10 @@ def GParser.pure
     intro arr q b q' h
     simp only [ParseResult.ok.injEq] at h
     exact h.2
-  ewit := by intro he; exact absurd he (by decide)
+  ewit := nofun
   swit := by intro _ arr q; exact ⟨a, q, rfl⟩
   bwit := by intro arr q b q' hq h; simp only [ParseResult.ok.injEq] at h; omega
-  fwit := by intro arr q e hq h; exact absurd h (by simp)
+  fwit := fun _ h => nomatch h
 
 /-- Always fail, recording the current position as the furthest offset reached. -/
 @[inline]
@@ -45,10 +45,10 @@ def GParser.fail
     : GParser empty α
     where
   run := fun _ p => .error ⟨p, []⟩
-  cwit := by intro arr q a q' h; exact absurd h (by simp)
+  cwit := nofun
   ewit := by intro _ arr q; exact ⟨⟨q, []⟩, rfl⟩
-  swit := by intro he; exact absurd he (by decide)
-  bwit := by intro arr q a q' hq h; exact absurd h (by simp)
+  swit := nofun
+  bwit := by intro arr q a q' hq h; nomatch h
   fwit := by
     intro arr q e hq h
     simp only [ParseResult.error.injEq] at h
@@ -71,17 +71,17 @@ def GParser.satisfy
     split at heq
     · split at heq
       · simp only [ParseResult.ok.injEq] at heq; omega
-      · exact absurd heq (by simp)
-    · exact absurd heq (by simp)
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
+      · nomatch heq
+    · nomatch heq
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q a q' hq heq
     split at heq
     · split at heq
       · simp only [ParseResult.ok.injEq] at heq; omega
-      · exact absurd heq (by simp)
-    · exact absurd heq (by simp)
+      · nomatch heq
+    · nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -110,17 +110,17 @@ def GParser.byte
     split at heq
     · split at heq
       · simp only [ParseResult.ok.injEq] at heq; omega
-      · exact absurd heq (by simp)
-    · exact absurd heq (by simp)
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
+      · nomatch heq
+    · nomatch heq
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q a q' hq heq
     split at heq
     · split at heq
       · simp only [ParseResult.ok.injEq] at heq; omega
-      · exact absurd heq (by simp)
-    · exact absurd heq (by simp)
+      · nomatch heq
+    · nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -152,7 +152,7 @@ def GParser.capture
       simp only [ParseResult.ok.injEq] at heq
       obtain ⟨_, rfl⟩ := heq
       exact p.cwit hx
-    next e hx => exact absurd heq (by simp)
+    next e hx => nomatch heq
   ewit := by
     intro he arr q
     obtain ⟨e, he'⟩ := p.ewit he arr q
@@ -168,7 +168,7 @@ def GParser.capture
       simp only [ParseResult.ok.injEq] at heq
       obtain ⟨_, rfl⟩ := heq
       exact p.bwit hq hx
-    next e hx => exact absurd heq (by simp)
+    next e hx => nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -198,7 +198,7 @@ def GParser.captureWith
       simp only [ParseResult.ok.injEq] at heq
       obtain ⟨_, rfl⟩ := heq
       exact p.cwit hx
-    next e hx => exact absurd heq (by simp)
+    next e hx => nomatch heq
   ewit := by
     intro he arr q
     obtain ⟨e, he'⟩ := p.ewit he arr q
@@ -214,7 +214,7 @@ def GParser.captureWith
       simp only [ParseResult.ok.injEq] at heq
       obtain ⟨_, rfl⟩ := heq
       exact p.bwit hq hx
-    next e hx => exact absurd heq (by simp)
+    next e hx => nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -250,10 +250,10 @@ def GParser.captureWith?
         simp only [ParseResult.ok.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         exact p.cwit hx
-      next hf => exact absurd heq (by simp)
-    next e hx => exact absurd heq (by simp)
-  ewit := by intro he; exact Modality.noConfusion he
-  swit := by intro he; exact Modality.noConfusion he
+      next hf => nomatch heq
+    next e hx => nomatch heq
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q b q' hq heq
     split at heq
@@ -263,8 +263,8 @@ def GParser.captureWith?
         simp only [ParseResult.ok.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         exact p.bwit hq hx
-      next hf => exact absurd heq (by simp)
-    next e hx => exact absurd heq (by simp)
+      next hf => nomatch heq
+    next e hx => nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -294,14 +294,14 @@ def GParser.dispatch
     intro arr q a q' heq
     split at heq
     · exact (select _).cwit heq
-    · exact absurd heq (by simp)
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
+    · nomatch heq
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q a q' hq heq
     split at heq
     · exact (select _).bwit hq heq
-    · exact absurd heq (by simp)
+    · nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -328,7 +328,7 @@ def GParser.map
       simp only [ParseResult.ok.injEq] at heq
       obtain ⟨_, rfl⟩ := heq
       exact x.cwit hx
-    next e hx => exact absurd heq (by simp)
+    next e hx => nomatch heq
   ewit := by
     intro he arr q
     obtain ⟨e, he'⟩ := x.ewit he arr q
@@ -344,7 +344,7 @@ def GParser.map
       simp only [ParseResult.ok.injEq] at heq
       obtain ⟨_, rfl⟩ := heq
       exact x.bwit hq hx
-    next e hx => exact absurd heq (by simp)
+    next e hx => nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -371,7 +371,7 @@ def GParser.seqR
     split at heq
     next fst p' hx =>
       simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) (y.cwit heq)
-    next e hx => exact absurd heq (by simp)
+    next e hx => nomatch heq
   ewit := by
     intro he arr q
     simp only [grade_mul_errors, Modality.max_always] at he
@@ -393,12 +393,12 @@ def GParser.seqR
       exact ⟨a, q', ha⟩
     | error e =>
       obtain ⟨a, q', ha⟩ := x.swit he1 arr q
-      rw [ha] at hx; exact absurd hx (by simp)
+      rw [ha] at hx; nomatch hx
   bwit := by
     intro arr q a q' hq heq
     split at heq
     next fst p' hx => exact y.bwit (x.bwit hq hx) heq
-    next e hx => exact absurd heq (by simp)
+    next e hx => nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -434,8 +434,8 @@ def GParser.seqL
         simp only [ParseResult.ok.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) (y.cwit hy)
-      next e hy => exact absurd heq (by simp)
-    next e hx => exact absurd heq (by simp)
+      next e hy => nomatch heq
+    next e hx => nomatch heq
   ewit := by
     intro he arr q
     simp only [grade_mul_errors, Modality.max_always] at he
@@ -458,10 +458,10 @@ def GParser.seqL
         exact ⟨a, p'', by simp only [hy]⟩
       | error e =>
         obtain ⟨b, q'', hb⟩ := y.swit he2 arr p'
-        rw [hb] at hy; exact absurd hy (by simp)
+        rw [hb] at hy; nomatch hy
     | error e =>
       obtain ⟨a, q', ha⟩ := x.swit he1 arr q
-      rw [ha] at hx; exact absurd hx (by simp)
+      rw [ha] at hx; nomatch hx
   bwit := by
     intro arr q a q' hq heq
     split at heq
@@ -471,8 +471,8 @@ def GParser.seqL
         simp only [ParseResult.ok.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         exact y.bwit (x.bwit hq hx) hy
-      next e hy => exact absurd heq (by simp)
-    next e hx => exact absurd heq (by simp)
+      next e hy => nomatch heq
+    next e hx => nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -529,10 +529,10 @@ def GParser.alt
       · -- Both branches failed; heq is an if-then-else of .error cases.
         rename_i ey _hy
         by_cases h1 : ex.pos < ey.pos
-        · rw [if_pos h1] at heq; exact absurd heq (by simp)
+        · rw [if_pos h1] at heq; nomatch heq
         · by_cases h2 : ey.pos < ex.pos
-          · rw [if_neg h1, if_pos h2] at heq; exact absurd heq (by simp)
-          · rw [if_neg h1, if_neg h2] at heq; exact absurd heq (by simp)
+          · rw [if_neg h1, if_pos h2] at heq; nomatch heq
+          · rw [if_neg h1, if_neg h2] at heq; nomatch heq
   ewit := by
     intro he arr q
     simp only [Modality.min_always] at he
@@ -558,9 +558,9 @@ def GParser.alt
       | error ey =>
         rcases he with hg | hg
         · obtain ⟨a, q', ha⟩ := x.swit hg arr q
-          rw [ha] at hx; exact absurd hx (by simp)
+          rw [ha] at hx; nomatch hx
         · obtain ⟨a, q', ha⟩ := y.swit hg arr q
-          rw [ha] at hy; exact absurd hy (by simp)
+          rw [ha] at hy; nomatch hy
   bwit := by
     intro arr q a q' hq heq
     split at heq
@@ -576,10 +576,10 @@ def GParser.alt
         exact y.bwit hq hy
       · rename_i ey _hy
         by_cases h1 : ex.pos < ey.pos
-        · rw [if_pos h1] at heq; exact absurd heq (by simp)
+        · rw [if_pos h1] at heq; nomatch heq
         · by_cases h2 : ey.pos < ex.pos
-          · rw [if_neg h1, if_pos h2] at heq; exact absurd heq (by simp)
-          · rw [if_neg h1, if_neg h2] at heq; exact absurd heq (by simp)
+          · rw [if_neg h1, if_pos h2] at heq; nomatch heq
+          · rw [if_neg h1, if_neg h2] at heq; nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -622,7 +622,7 @@ def GParser.bind
     split at heq
     next fst p' hx =>
       simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) ((f fst).cwit heq)
-    next e hx => exact absurd heq (by simp)
+    next e hx => nomatch heq
   ewit := by
     intro he arr q
     simp only [grade_mul_errors, Modality.max_always] at he
@@ -644,12 +644,12 @@ def GParser.bind
       exact ⟨a, q', ha⟩
     | error e =>
       obtain ⟨a, q', ha⟩ := x.swit he1 arr q
-      rw [ha] at hx; exact absurd hx (by simp)
+      rw [ha] at hx; nomatch hx
   bwit := by
     intro arr q a q' hq heq
     split at heq
     next fst p' hx => exact (f fst).bwit (x.bwit hq hx) heq
-    next e hx => exact absurd heq (by simp)
+    next e hx => nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -687,8 +687,8 @@ def GParser.map2
         simp only [ParseResult.ok.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) (y.cwit hy)
-      next e hy => exact absurd heq (by simp)
-    next e hx => exact absurd heq (by simp)
+      next e hy => nomatch heq
+    next e hx => nomatch heq
   ewit := by
     intro he arr q
     simp only [grade_mul_errors, Modality.max_always] at he
@@ -711,10 +711,10 @@ def GParser.map2
         exact ⟨f a b, p'', by simp only [hy]⟩
       | error e =>
         obtain ⟨b, q'', hb⟩ := y.swit he2 arr p'
-        rw [hb] at hy; exact absurd hy (by simp)
+        rw [hb] at hy; nomatch hy
     | error e =>
       obtain ⟨a, q', ha⟩ := x.swit he1 arr q
-      rw [ha] at hx; exact absurd hx (by simp)
+      rw [ha] at hx; nomatch hx
   bwit := by
     intro arr q a q' hq heq
     split at heq
@@ -724,8 +724,8 @@ def GParser.map2
         simp only [ParseResult.ok.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         exact y.bwit (x.bwit hq hx) hy
-      next e hy => exact absurd heq (by simp)
-    next e hx => exact absurd heq (by simp)
+      next e hy => nomatch heq
+    next e hx => nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -754,14 +754,14 @@ def GParser.takeN
     intro arr q a q' heq
     split at heq
     · simp only [ParseResult.ok.injEq] at heq; omega
-    · exact absurd heq (by simp)
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
+    · nomatch heq
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q a q' hq heq
     split at heq
     · simp only [ParseResult.ok.injEq] at heq; omega
-    · exact absurd heq (by simp)
+    · nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -790,7 +790,7 @@ def GParser.label
       simp only [ParseResult.ok.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
       exact p.cwit hp
-    · exact absurd h (by simp)
+    · nomatch h
   ewit := by
     intro he arr q
     obtain ⟨e, he'⟩ := p.ewit he arr q
@@ -806,7 +806,7 @@ def GParser.label
       simp only [ParseResult.ok.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
       exact p.bwit hq hp
-    · exact absurd h (by simp)
+    · nomatch h
   fwit := by
     intro arr q e hq h
     split at h

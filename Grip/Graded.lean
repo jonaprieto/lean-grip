@@ -92,13 +92,13 @@ theorem cw_seq
 theorem GParser.errors_ne_always {g : Grade} {α} (p : GParser g α) {arr q a q'}
     (h : p.run arr q = .ok a q') : g.errors ≠ always := fun he => by
   obtain ⟨e, he'⟩ := p.ewit he arr q
-  rw [he'] at h; exact absurd h (by simp)
+  rw [he'] at h; nomatch h
 
 /-- A failure rules out the `never`-error grade (via `swit`). -/
 theorem GParser.errors_ne_never {g : Grade} {α} (p : GParser g α) {arr q e}
     (h : p.run arr q = .error e) : g.errors ≠ never := fun he => by
   obtain ⟨a, q', ha⟩ := p.swit he arr q
-  rw [ha] at h; exact absurd h (by simp)
+  rw [ha] at h; nomatch h
 
 /-! ### Running -/
 
@@ -147,16 +147,7 @@ def GParser.weakenFallible
     (p : GParser g α)
     : GParser fallible α
     :=
-  p.weaken
-    -- Term-mode match so that in each branch `w`'s type is specialised to the
-    -- concrete `consumptionWitness` variant before being handed to the proof term.
-    (fun {n m} w =>
-      match g.consumes, w with
-      | always,   (hw : n < m) => Nat.le_of_lt hw
-      | possibly, (hw : n ≤ m) => hw
-      | never,    (hw : n = m) => hw ▸ Nat.le_refl n)
-    (fun h => absurd h (by decide))
-    (fun h => absurd h (by decide))
+  p.weaken consumptionWitness.le nofun nofun
 
 /-! ### Recursion via a fixpoint
 
@@ -205,6 +196,26 @@ abbrev BoundedResult
   { r : ParseResult α // ∀ {e}, q ≤ arr.size → r = .error e →
       q ≤ e.pos ∧ e.pos ≤ arr.size }
 
+/-- A success that survives the clamp advanced past `q` and stayed in bounds. -/
+private
+theorem clampAdvance_ok
+    {arr : ByteArray}
+    {q : Nat}
+    {r : ParseResult α}
+    {x : α}
+    {q' : Nat}
+    (h : clampAdvance arr q r = .ok x q')
+    : q < q' ∧
+      q' ≤ arr.size
+    := by
+  simp only [clampAdvance] at h
+  split at h
+  · split at h
+    · simp only [ParseResult.ok.injEq] at h
+      omega
+    · nomatch h
+  · nomatch h
+
 private
 theorem clampAdvance_fwit
     {arr : ByteArray}
@@ -252,29 +263,10 @@ def GParser.fixFuelBounded
   | n + 1, arr, q =>
   let self : GParser conditional α :=
     { run := fun a p => clampAdvance a p (GParser.fixFuelBounded f n a p).val
-      cwit := by
-        intro a p x p' h
-        show p < p'
-        simp only [clampAdvance] at h
-        split at h
-        · split at h
-          · rename_i hg
-            simp only [ParseResult.ok.injEq] at h
-            omega
-          · exact absurd h (by simp)
-        · exact absurd h (by simp)
-      ewit := by intro he; exact absurd he (by decide)
-      swit := by intro he; exact absurd he (by decide)
-      bwit := by
-        intro a p x p' _hq h
-        simp only [clampAdvance] at h
-        split at h
-        · split at h
-          · rename_i hg
-            simp only [ParseResult.ok.injEq] at h
-            omega
-          · exact absurd h (by simp)
-        · exact absurd h (by simp)
+      cwit := fun h => (clampAdvance_ok h).1
+      ewit := nofun
+      swit := nofun
+      bwit := fun _ h => (clampAdvance_ok h).2
       fwit := by
         intro a p e hp h
         exact clampAdvance_fwit (GParser.fixFuelBounded f n a p).property hp h }
@@ -302,29 +294,10 @@ def GParser.fix
     : GParser conditional α
     where
   run arr q := clampAdvance arr q (GParser.fixFuel f (arr.size - q + 1) arr q)
-  cwit := by
-    intro arr q a q' h
-    show q < q'
-    simp only [clampAdvance] at h
-    split at h
-    · split at h
-      · rename_i hg
-        simp only [ParseResult.ok.injEq] at h
-        omega
-      · exact absurd h (by simp)
-    · exact absurd h (by simp)
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
-  bwit := by
-    intro arr q a q' _hq h
-    simp only [clampAdvance] at h
-    split at h
-    · split at h
-      · rename_i hg
-        simp only [ParseResult.ok.injEq] at h
-        omega
-      · exact absurd h (by simp)
-    · exact absurd h (by simp)
+  cwit := fun h => (clampAdvance_ok h).1
+  ewit := nofun
+  swit := nofun
+  bwit := fun _ h => (clampAdvance_ok h).2
   fwit := by
     intro arr q e hq h
     exact clampAdvance_fwit
@@ -340,29 +313,10 @@ def GParser.fixSelf
     : GParser conditional α
     where
   run a p := clampAdvance a p (GParser.fixFuel f n a p)
-  cwit := by
-    intro a p x p' h
-    show p < p'
-    simp only [clampAdvance] at h
-    split at h
-    · split at h
-      · rename_i hg
-        simp only [ParseResult.ok.injEq] at h
-        omega
-      · exact absurd h (by simp)
-    · exact absurd h (by simp)
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
-  bwit := by
-    intro a p x p' _hq h
-    simp only [clampAdvance] at h
-    split at h
-    · split at h
-      · rename_i hg
-        simp only [ParseResult.ok.injEq] at h
-        omega
-      · exact absurd h (by simp)
-    · exact absurd h (by simp)
+  cwit := fun h => (clampAdvance_ok h).1
+  ewit := nofun
+  swit := nofun
+  bwit := fun _ h => (clampAdvance_ok h).2
   fwit := by
     intro a p e hp h
     exact clampAdvance_fwit (GParser.fixFuelBounded f n a p).property hp h

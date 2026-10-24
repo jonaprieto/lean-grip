@@ -101,14 +101,14 @@ def GParser.takeWhile
     simp only [ParseResult.ok.injEq] at heq
     obtain ⟨_, rfl⟩ := heq
     exact scanFwd_ge arr f q
-  ewit := by intro he; exact absurd he (by decide)
+  ewit := nofun
   swit := by intro _ arr q; exact ⟨_, _, rfl⟩
   bwit := by
     intro arr q a q' hq heq
     simp only [ParseResult.ok.injEq] at heq
     obtain ⟨_, rfl⟩ := heq
     exact scanFwd_le arr f q hq
-  fwit := by intro arr q e hq h; exact absurd h (by simp)
+  fwit := fun _ h => nomatch h
 
 /-- Scan a JSON-style string body: advance until an *unescaped* `"` (0x22), treating a
 backslash (0x5c) as an escape that consumes the next byte too. Total: well-founded on
@@ -181,14 +181,14 @@ def GParser.takeStringBody
     simp only [ParseResult.ok.injEq] at heq
     obtain ⟨_, rfl⟩ := heq
     exact scanStrFwd_ge arr q
-  ewit := by intro he; exact absurd he (by decide)
+  ewit := nofun
   swit := by intro _ arr q; exact ⟨_, _, rfl⟩
   bwit := by
     intro arr q a q' hq heq
     simp only [ParseResult.ok.injEq] at heq
     obtain ⟨_, rfl⟩ := heq
     exact scanStrFwd_le arr q hq
-  fwit := by intro arr q e hq h; exact absurd h (by simp)
+  fwit := fun _ h => nomatch h
 
 /-- Scan a *strict* RFC-8259 string body: from just after the opening `"` at `q`, advance to
 and past the closing `"`, validating escapes. Returns `some end` (just past the closing quote)
@@ -244,14 +244,14 @@ theorem scanStrBody_ge
             · split at h
               · split at h
                 · have := scanStrBody_ge arr (q + 6) q' h; omega
-                · exact absurd h (by simp)
-              · exact absurd h (by simp)
-            · exact absurd h (by simp)
-        · exact absurd h (by simp)
+                · nomatch h
+              · nomatch h
+            · nomatch h
+        · nomatch h
       · split at h
-        · exact absurd h (by simp)
+        · nomatch h
         · have := scanStrBody_ge arr (q + 1) q' h; omega
-  · exact absurd h (by simp)
+  · nomatch h
 termination_by arr.size - q
 decreasing_by all_goals omega
 
@@ -275,14 +275,14 @@ theorem scanStrBody_le
             · split at h
               · split at h
                 · exact scanStrBody_le arr (q + 6) q' h
-                · exact absurd h (by simp)
-              · exact absurd h (by simp)
-            · exact absurd h (by simp)
-        · exact absurd h (by simp)
+                · nomatch h
+              · nomatch h
+            · nomatch h
+        · nomatch h
       · split at h
-        · exact absurd h (by simp)
+        · nomatch h
         · exact scanStrBody_le arr (q + 1) q' h
-  · exact absurd h (by simp)
+  · nomatch h
 termination_by arr.size - q
 decreasing_by all_goals omega
 
@@ -307,8 +307,8 @@ theorem scanStrLit_gt
   split at h
   · split at h
     · have := scanStrBody_ge arr (q + 1) q' h; omega
-    · exact absurd h (by simp)
-  · exact absurd h (by simp)
+    · nomatch h
+  · nomatch h
 
 /-- A successful `scanStrLit` stays within bounds. -/
 theorem scanStrLit_le
@@ -321,8 +321,8 @@ theorem scanStrLit_le
   split at h
   · split at h
     · exact scanStrBody_le arr (q + 1) q' h
-    · exact absurd h (by simp)
-  · exact absurd h (by simp)
+    · nomatch h
+  · nomatch h
 
 /-- A validated JSON string literal `"..."` in one scan, returning the number of bytes
 consumed (both quotes included). Fails on a malformed literal (see `scanStrBody`). This is the
@@ -344,9 +344,9 @@ def GParser.stringLit
       simp only [ParseResult.ok.injEq] at heq
       obtain ⟨_, rfl⟩ := heq
       exact scanStrLit_gt arr q k hk
-    next => exact absurd heq (by simp)
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
+    next => nomatch heq
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q a q' _hq heq
     split at heq
@@ -354,7 +354,7 @@ def GParser.stringLit
       simp only [ParseResult.ok.injEq] at heq
       obtain ⟨_, rfl⟩ := heq
       exact scanStrLit_le arr q k hk
-    next => exact absurd heq (by simp)
+    next => nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -383,10 +383,10 @@ def GParser.takeWhile1
         simp only [GParser.takeWhile, ParseResult.ok.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         exact scanFwd_gt arr f q hbound hf
-      · exact absurd heq (by simp)
-    · exact absurd heq (by simp)
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
+      · nomatch heq
+    · nomatch heq
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q a q' hq heq
     split at heq
@@ -396,8 +396,8 @@ def GParser.takeWhile1
         simp only [GParser.takeWhile, ParseResult.ok.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         exact scanFwd_le arr f q hq
-      · exact absurd heq (by simp)
-    · exact absurd heq (by simp)
+      · nomatch heq
+    · nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -494,7 +494,7 @@ def GParser.foldMany
     have hge := foldFwd_ge h p arr acc pos
     obtain ⟨_, rfl⟩ := heq
     exact hge
-  ewit := by intro he; exact absurd he (by decide)
+  ewit := nofun
   swit := by intro _ arr pos; exact ⟨_, _, rfl⟩
   bwit := by
     intro arr pos b q' hq heq
@@ -502,7 +502,7 @@ def GParser.foldMany
     have hle := foldFwd_le h p arr acc pos hq
     obtain ⟨_, rfl⟩ := heq
     exact hle
-  fwit := by intro arr q e hq h; exact absurd h (by simp)
+  fwit := fun _ h => nomatch h
 
 /-- Fold decimal digits into `acc`. Total: well-founded on `arr.size - q`. -/
 @[specialize]
@@ -594,9 +594,9 @@ def GParser.nat
         exact hgt
       · simp only [Bool.not_eq_true] at hd
         simp [hd] at heq
-    · exact absurd heq (by simp)
-  ewit := by intro he; exact absurd he (by decide)
-  swit := by intro he; exact absurd he (by decide)
+    · nomatch heq
+  ewit := nofun
+  swit := nofun
   bwit := by
     intro arr q a q' hq heq
     split at heq
@@ -608,7 +608,7 @@ def GParser.nat
         exact hle
       · simp only [Bool.not_eq_true] at hd
         simp [hd] at heq
-    · exact absurd heq (by simp)
+    · nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -643,7 +643,7 @@ def GParser.many
       obtain ⟨_, rfl⟩ := heq
       rw [hfold] at hge
       exact hge
-  ewit := by intro he; exact absurd he (by decide)
+  ewit := nofun
   swit := by
     intro _ arr pos
     split
@@ -657,6 +657,6 @@ def GParser.many
       obtain ⟨_, rfl⟩ := heq
       rw [hfold] at hle
       exact hle
-  fwit := by intro arr q e hq h; exact absurd h (by simp)
+  fwit := fun _ h => nomatch h
 
 end Grip
