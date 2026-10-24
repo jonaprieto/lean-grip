@@ -5,6 +5,19 @@ Notable changes to grip. Format loosely follows
 changes to the core grade machinery can still happen between minor versions without
 much ceremony beyond what's noted here.
 
+## 0.3.7 — 2026-10-24
+
+- `gdo` rejects elements it does not support (`if`, `match`, destructuring `let`) with a
+  message naming the supported forms, instead of failing inside the elaborator.
+- Repetition (`many`, `foldMany`, `sepBy`) no longer re-checks at runtime an advance the
+  element parser already proves, and `GParser.string` encodes its literal once per parser
+  instead of on every run.
+- Remove every `partial` definition; impossible proof branches close with `nomatch`/`nofun`.
+- Correct the `fix` clamp documentation: a `conditional` body cannot produce a non-advancing
+  success, so the clamp never changes an in-bounds result.
+- Drop the stale cross-language bench workflow; the props job builds the pinned Mathlib.
+- Lay out declarations one binder per line.
+
 ## 0.3.6 — 2026-09-09
 
 - Document the contribution policy, package problem, and prim-parser attribution.
