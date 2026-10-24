@@ -256,8 +256,12 @@ where
       `grade_by`; write anything else with `GParser.bind`"
 
 open Lean in
-@[macro gdoNotation] def expandGDo : Macro := fun stx =>
-  expandGDoBlock stx[1]
+@[macro gdoNotation]
+def expandGDo
+    : Macro
+    :=
+  fun stx =>
+    expandGDoBlock stx[1]
 
 /-! ### Sanity guards. -/
 

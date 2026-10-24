@@ -267,7 +267,8 @@ def GParser.string
           exact ⟨Nat.le_refl q, hq⟩
       · simp only [ParseResult.error.injEq] at h
         subst e
-        exact ⟨Nat.le_refl q, hq⟩ }
+        exact ⟨Nat.le_refl q, hq⟩
+  }
 
 end Grip
 

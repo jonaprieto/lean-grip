@@ -18,7 +18,9 @@ def digits
     :=
   GParser.takeWhile1 (fun b => 48 ≤ b && b ≤ 57)
 
-private def sample :=
+private
+def sample
+    :=
   GParser.seqR (GParser.byte 40) (GParser.seqL digits (GParser.byte 41))  -- "(" digits ")"
 
 #guard (GParser.run? digits "123".toUTF8) == some 3        -- 3 digit bytes consumed
@@ -98,7 +100,9 @@ error: gdo supports `let x ← p`, `let x := e`, bare parser lines, `return`, an
 `grade_by`; write anything else with `GParser.bind`
 -/
 #guard_msgs (whitespace := lax) in
-example : GParser conditional Unit :=
+example
+    : GParser conditional Unit
+    :=
   gdo
     if true then byteA else byteB
     byteA

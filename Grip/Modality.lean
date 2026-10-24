@@ -114,8 +114,12 @@ theorem ite_possibly_eq
     : ite possibly a a = a
     := by
   simp [ite]
-@[simp] theorem ite_possibly (a b : Modality) :
-    ite possibly a b = if a = b then a else possibly := rfl
+@[simp]
+theorem ite_possibly
+    (a b : Modality)
+    : ite possibly a b = if a = b then a else possibly
+    :=
+  rfl
 
 /-- `never` is the left identity for join. -/
 @[simp] theorem sup_never_left  (a : Modality) : max never a = a := by cases a <;> rfl

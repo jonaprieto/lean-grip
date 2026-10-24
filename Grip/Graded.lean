@@ -89,14 +89,28 @@ theorem cw_seq
   rwa [Modality.sup_comm] at h
 
 /-- A success rules out the `always`-error grade (via `ewit`). -/
-theorem GParser.errors_ne_always {g : Grade} {α} (p : GParser g α) {arr q a q'}
-    (h : p.run arr q = .ok a q') : g.errors ≠ always := fun he => by
+theorem GParser.errors_ne_always
+    {g : Grade}
+    {α}
+    (p : GParser g α)
+    {arr q a q'}
+    (h : p.run arr q = .ok a q')
+    : g.errors ≠ always
+    :=
+  fun he => by
   obtain ⟨e, he'⟩ := p.ewit he arr q
   rw [he'] at h; nomatch h
 
 /-- A failure rules out the `never`-error grade (via `swit`). -/
-theorem GParser.errors_ne_never {g : Grade} {α} (p : GParser g α) {arr q e}
-    (h : p.run arr q = .error e) : g.errors ≠ never := fun he => by
+theorem GParser.errors_ne_never
+    {g : Grade}
+    {α}
+    (p : GParser g α)
+    {arr q e}
+    (h : p.run arr q = .error e)
+    : g.errors ≠ never
+    :=
+  fun he => by
   obtain ⟨a, q', ha⟩ := p.swit he arr q
   rw [ha] at h; nomatch h
 
@@ -194,7 +208,8 @@ abbrev BoundedResult
     (α : Type)
     :=
   { r : ParseResult α // ∀ {e}, q ≤ arr.size → r = .error e →
-      q ≤ e.pos ∧ e.pos ≤ arr.size }
+      q ≤ e.pos ∧ e.pos ≤ arr.size
+  }
 
 /-- A success that survives the clamp advanced past `q` and stayed in bounds. -/
 private
@@ -269,7 +284,8 @@ def GParser.fixFuelBounded
       bwit := fun _ h => (clampAdvance_ok h).2
       fwit := by
         intro a p e hp h
-        exact clampAdvance_fwit (GParser.fixFuelBounded f n a p).property hp h }
+        exact clampAdvance_fwit (GParser.fixFuelBounded f n a p).property hp h
+    }
   ⟨(f self).run arr q, by
     intro e hq h
     exact (f self).fwit hq h⟩
