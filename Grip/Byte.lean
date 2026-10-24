@@ -133,54 +133,9 @@ def GParser.byte
       subst e
       exact ⟨Nat.le_refl q, hq⟩
 
-/-- Return the input slice a parser consumed, decoded as text (grade preserved). Lets
-combinator parsers build real syntax trees (atom names, identifiers, header fields)
-instead of only structural counts. Invalid UTF-8 in the slice decodes to `""`. -/
-@[inline]
-def GParser.capture
-    (p : GParser g α)
-    : GParser g String
-    where
-  run := fun arr q =>
-    match p.run arr q with
-    | .ok _ q' => .ok ((String.fromUTF8? (arr.extract q q')).getD "") q'
-    | .error e => .error e
-  cwit := by
-    intro arr q b q' heq
-    split at heq
-    next a p' hx =>
-      simp only [ParseResult.ok.injEq] at heq
-      obtain ⟨_, rfl⟩ := heq
-      exact p.cwit hx
-    next e hx => nomatch heq
-  ewit := by
-    intro he arr q
-    obtain ⟨e, he'⟩ := p.ewit he arr q
-    exact ⟨e, by simp only [he']⟩
-  swit := by
-    intro he arr q
-    obtain ⟨a, q', ha⟩ := p.swit he arr q
-    exact ⟨(String.fromUTF8? (arr.extract q q')).getD "", q', by simp only [ha]⟩
-  bwit := by
-    intro arr q b q' hq heq
-    split at heq
-    next a p' hx =>
-      simp only [ParseResult.ok.injEq] at heq
-      obtain ⟨_, rfl⟩ := heq
-      exact p.bwit hq hx
-    next e hx => nomatch heq
-  fwit := by
-    intro arr q e hq heq
-    split at heq
-    next a q' hp => contradiction
-    next e' hp =>
-      simp only [ParseResult.error.injEq] at heq
-      subst e
-      exact p.fwit hq hp
-
-/-- Like `capture`, but hand the consumed byte range `(arr, start, stop)` to `f` instead
-of decoding it to a `String`. Lets a value parser fold over the raw input bytes directly,
-with no `extract`/`fromUTF8?`/`String` round-trip. -/
+/-- Run `p` and hand the consumed byte range `(arr, start, stop)` to `f` (grade preserved).
+Lets a value parser fold over the raw input bytes directly, with no `extract`/`fromUTF8?`/
+`String` round-trip; `capture` is the case that decodes the slice as text. -/
 @[inline]
 def GParser.captureWith
     (f : ByteArray → Nat → Nat → β)
@@ -223,6 +178,16 @@ def GParser.captureWith
       simp only [ParseResult.error.injEq] at heq
       subst e
       exact p.fwit hq hp
+
+/-- Return the input slice a parser consumed, decoded as text (grade preserved). Lets
+combinator parsers build real syntax trees (atom names, identifiers, header fields)
+instead of only structural counts. Invalid UTF-8 in the slice decodes to `""`. -/
+@[inline]
+def GParser.capture
+    (p : GParser g α)
+    : GParser g String
+    :=
+  GParser.captureWith (fun arr q q' => (String.fromUTF8? (arr.extract q q')).getD "") p
 
 /-- Like `captureWith`, but `f` may reject the consumed range by returning `none`, in which
 case the parse fails at the entry offset. The result grade keeps `p`'s consumption but sets
