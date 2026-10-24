@@ -329,8 +329,10 @@ def GParser.takeWhile1
 /-- Total repetition core: fold `p`'s results into `a`, advancing while `p` succeeds
 and stays in bounds. Total: well-founded on `arr.size - q`; `p.cwit` gives `q < q'` and the
 runtime guard `q' ≤ arr.size` does the rest, so the measure drops. `@[specialize]` so the `step`
-and the element parser fuse into the loop when they are statically known. -/
-@[specialize]
+and the element parser fuse into the loop when they are statically known. `p` is named because a
+`GParser` is a structure, not a function, so the default would specialize only `step` and call the
+element through a closure on every iteration. -/
+@[specialize step p]
 def foldFwd
     {ge : Modality}
     {α β : Type}
