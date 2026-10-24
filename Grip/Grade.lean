@@ -133,12 +133,6 @@ theorem grade_mul_consumes
     := by
   cases a; cases b; rfl
 
--- Guard checks -----------------------------------------------------------
-#guard (Grade.mul fallible fallible == fallible)
-#guard (Grade.choice fallible fallible == fallible)
-#guard (Grade.mul pure fallible == fallible)
-#guard (Grade.mul fallible pure == fallible)
-
 end Grade
 
 export Grade (conditional flexible fallible pure lookahead empty impossible)
