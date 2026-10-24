@@ -416,12 +416,15 @@ termination_by arr.size - q
 decreasing_by omega
 
 /-- `natFwd` unfolded one step with the `let` inlined (so `split` sees the branch). -/
-theorem natFwd_eq (arr : ByteArray) (acc q : Nat) :
-    natFwd arr acc q =
-      if h : q < arr.size then
-        (if 48 ≤ arr[q] && arr[q] ≤ 57 then natFwd arr (acc * 10 + (arr[q].toNat - 48)) (q + 1)
-         else (acc, q))
-      else (acc, q) := by
+theorem natFwd_eq
+    (arr : ByteArray)
+    (acc q : Nat)
+    : natFwd arr acc q =
+        if h : q < arr.size then
+          (if 48 ≤ arr[q] && arr[q] ≤ 57 then natFwd arr (acc * 10 + (arr[q].toNat - 48)) (q + 1)
+           else (acc, q))
+        else (acc, q)
+    := by
   rw [natFwd]
 
 /-- `natFwd` never rewinds. -/
