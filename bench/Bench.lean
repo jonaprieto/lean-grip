@@ -15,17 +15,12 @@ This benchmark exercises the core byte parser through the non-JSON example gramm
 workload, including the core Grip validator row and DOM comparisons, lives in `lean-grip-json`.
 -/
 
-partial
 def repeatStr
     (s : String)
-    : Nat →
-      String
-  | 0 => ""
-  | 1 => s
-  | n =>
-    let half := repeatStr s (n / 2)
-    let doubled := half ++ half
-    if n % 2 == 0 then doubled else doubled ++ s
+    (n : Nat)
+    : String
+    :=
+  String.join (List.replicate n s)
 
 @[noinline]
 def parseSexp

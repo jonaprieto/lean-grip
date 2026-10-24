@@ -113,7 +113,6 @@ def GParser.takeWhile
 /-- Scan a JSON-style string body: advance until an *unescaped* `"` (0x22), treating a
 backslash (0x5c) as an escape that consumes the next byte too. Total: well-founded on
 `arr.size - q`. -/
-@[specialize]
 def scanStrFwd
     (arr : ByteArray)
     (q : Nat)
@@ -196,7 +195,6 @@ on a well-formed body, or `none` on a malformed one: an unescaped control byte (
 unknown `\`-escape, a `\u` not followed by four hex digits, or end of input before the closing
 quote. Total (well-founded on `arr.size - q`). Unlike `scanStrFwd`, this *validates* and can
 reject, so the parser built on it is `conditional`, not `flexible`. -/
-@[specialize]
 def scanStrBody
     (arr : ByteArray)
     (q : Nat)
@@ -505,7 +503,6 @@ def GParser.foldMany
   fwit := fun _ h => nomatch h
 
 /-- Fold decimal digits into `acc`. Total: well-founded on `arr.size - q`. -/
-@[specialize]
 def natFwd
     (arr : ByteArray)
     (acc q : Nat)
