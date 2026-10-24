@@ -128,8 +128,9 @@ def GParser.satisfyChar
     where
   run arr q :=
     match decodeUtf8 arr q with
-    | some (c, q') => if q < q' then (if p c then .ok c q' else .error ⟨q, []⟩) else .error ⟨q, []⟩
-    | none => .error ⟨q, []⟩
+    | some (c, q') =>
+      if q < q' then (if p c then .ok c q' else .error { pos := q }) else .error { pos := q }
+    | none => .error { pos := q }
   cwit := by
     intro arr q c q' h
     show q < q'
@@ -229,8 +230,8 @@ def GParser.string
   let bs := s.toUTF8
   { run arr q :=
       if matchBytes arr bs 0 q then
-        if q < q + bs.size then .ok () (q + bs.size) else .error ⟨q, []⟩
-      else .error ⟨q, []⟩
+        if q < q + bs.size then .ok () (q + bs.size) else .error { pos := q }
+      else .error { pos := q }
     cwit := by
       intro arr q a q' h
       show q < q'

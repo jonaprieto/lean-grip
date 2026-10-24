@@ -33,8 +33,8 @@ maximal or complete. -/
 structure Err where
   /-- Diagnostic offset used by built-in failure merging. -/
   pos      : Nat
-  /-- Labels expected at `pos` in built-in diagnostics. -/
-  expected : List String
+  /-- Labels expected at `pos` in built-in diagnostics; none unless a `label` adds one. -/
+  expected : List String := []
   deriving Repr, DecidableEq, BEq, Inhabited
 
 /-- The result of running a parser at an offset: `ok value newOffset` or `error` with a

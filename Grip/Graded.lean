@@ -195,7 +195,7 @@ def clampAdvance
     (q : Nat)
     : ParseResult α →
       ParseResult α
-  | .ok x q' => if q < q' ∧ q' ≤ arr.size then .ok x q' else .error ⟨q, []⟩
+  | .ok x q' => if q < q' ∧ q' ≤ arr.size then .ok x q' else .error { pos := q }
   | .error e => .error e
 
 /-- A raw result paired with the erased failure-position contract needed to expose it as a
@@ -270,7 +270,7 @@ def GParser.fixFuelBounded
       (arr : ByteArray) →
       (q : Nat) →
       BoundedResult arr q α
-  | 0, _, q => ⟨.error ⟨q, []⟩, by
+  | 0, _, q => ⟨.error { pos := q }, by
       intro e hq h
       simp only [ParseResult.error.injEq] at h
       subst e
@@ -363,7 +363,7 @@ theorem GParser.fixFuel_zero
     (f : GParser conditional α → GParser conditional α)
     (arr : ByteArray)
     (q : Nat)
-    : GParser.fixFuel f 0 arr q = .error ⟨q, []⟩
+    : GParser.fixFuel f 0 arr q = .error { pos := q }
     := rfl
 
 end Grip

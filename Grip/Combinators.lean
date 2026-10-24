@@ -158,7 +158,7 @@ def notFollowedBy
     (p : GParser g α)
     : GParser lookahead Unit
     where
-  run := fun arr q => match p.run arr q with | .ok _ _ => .error ⟨q, []⟩ | .error _ => .ok () q
+  run := fun arr q => match p.run arr q with | .ok _ _ => .error { pos := q } | .error _ => .ok () q
   cwit := by
     intro arr q a q' h
     split at h
