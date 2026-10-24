@@ -5,6 +5,14 @@ Notable changes to grip. Format loosely follows
 changes to the core grade machinery can still happen between minor versions without
 much ceremony beyond what's noted here.
 
+## 0.3.8 — 2026-10-24
+
+- `capture` is `captureWith` with a UTF-8 decode rather than a copy with its own proofs.
+- Prove the scanner bound lemmas by `fun_induction`; statements and axioms are unchanged.
+- `Err.expected` defaults to `[]`, so a bare failure is written `{ pos := q }`.
+- Move the library's `#guard` checks and their helpers to `test/Test/<Module>.lean`.
+- Apply the declaration layout to the declarations the previous pass left packed.
+
 ## 0.3.7 — 2026-10-24
 
 - `gdo` rejects elements it does not support (`if`, `match`, destructuring `let`) with a
