@@ -319,23 +319,23 @@ def GParser.map
       subst e
       exact x.fwit hq hx
 
-/-- Sequence, keeping the right value; grades multiply.
-Furthest offset from either `x` or `y` propagates on failure. -/
+/-- Monadic bind; grades multiply.
+Furthest offset propagates on failure. -/
 @[inline]
-def GParser.seqR
+def GParser.bind
     (x : GParser g α)
-    (y : GParser g' β)
+    (f : α → GParser g' β)
     : GParser (g * g') β
     where
   run := fun arr p =>
     match x.run arr p with
-    | .ok _ p' => y.run arr p'
+    | .ok a p' => (f a).run arr p'
     | .error e => .error e
   cwit := by
     intro arr q a q' heq
     split at heq
     next fst p' hx =>
-      simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) (y.cwit heq)
+      simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) ((f fst).cwit heq)
     next e hx => nomatch heq
   ewit := by
     intro he arr q
@@ -345,7 +345,7 @@ def GParser.seqR
       exact ⟨e, by simp only [he']⟩
     · cases hx : x.run arr q with
       | ok fst p' =>
-        obtain ⟨e, he'⟩ := y.ewit he arr p'
+        obtain ⟨e, he'⟩ := (f fst).ewit he arr p'
         exact ⟨e, he'⟩
       | error e => exact ⟨e, rfl⟩
   swit := by
@@ -353,8 +353,8 @@ def GParser.seqR
     simp only [grade_mul_errors, Modality.max_never] at he
     obtain ⟨he1, he2⟩ := he
     cases hx : x.run arr q with
-    | ok c p' =>
-      obtain ⟨a, q', ha⟩ := y.swit he2 arr p'
+    | ok fst p' =>
+      obtain ⟨a, q', ha⟩ := (f fst).swit he2 arr p'
       exact ⟨a, q', ha⟩
     | error e =>
       obtain ⟨a, q', ha⟩ := x.swit he1 arr q
@@ -362,18 +362,41 @@ def GParser.seqR
   bwit := by
     intro arr q a q' hq heq
     split at heq
-    next fst p' hx => exact y.bwit (x.bwit hq hx) heq
+    next fst p' hx => exact (f fst).bwit (x.bwit hq hx) heq
     next e hx => nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
     next fst q' hx =>
-      have hy := y.fwit (x.bwit hq hx) heq
-      exact ⟨Nat.le_trans (consumptionWitness.le (x.cwit hx)) hy.1, hy.2⟩
+      have hf := (f fst).fwit (x.bwit hq hx) heq
+      exact ⟨Nat.le_trans (consumptionWitness.le (x.cwit hx)) hf.1, hf.2⟩
     next e' hx =>
       simp only [ParseResult.error.injEq] at heq
       subst e
       exact x.fwit hq hx
+
+/-- Sequence, keeping the right value; grades multiply.
+Furthest offset from either `x` or `y` propagates on failure. -/
+@[inline]
+def GParser.seqR
+    (x : GParser g α)
+    (y : GParser g' β)
+    : GParser (g * g') β
+    :=
+  GParser.bind x fun _ => y
+
+/-- `seqR` runs `x`, then `y` from where `x` stopped. -/
+theorem GParser.seqR_run
+    (x : GParser g α)
+    (y : GParser g' β)
+    (arr : ByteArray)
+    (p : Nat)
+    : (GParser.seqR x y).run arr p =
+        match x.run arr p with
+        | .ok _ p' => y.run arr p'
+        | .error e => .error e
+    :=
+  rfl
 
 /-- Sequence, keeping the left value; grades multiply.
 Furthest offset propagates on failure. -/
@@ -382,77 +405,24 @@ def GParser.seqL
     (x : GParser g α)
     (y : GParser g' β)
     : GParser (g * g') α
-    where
-  run := fun arr p =>
-    match x.run arr p with
-    | .ok a p' =>
-      match y.run arr p' with
-      | .ok _ p'' => .ok a p''
-      | .error e  => .error e
-    | .error e => .error e
-  cwit := by
-    intro arr q a q' heq
-    split at heq
-    next fst p' hx =>
-      split at heq
-      next snd p'' hy =>
-        simp only [ParseResult.ok.injEq] at heq
-        obtain ⟨_, rfl⟩ := heq
-        simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) (y.cwit hy)
-      next e hy => nomatch heq
-    next e hx => nomatch heq
-  ewit := by
-    intro he arr q
-    simp only [grade_mul_errors, Modality.max_always] at he
-    rcases he with he | he
-    · obtain ⟨e, he'⟩ := x.ewit he arr q
-      exact ⟨e, by simp only [he']⟩
-    · cases hx : x.run arr q with
-      | ok fst p' =>
-        obtain ⟨e, he'⟩ := y.ewit he arr p'
-        exact ⟨e, by simp only [he']⟩
-      | error e => exact ⟨e, rfl⟩
-  swit := by
-    intro he arr q
-    simp only [grade_mul_errors, Modality.max_never] at he
-    obtain ⟨he1, he2⟩ := he
-    cases hx : x.run arr q with
-    | ok a p' =>
-      cases hy : y.run arr p' with
-      | ok _ p'' =>
-        exact ⟨a, p'', by simp only [hy]⟩
-      | error e =>
-        obtain ⟨b, q'', hb⟩ := y.swit he2 arr p'
-        rw [hb] at hy; nomatch hy
-    | error e =>
-      obtain ⟨a, q', ha⟩ := x.swit he1 arr q
-      rw [ha] at hx; nomatch hx
-  bwit := by
-    intro arr q a q' hq heq
-    split at heq
-    next fst p' hx =>
-      split at heq
-      next snd p'' hy =>
-        simp only [ParseResult.ok.injEq] at heq
-        obtain ⟨_, rfl⟩ := heq
-        exact y.bwit (x.bwit hq hx) hy
-      next e hy => nomatch heq
-    next e hx => nomatch heq
-  fwit := by
-    intro arr q e hq heq
-    split at heq
-    next fst q' hx =>
-      split at heq
-      next snd q'' hy => contradiction
-      next e' hy =>
-        simp only [ParseResult.error.injEq] at heq
-        subst e
-        have hb := y.fwit (x.bwit hq hx) hy
-        exact ⟨Nat.le_trans (consumptionWitness.le (x.cwit hx)) hb.1, hb.2⟩
-    next e' hx =>
-      simp only [ParseResult.error.injEq] at heq
-      subst e
-      exact x.fwit hq hx
+    :=
+  GParser.bind x fun a => GParser.map (fun _ => a) y
+
+/-- `seqL` runs `x`, then `y`, and keeps `x`'s value. -/
+theorem GParser.seqL_run
+    (x : GParser g α)
+    (y : GParser g' β)
+    (arr : ByteArray)
+    (p : Nat)
+    : (GParser.seqL x y).run arr p =
+        match x.run arr p with
+        | .ok a p' =>
+          match y.run arr p' with
+          | .ok _ p'' => .ok a p''
+          | .error e  => .error e
+        | .error e => .error e
+    :=
+  rfl
 
 /-- Ordered choice; grade follows `Grade.choice`.
 On failure, the two errors are merged furthest-wins: if one branch reached a
@@ -570,62 +540,6 @@ def GParser.alt
             subst e
             exact hbx
 
-/-- Monadic bind; grades multiply.
-Furthest offset propagates on failure. -/
-@[inline]
-def GParser.bind
-    (x : GParser g α)
-    (f : α → GParser g' β)
-    : GParser (g * g') β
-    where
-  run := fun arr p =>
-    match x.run arr p with
-    | .ok a p' => (f a).run arr p'
-    | .error e => .error e
-  cwit := by
-    intro arr q a q' heq
-    split at heq
-    next fst p' hx =>
-      simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) ((f fst).cwit heq)
-    next e hx => nomatch heq
-  ewit := by
-    intro he arr q
-    simp only [grade_mul_errors, Modality.max_always] at he
-    rcases he with he | he
-    · obtain ⟨e, he'⟩ := x.ewit he arr q
-      exact ⟨e, by simp only [he']⟩
-    · cases hx : x.run arr q with
-      | ok fst p' =>
-        obtain ⟨e, he'⟩ := (f fst).ewit he arr p'
-        exact ⟨e, he'⟩
-      | error e => exact ⟨e, rfl⟩
-  swit := by
-    intro he arr q
-    simp only [grade_mul_errors, Modality.max_never] at he
-    obtain ⟨he1, he2⟩ := he
-    cases hx : x.run arr q with
-    | ok fst p' =>
-      obtain ⟨a, q', ha⟩ := (f fst).swit he2 arr p'
-      exact ⟨a, q', ha⟩
-    | error e =>
-      obtain ⟨a, q', ha⟩ := x.swit he1 arr q
-      rw [ha] at hx; nomatch hx
-  bwit := by
-    intro arr q a q' hq heq
-    split at heq
-    next fst p' hx => exact (f fst).bwit (x.bwit hq hx) heq
-    next e hx => nomatch heq
-  fwit := by
-    intro arr q e hq heq
-    split at heq
-    next fst q' hx =>
-      have hf := (f fst).fwit (x.bwit hq hx) heq
-      exact ⟨Nat.le_trans (consumptionWitness.le (x.cwit hx)) hf.1, hf.2⟩
-    next e' hx =>
-      simp only [ParseResult.error.injEq] at heq
-      subst e
-      exact x.fwit hq hx
-
 /-- Apply a binary function across two parses; grades multiply.
 Furthest offset propagates on failure. -/
 @[inline]
@@ -635,77 +549,26 @@ def GParser.map2
     (x : GParser g α)
     (y : GParser g' β)
     : GParser (g * g') γ
-    where
-  run := fun arr p =>
-    match x.run arr p with
-    | .ok a p' =>
-      match y.run arr p' with
-      | .ok b p'' => .ok (f a b) p''
-      | .error e  => .error e
-    | .error e => .error e
-  cwit := by
-    intro arr q a q' heq
-    split at heq
-    next fst p' hx =>
-      split at heq
-      next snd p'' hy =>
-        simp only [ParseResult.ok.injEq] at heq
-        obtain ⟨_, rfl⟩ := heq
-        simpa only [grade_mul_consumes] using cw_seq (x.cwit hx) (y.cwit hy)
-      next e hy => nomatch heq
-    next e hx => nomatch heq
-  ewit := by
-    intro he arr q
-    simp only [grade_mul_errors, Modality.max_always] at he
-    rcases he with he | he
-    · obtain ⟨e, he'⟩ := x.ewit he arr q
-      exact ⟨e, by simp only [he']⟩
-    · cases hx : x.run arr q with
-      | ok fst p' =>
-        obtain ⟨e, he'⟩ := y.ewit he arr p'
-        exact ⟨e, by simp only [he']⟩
-      | error e => exact ⟨e, rfl⟩
-  swit := by
-    intro he arr q
-    simp only [grade_mul_errors, Modality.max_never] at he
-    obtain ⟨he1, he2⟩ := he
-    cases hx : x.run arr q with
-    | ok a p' =>
-      cases hy : y.run arr p' with
-      | ok b p'' =>
-        exact ⟨f a b, p'', by simp only [hy]⟩
-      | error e =>
-        obtain ⟨b, q'', hb⟩ := y.swit he2 arr p'
-        rw [hb] at hy; nomatch hy
-    | error e =>
-      obtain ⟨a, q', ha⟩ := x.swit he1 arr q
-      rw [ha] at hx; nomatch hx
-  bwit := by
-    intro arr q a q' hq heq
-    split at heq
-    next fst p' hx =>
-      split at heq
-      next snd p'' hy =>
-        simp only [ParseResult.ok.injEq] at heq
-        obtain ⟨_, rfl⟩ := heq
-        exact y.bwit (x.bwit hq hx) hy
-      next e hy => nomatch heq
-    next e hx => nomatch heq
-  fwit := by
-    intro arr q e hq heq
-    split at heq
-    next fst q' hx =>
-      split at heq
-      next snd q'' hy => contradiction
-      next e' hy =>
-        simp only [ParseResult.error.injEq] at heq
-        subst e
-        have hb := y.fwit (x.bwit hq hx) hy
-        exact ⟨Nat.le_trans (consumptionWitness.le (x.cwit hx)) hb.1, hb.2⟩
-    next e' hx =>
-      simp only [ParseResult.error.injEq] at heq
-      subst e
-      exact x.fwit hq hx
+    :=
+  GParser.bind x fun a => GParser.map (f a) y
+
+/-- `map2` runs `x`, then `y`, and combines both values with `f`. -/
+theorem GParser.map2_run
+    {γ : Type}
+    (f : α → β → γ)
+    (x : GParser g α)
+    (y : GParser g' β)
+    (arr : ByteArray)
+    (p : Nat)
+    : (GParser.map2 f x y).run arr p =
+        match x.run arr p with
+        | .ok a p' =>
+          match y.run arr p' with
+          | .ok b p'' => .ok (f a b) p''
+          | .error e  => .error e
+        | .error e => .error e
+    :=
+  rfl
 
 /-- Consume exactly `n` bytes if available.
 On failure the furthest offset is the current position. -/
