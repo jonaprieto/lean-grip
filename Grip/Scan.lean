@@ -409,8 +409,8 @@ def GParser.takeWhile1
       exact ⟨Nat.le_refl q, hq⟩
 
 /-- Total repetition core: fold `p`'s results into `a`, advancing while `p` succeeds
-and strictly consumes (in bounds). Total: well-founded on `arr.size - q`; the
-guard `q < q' ≤ arr.size` guarantees the measure drops. `@[specialize]` so the `step`
+and stays in bounds. Total: well-founded on `arr.size - q`; `p.cwit` gives `q < q'` and the
+runtime guard `q' ≤ arr.size` does the rest, so the measure drops. `@[specialize]` so the `step`
 and the element parser fuse into the loop when they are statically known. -/
 @[specialize]
 def foldFwd
@@ -423,12 +423,12 @@ def foldFwd
     (q : Nat)
     : β × Nat
     :=
-  match p.run arr q with
+  match _hp : p.run arr q with
   | .ok x q' =>
-    if _hq : q < q' ∧ q' ≤ arr.size then foldFwd step p arr (step a x) q' else (step a x, q')
+    if _hq : q' ≤ arr.size then foldFwd step p arr (step a x) q' else (step a x, q')
   | .error _ => (a, q)
 termination_by arr.size - q
-decreasing_by (obtain ⟨h1, h2⟩ := _hq; omega)
+decreasing_by have : q < q' := p.cwit _hp; omega
 
 /-- `foldFwd` never rewinds. -/
 theorem foldFwd_ge
@@ -469,9 +469,8 @@ theorem foldFwd_le
   next x q' hp =>
     have hlt : q < q' := p.cwit hp
     have hb : q' ≤ arr.size := p.bwit hq hp
-    split
-    · exact foldFwd_le step p arr (step a x) q' hb
-    · exact hb
+    rw [dif_pos hb]
+    exact foldFwd_le step p arr (step a x) q' hb
   next => exact hq
 termination_by arr.size - q
 decreasing_by omega
