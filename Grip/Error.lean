@@ -63,9 +63,7 @@ structure ParseError where
   expected : List String
   deriving Repr, DecidableEq, BEq
 
-/-- Compose a human-readable message from an expected-label list.
-Returns "expected a or b" when labels are present, or "unexpected input" when
-the list is empty. -/
+/-- The labels of `items` in first-seen order, each once. -/
 private
 def uniqueStrings
     (items : List String)
@@ -77,6 +75,8 @@ def uniqueStrings
         if seen.contains item then go seen rest else go (seen ++ [item]) rest
   go [] items
 
+/-- Compose a human-readable message from the expected labels, each once:
+"expected a or b" when labels are present, or "unexpected input" when there are none. -/
 def ParseError.message
     (e : ParseError)
     : String
@@ -116,7 +116,7 @@ def lineColOf
 
 /-- Find the byte index of the start of the line containing `pos`: the position
 just after the last 0x0a strictly before `pos`, or 0 if none.
-`go i` scans backwards from `i` to 0. -/
+`go i` checks the bytes before `i`, from `i - 1` down to 0. -/
 private
 def lineStartOf
     (arr : ByteArray)

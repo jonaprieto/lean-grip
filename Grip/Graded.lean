@@ -158,8 +158,6 @@ def GParser.weakenFallible
     (fun h => absurd h (by decide))
     (fun h => absurd h (by decide))
 
-
-
 /-! ### Recursion via a fixpoint
 
 `GParser.fix` ties the knot on a parser transformer, giving the body a reference back
@@ -171,17 +169,21 @@ grip's byte core is not size-indexed: `run` is `ByteArray → Nat → ParseResul
 length in the type, so the kernel cannot see the offset measure `arr.size - q` decrease
 through the opaque transformer `f`. Rather than fall back to `partial def`, `fix` recurses on
 an explicit fuel (`GParser.fixFuel`), structurally decreasing, with the fuel set to the bytes
-remaining (`arr.size - q + 1`). A runtime clamp downgrades any non-advancing success to a
-failure, so every self-*success* advances the offset; the productive nesting depth is
-therefore bounded by the bytes remaining. A separate `Guarded` proof establishes that the
+remaining (`arr.size - q + 1`). Every self-*success* advances the offset because the body is
+`conditional`, so the productive nesting depth is bounded by the bytes remaining. The runtime
+clamp (`clampAdvance`) never changes an in-bounds result for the same reason; it lets the
+witnesses hold without an induction over the fuel, and makes a self-call past the end of input
+fail the same way at every fuel, which the completeness proof relies on. A separate `Guarded`
+proof establishes that the
 chosen fuel does not truncate acceptance for a particular body. Direct left recursion exhausts
 the fuel and fails; arbitrary non-guarded bodies remain total but may be fuel-sensitive. This
 replaces the `partial` loop the implementation once had; see
 `grip-props/GripProps/FixComplete.lean`. -/
 
-/-- Clamp a raw result so a success that did not advance past `q` becomes a failure at
-`q`. This is what makes the `conditional` (`always`-consume) witness hold for `fix`
-without unfolding the fuel recursion. -/
+/-- Clamp a raw result so a success that does not advance past `q`, or ends past `arr.size`,
+becomes a failure at `q`. A `conditional` body never produces such a success from an in-bounds
+start, so on real input this is the identity. It lets `fix` state its `conditional` witnesses
+without unfolding the fuel recursion, and makes out-of-bounds self-calls fail uniformly. -/
 @[inline]
 def clampAdvance
     (arr : ByteArray)
@@ -229,8 +231,8 @@ theorem clampAdvance_fwit
     exact hr hq rfl
 
 /-- The recursive run, made total by a depth `fuel`. Each self-call spends one unit of fuel;
-because the clamp forces every self-*success* to advance the offset, the productive nesting
-depth is bounded by the bytes remaining. The `Guarded` hypothesis in
+because every self-*success* advances the offset (the body is `conditional`), the productive
+nesting depth is bounded by the bytes remaining. The `Guarded` hypothesis in
 `grip-props/GripProps/FixComplete.lean` proves that the `arr.size - q + 1` budget does not
 truncate a body's accepted parses. Fuel zero returns a failure; direct left recursion reaches
 it, while other non-guarded bodies may vary with the supplied budget. -/

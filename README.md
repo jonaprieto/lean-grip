@@ -41,7 +41,7 @@ def point : Parser (Nat × Nat) := do
   ch ')'
   return (x, y)
 
-#eval run? point "(3,14)".toUTF8
+#eval run? point "(3,14)".toUTF8  -- some (3, 14)
 ```
 
 The graded API uses `GParser`, `gdo`, `fix`, `dispatch`, `capture`, and `many`. `ParseError.pretty`
@@ -50,12 +50,12 @@ adds source context and styled output.
 
 ## Verification
 
-`grip-props` contains the optional machine-checked laws. Core parser benchmarks are recorded in
+`grip-props` contains the optional machine-checked laws. Core parser benchmarks are described in
 [`bench/RESULTS.md`](bench/RESULTS.md); JSON conformance and DOM benchmarks live in
 [`grip-json`](https://github.com/jonaprieto/lean-grip-json).
 
 ```sh
-lake build
+lake build Grip Test Examples bench
 lake exe bench
 ```
 

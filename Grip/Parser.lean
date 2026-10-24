@@ -65,7 +65,7 @@ instance
 so precise graded parsers can be used wherever `Parser` is expected without
 explicit casts.
 
-We use `CoeOut` rather than `Coe` because in Lean 4.28 `Coe`'s first parameter is
+We use `CoeOut` rather than `Coe` because `Coe`'s first parameter is
 `semiOutParam`, which would require the grade `g` to be determined from the
 destination type alone; impossible when `g` is free. `CoeOut` applies "left-to-right"
 (source known → determine destination), which is exactly our direction. -/
@@ -88,7 +88,8 @@ def GParser.gcast
 /-! ### Top-level entry point -/
 
 /-- Run a parser from offset 0, returning a positioned `ParseError` on failure.
-Line and column are 1-based byte positions derived by scanning `arr` for newlines. -/
+Line and column are 1-based byte positions derived by scanning `arr` for newlines.
+Input left after the parser stops is ignored; sequence with `eof` to reject it. -/
 def GParser.parse
     {g : Grade}
     {α : Type}

@@ -196,7 +196,8 @@ theorem different_as_GParser
   have hr := congrArg (fun p => p.run ByteArray.empty 1) h
   simp [zeroOutside, signalOutside] at hr
 
-/-- The former future-position counterexample is now excluded by the carrier itself. -/
+/-- A failure from an in-bounds start stays within the input; `fwit` makes this a property of
+the carrier itself. -/
 theorem failure_in_bounds
     {g : Grade}
     {α : Type}

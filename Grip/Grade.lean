@@ -17,7 +17,7 @@ import Grip.Modality
 `structure Grade` (tracking error and consumption `Modality`), the named grades,
 `Grade.mul`/`Grade.choice`, and `consumptionWitness` with its composition lemmas.
 
-No mathlib. `Monoid`/`Lattice` instances for `Grade` belong in grip-props.
+No mathlib. The `Monoid` instance for `Grade` lives in grip-props.
 -/
 
 open Modality
@@ -160,7 +160,7 @@ abbrev consumptionWitness
 
 namespace consumptionWitness
 
-/-- Every consumption witness is monotone in the absolute input offset. -/
+/-- A consumption witness of any grade puts the end offset at or after the start. -/
 theorem le
     {n m : Nat}
     {a : Modality}
