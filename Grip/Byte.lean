@@ -55,6 +55,60 @@ def GParser.fail
     subst e
     exact ⟨Nat.le_refl q, hq⟩
 
+/-- Whether the byte at `p` exists and satisfies `f`. A `Bool`, so a parser that tests it has a
+single failure branch: with two (out of bounds, wrong byte), the compiler joins them through a
+heap-allocated `.error` that a surrounding `alt` or `many` must then take apart. -/
+@[inline]
+def byteIs
+    (arr : ByteArray)
+    (p : Nat)
+    (f : UInt8 → Bool)
+    : Bool
+    :=
+  if h : p < arr.size then f arr[p] else false
+
+/-- A byte that passes `byteIs` is in bounds. -/
+theorem lt_of_byteIs
+    {arr : ByteArray}
+    {p : Nat}
+    {f : UInt8 → Bool}
+    (h : byteIs arr p f = true)
+    : p < arr.size
+    := by
+  unfold byteIs at h
+  split at h
+  · assumption
+  · nomatch h
+
+/-- In bounds, `byteIs` is `f` applied to the byte. -/
+theorem byteIs_of_lt
+    {arr : ByteArray}
+    {p : Nat}
+    {f : UInt8 → Bool}
+    (h : p < arr.size)
+    : byteIs arr p f = f arr[p]
+    := by
+  simp only [byteIs, dif_pos h]
+
+/-- At or past the end of input, `byteIs` is false. -/
+theorem byteIs_of_le
+    {arr : ByteArray}
+    {p : Nat}
+    {f : UInt8 → Bool}
+    (h : arr.size ≤ p)
+    : byteIs arr p f = false
+    := by
+  simp only [byteIs, dif_neg (Nat.not_lt.mpr h)]
+
+/-- The plain failure at `p`, built out of line. Inlined, its two-field `Err` could take the
+reset/reuse cell a caller freed for its success path (the `.ok` after `many` in a `fix` body). -/
+@[noinline]
+def failAt
+    (p : Nat)
+    : Err
+    :=
+  { pos := p }
+
 /-- Consume one byte satisfying `f`, or fail without consuming.
 On failure the furthest offset is the current position `p`. -/
 @[inline]
@@ -63,33 +117,25 @@ def GParser.satisfy
     : GParser conditional UInt8
     where
   run := fun arr p =>
-    if h : p < arr.size then
-      (if f arr[p] then .ok arr[p] (p + 1) else .error { pos := p })
-    else .error { pos := p }
+    if h : byteIs arr p f then .ok (arr[p]'(lt_of_byteIs h)) (p + 1) else .error (failAt p)
   cwit := by
     intro arr q a q' heq
     split at heq
-    · split at heq
-      · simp only [ParseResult.ok.injEq] at heq; omega
-      · nomatch heq
+    · simp only [ParseResult.ok.injEq] at heq; omega
     · nomatch heq
   ewit := nofun
   swit := nofun
   bwit := by
     intro arr q a q' hq heq
     split at heq
-    · split at heq
-      · simp only [ParseResult.ok.injEq] at heq; omega
-      · nomatch heq
+    · rename_i hb
+      have := lt_of_byteIs hb
+      simp only [ParseResult.ok.injEq] at heq; omega
     · nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
-    · split at heq
-      · contradiction
-      · simp only [ParseResult.error.injEq] at heq
-        subst e
-        exact ⟨Nat.le_refl q, hq⟩
+    · contradiction
     · simp only [ParseResult.error.injEq] at heq
       subst e
       exact ⟨Nat.le_refl q, hq⟩
@@ -101,34 +147,25 @@ def GParser.byte
     (c : UInt8)
     : GParser conditional Unit
     where
-  run := fun arr p =>
-    if h : p < arr.size then
-      (if arr[p] == c then .ok () (p + 1) else .error { pos := p })
-    else .error { pos := p }
+  run := fun arr p => if byteIs arr p (· == c) then .ok () (p + 1) else .error (failAt p)
   cwit := by
     intro arr q a q' heq
     split at heq
-    · split at heq
-      · simp only [ParseResult.ok.injEq] at heq; omega
-      · nomatch heq
+    · simp only [ParseResult.ok.injEq] at heq; omega
     · nomatch heq
   ewit := nofun
   swit := nofun
   bwit := by
     intro arr q a q' hq heq
     split at heq
-    · split at heq
-      · simp only [ParseResult.ok.injEq] at heq; omega
-      · nomatch heq
+    · rename_i hb
+      have := lt_of_byteIs hb
+      simp only [ParseResult.ok.injEq] at heq; omega
     · nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
-    · split at heq
-      · contradiction
-      · simp only [ParseResult.error.injEq] at heq
-        subst e
-        exact ⟨Nat.le_refl q, hq⟩
+    · contradiction
     · simp only [ParseResult.error.injEq] at heq
       subst e
       exact ⟨Nat.le_refl q, hq⟩
