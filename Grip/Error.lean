@@ -37,6 +37,29 @@ structure Err where
   expected : List String := []
   deriving Repr, DecidableEq, BEq, Inhabited
 
+/-- Merge two failures furthest-wins, megaparsec-style: the error that reached the farther offset
+wins, and on a tie the expected-label sets are unioned. Ordered choice uses it when both branches
+fail. -/
+@[inline]
+def Err.merge
+    (ex ey : Err)
+    : Err
+    :=
+  if ex.pos < ey.pos then ey
+  else if ey.pos < ex.pos then ex
+  else { ex with expected := ex.expected ++ ey.expected }
+
+/-- A merged failure reports the position of one of the two failures it merges. -/
+theorem Err.merge_pos
+    (ex ey : Err)
+    : (ex.merge ey).pos = ex.pos ∨
+      (ex.merge ey).pos = ey.pos
+    := by
+  unfold Err.merge
+  split
+  · exact .inr rfl
+  · split <;> exact .inl rfl
+
 /-- The result of running a parser at an offset: `ok value newOffset` or `error` with a
 diagnostic. One constructor holds the value and the new offset inline, so a
 successful step allocates a single object rather than an `Except.ok` wrapping a `Prod`

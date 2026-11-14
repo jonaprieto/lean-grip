@@ -462,9 +462,7 @@ theorem GParser.seqL_run
   rfl
 
 /-- Ordered choice; grade follows `Grade.choice`.
-On failure, the two errors are merged furthest-wins: if one branch reached a
-farther offset, that error wins; on a tie the expected-label sets are unioned.
-This is the megaparsec-style furthest-failure merge. -/
+On failure, the two errors are merged furthest-wins (`Err.merge`). -/
 @[inline]
 def GParser.alt
     (x : GParser ⟨ge, gc⟩ α)
@@ -477,10 +475,7 @@ def GParser.alt
     | .error ex =>
       match y.run arr p with
       | .ok a p' => .ok a p'
-      | .error ey =>
-        if ex.pos < ey.pos then .error ey
-        else if ey.pos < ex.pos then .error ex
-        else .error { ex with expected := ex.expected ++ ey.expected }
+      | .error ey => .error (ex.merge ey)
   cwit := by
     intro arr q a q' heq
     split at heq
@@ -498,25 +493,15 @@ def GParser.alt
         obtain ⟨rfl, rfl⟩ := heq
         exact consumptionWitness.ite_right
           (possibly_le_of_ne_never (x.errors_ne_never hx)) (y.cwit hy)
-      · -- Both branches failed; heq is an if-then-else of .error cases.
-        rename_i ey _hy
-        by_cases h1 : ex.pos < ey.pos
-        · rw [if_pos h1] at heq; nomatch heq
-        · by_cases h2 : ey.pos < ex.pos
-          · rw [if_neg h1, if_pos h2] at heq; nomatch heq
-          · rw [if_neg h1, if_neg h2] at heq; nomatch heq
+      · -- Both branches failed, so the result is the merged error.
+        nomatch heq
   ewit := by
     intro he arr q
     simp only [Modality.min_always] at he
     obtain ⟨he1, he2⟩ := he
     obtain ⟨ex, hex⟩ := x.ewit he1 arr q
     obtain ⟨ey, hey⟩ := y.ewit he2 arr q
-    by_cases h1 : ex.pos < ey.pos
-    · exact ⟨ey, by simp only [hex, hey, if_pos h1]⟩
-    · by_cases h2 : ey.pos < ex.pos
-      · exact ⟨ex, by simp only [hex, hey, if_neg h1, if_pos h2]⟩
-      · exact ⟨{ ex with expected := ex.expected ++ ey.expected },
-               by simp only [hex, hey, if_neg h1, if_neg h2]⟩
+    exact ⟨ex.merge ey, by simp only [hex, hey]⟩
   swit := by
     intro he arr q
     simp only [Modality.min_never] at he
@@ -546,12 +531,7 @@ def GParser.alt
         simp only [ParseResult.ok.injEq] at heq
         obtain ⟨rfl, rfl⟩ := heq
         exact y.bwit hq hy
-      · rename_i ey _hy
-        by_cases h1 : ex.pos < ey.pos
-        · rw [if_pos h1] at heq; nomatch heq
-        · by_cases h2 : ey.pos < ex.pos
-          · rw [if_neg h1, if_pos h2] at heq; nomatch heq
-          · rw [if_neg h1, if_neg h2] at heq; nomatch heq
+      · nomatch heq
   fwit := by
     intro arr q e hq heq
     split at heq
@@ -560,22 +540,11 @@ def GParser.alt
       split at heq
       · contradiction
       · rename_i ey hy
-        have hbx := x.fwit hq hx
-        have hby := y.fwit hq hy
-        by_cases h1 : ex.pos < ey.pos
-        · rw [if_pos h1] at heq
-          simp only [ParseResult.error.injEq] at heq
-          subst e
-          exact hby
-        · by_cases h2 : ey.pos < ex.pos
-          · rw [if_neg h1, if_pos h2] at heq
-            simp only [ParseResult.error.injEq] at heq
-            subst e
-            exact hbx
-          · rw [if_neg h1, if_neg h2] at heq
-            simp only [ParseResult.error.injEq] at heq
-            subst e
-            exact hbx
+        simp only [ParseResult.error.injEq] at heq
+        subst e
+        rcases Err.merge_pos ex ey with h | h <;> rw [h]
+        · exact x.fwit hq hx
+        · exact y.fwit hq hy
 
 /-- Apply a binary function across two parses; grades multiply.
 Furthest offset propagates on failure. -/

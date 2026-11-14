@@ -234,20 +234,6 @@ theorem agree_error
     := by
   obtain ⟨e₁, rfl⟩ := h₁; obtain ⟨e₂, rfl⟩ := h₂; exact True.intro
 
-/-- The furthest-reach merge two `alt` branches take on double failure is itself a failure. -/
-theorem altMergeError
-    {β : Type}
-    (ex ey : Err)
-    : ∃ e, (if ex.pos < ey.pos then (.error ey : ParseResult β)
-      else if ey.pos < ex.pos then .error ex
-      else .error { ex with expected := ex.expected ++ ey.expected }) = .error e
-    := by
-  by_cases h1 : ex.pos < ey.pos
-  · rw [if_pos h1]; exact ⟨ey, rfl⟩
-  · rw [if_neg h1]; by_cases h2 : ey.pos < ex.pos
-    · rw [if_pos h2]; exact ⟨ex, rfl⟩
-    · rw [if_neg h2]; exact ⟨_, rfl⟩
-
 /-- A body that ignores its self-reference is guarded (output independent of `rec`), the base case
 for building guarded bodies. -/
 theorem guarded_const
@@ -276,7 +262,7 @@ theorem guarded_map2_self
       rw [h1, h2] at hrec <;> simp_all [AgreeOk]
 
 /-- `alt` preserves guardedness: acceptance of the choice is decided by the two branches, which
-agree at `q`; the error-merge of a double failure is still a failure. -/
+agree at `q`; the merged error of a double failure (`Err.merge`) is still a failure. -/
 theorem guarded_alt
     {β : Type}
     {ge gc : Modality}
@@ -302,7 +288,7 @@ theorem guarded_alt
         | error ey2 => rw [hy1, hy2] at hy'; simp_all [AgreeOk]
       | error ey1 => cases hy2 : (y s₂).run arr q with
         | ok b2 r2 => rw [hy1, hy2] at hy'; simp_all [AgreeOk]
-        | error ey2 => exact agree_error (altMergeError ex1 ey1) (altMergeError ex2 ey2)
+        | error ey2 => exact agree_error ⟨_, rfl⟩ ⟨_, rfl⟩
 
 /-! ### Guardedness is necessary
 
