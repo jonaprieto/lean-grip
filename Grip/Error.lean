@@ -60,6 +60,19 @@ theorem Err.merge_pos
   · exact .inr rfl
   · split <;> exact .inl rfl
 
+/-- A merged failure reports the farther of the two positions. -/
+theorem Err.merge_pos_max
+    (ex ey : Err)
+    : (ex.merge ey).pos = max ex.pos ey.pos
+    := by
+  unfold Err.merge
+  split
+  · omega
+  · split
+    · omega
+    · show ex.pos = _
+      omega
+
 /-- The result of running a parser at an offset: `ok value newOffset` or `error` with a
 diagnostic. One constructor holds the value and the new offset inline, so a
 successful step allocates a single object rather than an `Except.ok` wrapping a `Prod`
