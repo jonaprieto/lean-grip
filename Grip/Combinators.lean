@@ -422,15 +422,90 @@ def choice
     exact p.bwit hq hp
   fwit := fun hq h => choiceFwd_error hq h
 
+/-- Run `p` `n` more times from `q`, consing each result onto `acc`; the list is reversed once
+at the end. Structural on `n` and tail-recursive, so a long count neither builds `n` nested
+binds nor mirrors them on the native stack. The first failure is returned unchanged. -/
+@[specialize p]
+def countFwd
+    (p : Parser α)
+    (arr : ByteArray)
+    : Nat →
+      List α →
+      Nat →
+      ParseResult (List α)
+  | 0, acc, q => .ok acc.reverse q
+  | n + 1, acc, q =>
+    match p.run arr q with
+    | .ok x q' => countFwd p arr n (x :: acc) q'
+    | .error e => .error e
+
+/-- A `countFwd` success never rewinds, and stays in bounds from an in-bounds start. -/
+theorem countFwd_ok
+    (p : Parser α)
+    (arr : ByteArray)
+    (n : Nat)
+    (acc : List α)
+    (q : Nat)
+    {xs : List α}
+    {q' : Nat}
+    (h : countFwd p arr n acc q = .ok xs q')
+    : q ≤ q' ∧
+      (q ≤ arr.size → q' ≤ arr.size)
+    := by
+  induction n generalizing acc q with
+  | zero =>
+    simp only [countFwd, ParseResult.ok.injEq] at h
+    obtain ⟨_, rfl⟩ := h
+    exact ⟨Nat.le_refl q, id⟩
+  | succ n ih =>
+    simp only [countFwd] at h
+    split at h
+    · rename_i x r hp
+      have hc : q ≤ r := p.cwit hp
+      obtain ⟨hle, hb⟩ := ih (x :: acc) r h
+      exact ⟨Nat.le_trans hc hle, fun hq => hb (p.bwit hq hp)⟩
+    · nomatch h
+
+/-- A `countFwd` failure from an in-bounds start reports a position between the start and EOF. -/
+theorem countFwd_error
+    (p : Parser α)
+    (arr : ByteArray)
+    (n : Nat)
+    (acc : List α)
+    (q : Nat)
+    {e : Err}
+    (hq : q ≤ arr.size)
+    (h : countFwd p arr n acc q = .error e)
+    : q ≤ e.pos ∧
+      e.pos ≤ arr.size
+    := by
+  induction n generalizing acc q with
+  | zero => simp only [countFwd] at h; nomatch h
+  | succ n ih =>
+    simp only [countFwd] at h
+    split at h
+    · rename_i x r hp
+      have hc : q ≤ r := p.cwit hp
+      obtain ⟨hle, hb⟩ := ih (x :: acc) r (p.bwit hq hp) h
+      exact ⟨Nat.le_trans hc hle, hb⟩
+    · rename_i e' hp
+      simp only [ParseResult.error.injEq] at h
+      subst e
+      exact p.fwit hq hp
+
 /-- Exactly `n` copies of `p`, at the `Parser` face (grade is `n`-dependent). -/
+@[inline]
 def count
     (n : Nat)
     (p : Parser α)
     : Parser (List α)
-    := do
-  match n with
-  | 0 => return []
-  | n + 1 => let x ← p; let xs ← count n p; return (x :: xs)
+    where
+  run arr q := countFwd p arr n [] q
+  cwit := fun h => (countFwd_ok p _ n [] _ h).1
+  ewit := nofun
+  swit := nofun
+  bwit := fun hq h => (countFwd_ok p _ n [] _ h).2 hq
+  fwit := fun hq h => countFwd_error p _ n [] _ hq h
 
 end GParser
 
