@@ -343,22 +343,111 @@ def oscBody
 
 /-! ### A worked grammar, complete end to end
 
-`manyTill` (`Grip/Combinators.lean`) is `fix` of `alt (map _ endp) (map2 (· :: ·) p rec)`. Its body
-is guarded purely by composition of the lemmas above: the left branch ignores `rec`
-(`guarded_const`), the right consults `rec` only after the `conditional` parser `p` consumes
-(`guarded_map2_self`), and `alt` preserves that (`guarded_alt`). So `manyTill` computes the ideal
-fixpoint: the fuel bound truncates none of its parses. -/
+`manyTill` (`Grip/Combinators.lean`) runs as the loop `manyTillFwd`, which computes `fix` of
+`alt (map _ endp) (map2 (· :: ·) p rec)` (`manyTill_run_fix`). That body is guarded purely by
+composition of the lemmas above: the left branch ignores `rec` (`guarded_const`), the right
+consults `rec` only after the `conditional` parser `p` consumes (`guarded_map2_self`), and `alt`
+preserves that (`guarded_alt`). So `manyTill` computes the ideal fixpoint: the fuel bound
+truncates none of its parses. -/
+
+/-- `manyTill`'s body, as a `fix` endofunction. -/
+abbrev manyTillBody
+    {β : Type}
+    (p : GParser conditional α)
+    (endp : GParser conditional β)
+    : GParser conditional (List α) → GParser conditional (List α)
+    :=
+  fun rec =>
+    GParser.alt (GParser.map (fun _ => ([] : List α)) endp)
+      (GParser.map2 (fun x xs => x :: xs) p rec)
 
 /-- `manyTill`'s body is guarded, assembled from the closure lemmas. -/
 theorem guarded_manyTillBody
     {β : Type}
     (p : GParser conditional α)
     (endp : GParser conditional β)
-    : Guarded (fun (rec : GParser conditional (List α)) =>
-      GParser.alt (GParser.map (fun _ => ([] : List α)) endp)
-        (GParser.map2 (fun x xs => x :: xs) p rec))
+    : Guarded (manyTillBody p endp)
     :=
   guarded_alt _ _ (guarded_const _) (guarded_map2_self _ _)
+
+/-- `Err.merge` is associative. -/
+theorem Err.merge_assoc
+    (a b c : Err)
+    : (a.merge b).merge c = a.merge (b.merge c)
+    := by
+  cases a; cases b; cases c
+  unfold Err.merge
+  repeat' split
+  all_goals (try simp_all) <;> omega
+
+/-- `{ pos := 0 }` is a left unit of `Err.merge`. -/
+theorem Err.merge_zero
+    (e : Err)
+    : ({ pos := 0 } : Err).merge e = e
+    := by
+  cases e
+  unfold Err.merge
+  repeat' split
+  all_goals (try simp_all) <;> omega
+
+/-- From an in-bounds `q`, with enough fuel, the loop with accumulators `err` and `acc` is the
+clamped fuel approximation of `manyTill`'s body, with `acc` prepended and `err` merged in. -/
+theorem manyTillFwd_eq_fixSelf
+    {β : Type}
+    (p : GParser conditional α)
+    (endp : GParser conditional β)
+    (arr : ByteArray)
+    (n : Nat)
+    : ∀ (err : Err) (acc : List α) (q : Nat),
+      q ≤ arr.size →
+      arr.size - q + 1 ≤ n →
+      GParser.manyTillFwd p endp arr err acc q =
+        match (GParser.fixSelf (manyTillBody p endp) n).run arr q with
+        | .ok xs q' => .ok (acc.reverse ++ xs) q'
+        | .error e => .error (err.merge e)
+    := by
+  induction n with
+  | zero => intro _ _ _ _ hn; omega
+  | succ n ih =>
+    intro err acc q hq hn
+    rw [GParser.manyTillFwd, GParser.fixSelf_run, GParser.fixFuel_succ]
+    dsimp only [manyTillBody, GParser.alt, GParser.map, GParser.map2_run]
+    cases he : endp.run arr q with
+    | ok b q1 =>
+      have hlt : q < q1 := endp.cwit he
+      have hle := endp.bwit hq he
+      simp only [clampAdvance, if_pos (And.intro hlt hle), List.append_nil]
+    | error ex =>
+      cases hp : p.run arr q with
+      | ok x q1 =>
+        have hlt : q < q1 := p.cwit hp
+        have hq1 := p.bwit hq hp
+        simp only [if_pos hq1]
+        rw [ih _ _ q1 hq1 (by omega)]
+        cases hr : (GParser.fixSelf (manyTillBody p endp) n).run arr q1 with
+        | ok xs q2 =>
+          have hlt2 : q1 < q2 := (GParser.fixSelf (manyTillBody p endp) n).cwit hr
+          have hle2 := (GParser.fixSelf (manyTillBody p endp) n).bwit hq1 hr
+          simp only [clampAdvance, if_pos (And.intro (Nat.lt_trans hlt hlt2) hle2),
+            List.reverse_cons, List.append_assoc, List.singleton_append]
+        | error e => simp only [clampAdvance, Err.merge_assoc]
+      | error ey => simp only [clampAdvance]
+
+/-- `manyTill` runs `fix` of its body. -/
+theorem manyTill_run_fix
+    {β : Type}
+    (p : GParser conditional α)
+    (endp : GParser conditional β)
+    (arr : ByteArray)
+    (q : Nat)
+    (hq : q ≤ arr.size)
+    : (GParser.manyTill p endp).run arr q = (GParser.fix (manyTillBody p endp)).run arr q
+    := by
+  show GParser.manyTillFwd p endp arr { pos := 0 } [] q = _
+  rw [manyTillFwd_eq_fixSelf p endp arr _ _ _ q hq (Nat.le_refl _)]
+  show _ = (GParser.fixSelf (manyTillBody p endp) (arr.size - q + 1)).run arr q
+  generalize (GParser.fixSelf (manyTillBody p endp) (arr.size - q + 1)).run arr q = r
+  cases r <;> simp only [List.reverse_nil, List.nil_append, Err.merge_zero]
 
 /-- `manyTill` is complete: a success reachable at any larger fuel is produced by `manyTill`
 itself. A combinator-built recursive grammar, proved complete end to end. -/
@@ -373,11 +462,10 @@ theorem manyTill_complete
     (hm : arr.size - q + 1 ≤ m)
     {a : List α}
     {q' : Nat}
-    (h :
-      GParser.fixFuel (fun rec => GParser.alt (GParser.map (fun _ => ([] : List α)) endp)
-        (GParser.map2 (fun x xs => x :: xs) p rec)) m arr q = .ok a q')
+    (h : GParser.fixFuel (manyTillBody p endp) m arr q = .ok a q')
     : (GParser.manyTill p endp).run arr q = .ok a q'
-    :=
-  fix_complete _ (guarded_manyTillBody p endp) arr q hq hm h
+    := by
+  rw [manyTill_run_fix p endp arr q hq]
+  exact fix_complete _ (guarded_manyTillBody p endp) arr q hq hm h
 
 end Grip.FixComplete

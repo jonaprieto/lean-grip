@@ -180,17 +180,114 @@ def notFollowedBy
       subst e
       exact ⟨Nat.le_refl q, hq⟩
     · contradiction
+
+/-- `manyTill`'s loop from `q`: stop when `endp` succeeds, otherwise run `p` and go on. `acc`
+holds the `p` results reversed, and `err` merges the `endp` failures seen so far, so a failure
+reports what nesting `alt (map _ endp) (map2 (· :: ·) p rec)` once per element would
+(`Err.merge` is associative and `{ pos := 0 }` is its left unit). Total: well-founded on
+`arr.size - q`, as in `foldFwd`. -/
+@[specialize p endp]
+def manyTillFwd
+    (p : GParser conditional α)
+    (endp : GParser conditional β)
+    (arr : ByteArray)
+    (err : Err)
+    (acc : List α)
+    (q : Nat)
+    : ParseResult (List α)
+    :=
+  match _he : endp.run arr q with
+  | .ok _ q' => .ok acc.reverse q'
+  | .error ex =>
+    match _hp : p.run arr q with
+    | .ok x q' =>
+      if q' ≤ arr.size then manyTillFwd p endp arr (err.merge ex) (x :: acc) q'
+      else .error { pos := q' }
+    | .error ey => .error (err.merge (ex.merge ey))
+termination_by arr.size - q
+decreasing_by have : q < q' := p.cwit _hp; omega
+
+/-- A `manyTillFwd` success advances, and stays in bounds from an in-bounds start. -/
+theorem manyTillFwd_ok
+    (p : GParser conditional α)
+    (endp : GParser conditional β)
+    (arr : ByteArray)
+    (err : Err)
+    (acc : List α)
+    (q : Nat)
+    {xs : List α}
+    {q' : Nat}
+    (h : manyTillFwd p endp arr err acc q = .ok xs q')
+    : q < q' ∧
+      (q ≤ arr.size → q' ≤ arr.size)
+    := by
+  fun_induction manyTillFwd p endp arr err acc q with
+  | case1 =>
+    rename_i he
+    simp only [ParseResult.ok.injEq] at h
+    obtain ⟨_, rfl⟩ := h
+    exact ⟨endp.cwit he, fun hq => endp.bwit hq he⟩
+  | case2 =>
+    rename_i hp hr ih
+    obtain ⟨hlt, hb⟩ := ih h
+    exact ⟨Nat.lt_trans (p.cwit hp) hlt, fun _ => hb hr⟩
+  | case3 => nomatch h
+  | case4 => nomatch h
+
+/-- A `manyTillFwd` failure from an in-bounds start reports a position between the start and
+EOF, when the merged `err` is in bounds. -/
+theorem manyTillFwd_error
+    (p : GParser conditional α)
+    (endp : GParser conditional β)
+    (arr : ByteArray)
+    (err : Err)
+    (acc : List α)
+    (q : Nat)
+    {e : Err}
+    (hq : q ≤ arr.size)
+    (herr : err.pos ≤ arr.size)
+    (h : manyTillFwd p endp arr err acc q = .error e)
+    : q ≤ e.pos ∧
+      e.pos ≤ arr.size
+    := by
+  fun_induction manyTillFwd p endp arr err acc q with
+  | case1 => nomatch h
+  | case2 =>
+    rename_i he _ _ hp hr ih
+    have hex := endp.fwit hq he
+    have herr' := Nat.max_le.mpr ⟨herr, hex.2⟩
+    rw [← Err.merge_pos_max] at herr'
+    obtain ⟨hle, hb⟩ := ih hr herr' h
+    exact ⟨Nat.le_trans (Nat.le_of_lt (p.cwit hp)) hle, hb⟩
+  | case3 =>
+    rename_i hp hr
+    exact absurd (p.bwit hq hp) hr
+  | case4 =>
+    rename_i he _ hp
+    simp only [ParseResult.error.injEq] at h
+    subst e
+    have hex := endp.fwit hq he
+    have hey := p.fwit hq hp
+    rw [Err.merge_pos_max, Err.merge_pos_max]
+    exact ⟨Nat.le_trans hex.1 (Nat.le_trans (Nat.le_max_left _ _) (Nat.le_max_right _ _)),
+      Nat.max_le.mpr ⟨herr, Nat.max_le.mpr ⟨hex.2, hey.2⟩⟩⟩
+
 /-- Zero or more `p` until `endp` succeeds; `endp`'s result is discarded and the `p`
-results are collected. Total via `fix`; both parsers must always consume. -/
+results are collected. Both parsers must always consume. Runs as the loop `manyTillFwd`
+rather than through `fix`, so a long run neither allocates a self-reference per element nor
+recurses on the native stack. -/
 @[inline]
 def manyTill
     (p : GParser conditional α)
     (endp : GParser conditional β)
     : GParser conditional (List α)
-    :=
-  fix fun rec =>
-    alt (map (fun _ => ([] : List α)) endp)
-      (map2 (fun x xs => x :: xs) p rec)
+    where
+  run arr q := manyTillFwd p endp arr { pos := 0 } [] q
+  cwit := fun h => (manyTillFwd_ok p endp _ _ [] _ h).1
+  ewit := nofun
+  swit := nofun
+  bwit := fun hq h => (manyTillFwd_ok p endp _ _ [] _ h).2 hq
+  fwit := fun hq h => manyTillFwd_error p endp _ _ [] _ hq (Nat.zero_le _) h
 
 /-- End of input: succeed (consuming nothing) exactly when no byte remains. Defined as
 `notFollowedBy` of the any-byte parser; used to reject trailing input after a top-level parse.
