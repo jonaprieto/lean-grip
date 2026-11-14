@@ -41,7 +41,8 @@ def validSecond
   else true
 
 /-- Decode one UTF-8 scalar starting at byte offset `q`, returning the `Char` and the
-new offset `q + width` (width 1 to 4), or `none` on truncated or invalid input. -/
+new offset `q + width` (width 1 to 4), or `none` on truncated or invalid input. The scalar is
+assembled in `UInt32` (it fits in 21 bits): `Nat` left shifts go through GMP. -/
 @[inline]
 def decodeUtf8
     (arr : ByteArray)
@@ -56,7 +57,8 @@ def decodeUtf8
       if h1 : q + 1 < arr.size then
         let b1 := arr[q + 1]
         if validSecond b0 b1 then
-          some (Char.ofNat (((b0.toNat &&& 0x1F) <<< 6) ||| (b1.toNat &&& 0x3F)), q + 2)
+          some (Char.ofNat (((b0.toUInt32 &&& 0x1F) <<< 6) ||| (b1.toUInt32 &&& 0x3F)).toNat,
+            q + 2)
         else none
       else none
     else if 0xE0 ≤ b0 && b0 ≤ 0xEF then
@@ -64,8 +66,9 @@ def decodeUtf8
         let b1 := arr[q + 1]
         let b2 := arr[q + 2]
         if validSecond b0 b1 && isCont b2 then
-          some (Char.ofNat (((b0.toNat &&& 0x0F) <<< 12) |||
-                            ((b1.toNat &&& 0x3F) <<< 6) ||| (b2.toNat &&& 0x3F)), q + 3)
+          some (Char.ofNat (((b0.toUInt32 &&& 0x0F) <<< 12) |||
+                            ((b1.toUInt32 &&& 0x3F) <<< 6) ||| (b2.toUInt32 &&& 0x3F)).toNat,
+            q + 3)
         else none
       else none
     else if 0xF0 ≤ b0 && b0 ≤ 0xF4 then
@@ -74,8 +77,9 @@ def decodeUtf8
         let b2 := arr[q + 2]
         let b3 := arr[q + 3]
         if validSecond b0 b1 && isCont b2 && isCont b3 then
-          some (Char.ofNat (((b0.toNat &&& 0x07) <<< 18) ||| ((b1.toNat &&& 0x3F) <<< 12) |||
-                            ((b2.toNat &&& 0x3F) <<< 6) ||| (b3.toNat &&& 0x3F)), q + 4)
+          some (Char.ofNat (((b0.toUInt32 &&& 0x07) <<< 18) ||| ((b1.toUInt32 &&& 0x3F) <<< 12) |||
+                            ((b2.toUInt32 &&& 0x3F) <<< 6) ||| (b3.toUInt32 &&& 0x3F)).toNat,
+            q + 4)
         else none
       else none
     else none
