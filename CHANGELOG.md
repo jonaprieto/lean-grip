@@ -5,6 +5,17 @@ Notable changes to grip. Format loosely follows
 changes to the core grade machinery can still happen between minor versions without
 much ceremony beyond what's noted here.
 
+## 0.4.2 — 2026-11-18
+
+- `choice`, `chooseG`, `count` and `manyTill` run as tail loops instead of nested closures, with
+  the same results and merged errors. `manyTill_run_fix` in the property suite shows `manyTill`
+  still runs `fix` of its old body, so `manyTill_complete` is unchanged.
+- `alt`'s furthest-wins error merge is named `Err.merge` and shared by the choice loops.
+- `byte` and `satisfy` have a single failure branch; `byteIs_of_lt` and `byteIs_of_le` restate
+  their run lemmas.
+- UTF-8 scalars decode in `UInt32` rather than `Nat`, with the same values.
+- Add per-combinator microbenchmarks (`micro.*`) and a macOS native profiler under `tools/`.
+
 ## 0.4.1 — 2026-10-24
 
 - Repetition (`many`, `skipMany`, `foldMany`, `sepBy`) specializes on its element parser instead
