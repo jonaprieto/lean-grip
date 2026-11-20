@@ -5,6 +5,12 @@ Notable changes to grip. Format loosely follows
 changes to the core grade machinery can still happen between minor versions without
 much ceremony beyond what's noted here.
 
+## 0.4.3 — 2026-11-20
+
+- Adopt Lean v4.36.0, with batteries, doc-gen4 and the property suite's Mathlib at v4.36.0.
+- Replace the deprecated `dif_pos`, `dif_neg`, `if_pos` and `if_true` with `dite_eq_left`,
+  `dite_eq_right`, `ite_eq_left` and `ite_true`.
+
 ## 0.4.2 — 2026-11-18
 
 - `choice`, `chooseG`, `count` and `manyTill` run as tail loops instead of nested closures, with
