@@ -215,7 +215,7 @@ theorem fix_complete
   have hcw := (f (GParser.fixSelf f (arr.size - q))).cwit hB'
   have hbw := (f (GParser.fixSelf f (arr.size - q))).bwit hq hB'
   show clampAdvance arr q (GParser.fixFuel f (arr.size - q + 1) arr q) = .ok a q'
-  rw [hB]; simp only [clampAdvance]; rw [if_pos ⟨hcw, hbw⟩]
+  rw [hB]; simp only [clampAdvance]; rw [ite_eq_left ⟨hcw, hbw⟩]
 
 /-! ### Building guardedness from consumption
 
@@ -416,19 +416,19 @@ theorem manyTillFwd_eq_fixSelf
     | ok b q1 =>
       have hlt : q < q1 := endp.cwit he
       have hle := endp.bwit hq he
-      simp only [clampAdvance, if_pos (And.intro hlt hle), List.append_nil]
+      simp only [clampAdvance, ite_eq_left (And.intro hlt hle), List.append_nil]
     | error ex =>
       cases hp : p.run arr q with
       | ok x q1 =>
         have hlt : q < q1 := p.cwit hp
         have hq1 := p.bwit hq hp
-        simp only [if_pos hq1]
+        simp only [ite_eq_left hq1]
         rw [ih _ _ q1 hq1 (by omega)]
         cases hr : (GParser.fixSelf (manyTillBody p endp) n).run arr q1 with
         | ok xs q2 =>
           have hlt2 : q1 < q2 := (GParser.fixSelf (manyTillBody p endp) n).cwit hr
           have hle2 := (GParser.fixSelf (manyTillBody p endp) n).bwit hq1 hr
-          simp only [clampAdvance, if_pos (And.intro (Nat.lt_trans hlt hlt2) hle2),
+          simp only [clampAdvance, ite_eq_left (And.intro (Nat.lt_trans hlt hlt2) hle2),
             List.reverse_cons, List.append_assoc, List.singleton_append]
         | error e => simp only [clampAdvance, Err.merge_assoc]
       | error ey => simp only [clampAdvance]

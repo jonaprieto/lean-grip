@@ -88,7 +88,7 @@ theorem byteIs_of_lt
     (h : p < arr.size)
     : byteIs arr p f = f arr[p]
     := by
-  simp only [byteIs, dif_pos h]
+  simp only [byteIs, dite_eq_left h]
 
 /-- At or past the end of input, `byteIs` is false. -/
 theorem byteIs_of_le
@@ -98,7 +98,7 @@ theorem byteIs_of_le
     (h : arr.size ≤ p)
     : byteIs arr p f = false
     := by
-  simp only [byteIs, dif_neg (Nat.not_lt.mpr h)]
+  simp only [byteIs, dite_eq_right (Nat.not_lt.mpr h)]
 
 /-- The plain failure at `p`, built out of line. Inlined, its two-field `Err` could take the
 reset/reuse cell a caller freed for its success path (the `.ok` after `many` in a `fix` body). -/

@@ -210,7 +210,7 @@ theorem matchBytes_le
     : q + (bs.size - i) ≤ arr.size
     := by
   rw [matchBytes] at h
-  rw [dif_pos hi] at h
+  rw [dite_eq_left hi] at h
   split at h
   · rename_i hq
     rw [Bool.and_eq_true] at h

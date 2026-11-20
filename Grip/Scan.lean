@@ -60,7 +60,7 @@ theorem scanFwd_gt
     (hf : f arr[q] = true)
     : q < scanFwd arr f q
     := by
-  rw [scanFwd, dif_pos h, if_pos hf]
+  rw [scanFwd, dite_eq_left h, ite_eq_left hf]
   exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q) (scanFwd_ge arr f (q + 1))
 
 /-- `scanFwd` stays within bounds when it starts within bounds. -/
@@ -445,7 +445,7 @@ theorem natFwd_gt
     (hd : (48 ≤ arr[q] && arr[q] ≤ 57) = true)
     : q < (natFwd arr acc q).2
     := by
-  rw [natFwd_eq, dif_pos h, if_pos hd]
+  rw [natFwd_eq, dite_eq_left h, ite_eq_left hd]
   exact Nat.lt_of_lt_of_le (Nat.lt_succ_self q)
     (natFwd_ge arr (acc * 10 + (arr[q].toNat - 48)) (q + 1))
 
@@ -476,7 +476,7 @@ def GParser.nat
     · rename_i hbound
       by_cases hd : (48 ≤ arr[q] && arr[q] ≤ 57) = true
       · have hgt := natFwd_gt arr 0 q hbound hd
-        simp only [hd, if_true, ParseResult.ok.injEq] at heq
+        simp only [hd, ite_true, ParseResult.ok.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         exact hgt
       · simp only [Bool.not_eq_true] at hd
@@ -490,7 +490,7 @@ def GParser.nat
     · rename_i hbound
       by_cases hd : (48 ≤ arr[q] && arr[q] ≤ 57) = true
       · have hle := natFwd_le arr 0 q hq
-        simp only [hd, if_true, ParseResult.ok.injEq] at heq
+        simp only [hd, ite_true, ParseResult.ok.injEq] at heq
         obtain ⟨_, rfl⟩ := heq
         exact hle
       · simp only [Bool.not_eq_true] at hd
@@ -501,7 +501,7 @@ def GParser.nat
     split at heq
     · rename_i hbound
       by_cases hd : (48 ≤ arr[q] && arr[q] ≤ 57) = true
-      · simp only [hd, if_true] at heq
+      · simp only [hd, ite_true] at heq
         contradiction
       · simp only [Bool.not_eq_true] at hd
         simp [hd] at heq
